@@ -1,0 +1,45 @@
+data Maybe a = Just a | Nothing
+
+maybe = \a b m -> case m of
+  Just x -> a x
+  Nothing -> b
+
+data Pair a b = Pair a b
+
+fst = \p -> case p of Pair a b -> a
+snd = \p -> case p of Pair a b -> b
+
+data Either a b = Left a | Right b
+
+either = \f g e -> case e of
+  Left a -> f a
+  Right b -> g b
+
+// Array (Either a b) -> Pair (Array a) (Array b)
+splitEither = \a -> Pair
+  (map (\e -> case e of Left a -> a) (filter (either (\_ -> True) (\_ -> False)) a))
+  (map (\e -> case e of Right b -> b) (filter (either (\_ -> False) (\_ -> True)) a))
+
+not = \b -> case b of
+  True -> False
+  False -> True
+
+contains2 = \x xs i -> case (i < length xs) of
+  True -> case (get i xs == x) of
+    True -> True
+    False -> contains2 x xs (i + 1)
+  False -> False
+
+contains = \x xs -> contains2 x xs 0
+
+join = \xs s -> case (length xs) of
+  0 -> ''
+  n -> foldl1 (\a b -> a ++ s ++ b) xs
+
+zipWithIndex2 = \n xs -> case (length xs) of
+  0 -> emptyArray
+  x -> enqueue (Pair n (get 0 xs)) (zipWithIndex2 (n + 1) (slice 1 xs))
+
+zipWithIndex = zipWithIndex2 0
+
+concatMap = \f a -> foldl concat emptyArray (map f a)
