@@ -1,0 +1,54 @@
+import * from 'prelude.jg'
+
+data ParseResult a s =
+  Success a s
+  | Error String
+
+and = \a b s -> case (a s) of
+  Success a s -> case (b s) of
+    Success b s -> Success (Pair a b) s
+    e -> e
+  e -> e
+
+apply = \f p s -> case (p s) of
+  Success r s -> Success (f r) s
+  e -> e
+
+precedes = \a b -> apply snd (and a b)
+
+succeeds = \a b -> apply fst (and a b)
+
+between = \a b c -> precedes a (succeeds b c)
+
+or = \a b s -> case (a s) of
+  Error e -> b s
+  s -> s
+
+manyIterate = \p s -> iterate
+  (Left (Success emptyArray s))
+  (\r -> case r of
+    Left s -> False
+    Right s -> True)
+  (\rs -> case rs of Left (Success rs s) -> case (p s) of
+    Success r s -> Left (Success (push r rs) s)
+    Error e -> Right (Success rs s))
+
+many = \p s -> case (manyIterate p s) of
+  Right a -> a
+  Left b -> error 'manyIterate should never return a Left'
+
+many1 = \a s -> case (a s) of
+  Success r s -> apply (enqueue r) (many a) s
+  e -> e
+
+sepBy1 = \p s -> apply
+  (\p -> case p of Pair r rs -> enqueue r rs)
+  (and p (many (precedes s p)))
+
+opt = \a s -> case (a s) of
+  Success r s -> Success (Just r) s
+  e -> Success Nothing s
+
+digits = '0123456789'
+upperCaseLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+letters = 'abcdefghijklmnopqrstuvwxyz' ++ upperCaseLetters

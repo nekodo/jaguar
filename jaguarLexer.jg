@@ -1,0 +1,49 @@
+import * from 'prelude.jg'
+import * from 'parsers.jg'
+
+data LexerState = LexerState
+  String // input
+  Number // position
+  Number // line
+  Number // column
+
+data TokenType = WsTok | SymTok | NumTok | StrTok | OpTok | IdTok | ComTok
+data Token = Token TokenType String Int Int
+
+mkTok = \t p i -> case i of
+  LexerState _1 _2 l c -> apply (\r -> Token t r l c) p i
+
+concatStr = apply (foldl (\cs c -> cs ++ c) '')
+
+runLexer = \p s -> p (LexerState s 0 0 0)
+
+parseChar = \p s -> case s of
+  LexerState s i l c -> case (p (get i s)) of
+    False -> Error 'parser failed'
+    True -> case (get i s) of
+      '\n' -> Success (get i s) (LexerState s (i + 1) (l + 1) 0)
+      x -> Success (get i s) (LexerState s (i + 1) l (c + 1))
+
+anyCharP = parseChar (\c -> True)
+charP = \cs -> parseChar (\c -> contains c cs)
+notCharP = \cs -> parseChar (\c -> not (contains c cs))
+
+stringCharP = or (apply (\c -> '\n') (and (charP '\\') (charP 'n'))) (or (precedes (charP '\\') anyCharP) (notCharP '\''))
+stringP = mkTok StrTok (concatStr (between (charP '\'') (many stringCharP) (charP '\'')))
+
+whitespaceP = mkTok WsTok (concatStr (many1 (charP ' \n')))
+
+intP = concatStr (many1 (charP digits))
+numP = mkTok NumTok (apply (\p -> case p of Pair a b -> a ++ b) (and intP (apply (maybe (\n -> '.' ++ n) '') (opt (precedes (charP '.') intP)))))
+
+lineCommentP = mkTok ComTok (concatStr (precedes (and (charP '/') (charP '/')) (many (notCharP '\n'))))
+
+symbolP = mkTok SymTok (charP '()[]{},\\')
+
+identP = mkTok IdTok (apply (\p -> case p of Pair a b -> a ++ b) (and (charP (letters ++ '_')) (concatStr (many (charP (letters ++ digits ++ '_'))))))
+
+opP = mkTok OpTok (concatStr (many1 (charP '-+*/=:&|<>^')))
+
+jaguarTokenP = many (or stringP (or whitespaceP (or numP (or lineCommentP (or identP (or opP symbolP))))))
+
+tokenize = runLexer jaguarTokenP

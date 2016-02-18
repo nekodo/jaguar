@@ -1,0 +1,207 @@
+import * from 'prelude.jg'
+import * from 'ast.jg'
+import * from 'parsers.jg'
+import * from 'jaguarLexer.jg'
+
+data ParserState = ParserState
+  (Array Token) // input (ts)
+  Number // position (p)
+  Number // current line indent (li)
+  (Array Number) // required line indent (ri)
+
+mkParserState = \ts -> ParserState ts 0 (case (get 0 ts) of Token t v l c -> c) (push 0 emptyArray)
+
+filterWhitespaceAndComments = filter (\t -> case t of
+  Token (WsTok) v l c -> False
+  Token (ComTok) v l c -> False
+  t -> True)
+
+runParser = \p s -> case (tokenize s) of
+  Success ts s -> p (mkParserState (filterWhitespaceAndComments ts))
+  e -> e
+
+parseToken = \f s -> case s of
+  // Check that we have not ran out of tokens.
+  ParserState ts p li ri -> case (p < length ts) of
+    False -> Error 'run out of tokens'
+    // Check that the indentation is sufficient.
+    True -> case (get p ts) of
+      Token t v l c -> case (c < ri) of
+        True -> Error 'token not indented sufficiently'
+        // Run the actual token parsing function.
+        False -> case (f (get p ts)) of
+          Nothing -> Error 'parser fun failed'
+          // Success, now need to update the position and current line indent.
+          Just r -> case ((p + 1) < length ts) of
+            False -> Success r (ParserState ts (p + 1) li ri)
+            True -> case (get (p + 1) ts) of
+              Token t v l2 c -> case (l2 > l) of
+                False -> Success r (ParserState ts (p + 1) li ri)
+                True -> Success r (ParserState ts (p + 1) c ri)
+
+andIndent = \a b s -> case s of
+  ParserState ts p li ri -> case (a s) of
+    Success a (ParserState ts p2 li2 ri2) -> case (b (ParserState ts p2 li2 (li + 1))) of
+      Success b (ParserState ts p3 li3 ri3) -> Success (Pair a b) (ParserState ts p3 li3 ri)
+      e -> e
+    e -> e
+
+reserved = push 'from' (push 'import' (push 'case' (push 'of' (push 'data' emptyArray))))
+
+symP = \s -> parseToken (\t -> case t of
+  Token (SymTok) v i c -> case (v == s) of
+    True -> Just s
+    False -> Nothing
+  x -> Nothing)
+
+operatorP = \s -> parseToken (\t -> case t of
+  Token (OpTok) v i c -> case (v == s) of
+    True -> Just s
+    False -> Nothing
+  x -> Nothing)
+
+anyOpP = parseToken (\t -> case t of
+  Token (OpTok) v i c -> Just v
+  x -> Nothing)
+
+reservedP = \s -> parseToken (\t -> case t of
+  Token (IdTok) v i c -> case (v == s) of
+    True -> Just s
+    False -> Nothing
+  x -> Nothing)
+
+nonReservedP = parseToken (\t -> case t of
+  Token (IdTok) v l c -> case (contains v reserved) of
+    True -> Nothing
+    False -> Just v
+  x -> Nothing)
+
+upperCaseId = parseToken (\t -> case t of
+  Token (IdTok) v i c -> case (contains (get 0 v) upperCaseLetters) of
+    True -> Just v
+    False -> Nothing
+  t -> Nothing)
+
+notUpperCaseId = parseToken (\t -> case t of
+  Token (IdTok) v i c -> case (contains (get 0 v) upperCaseLetters) of
+    False -> case (contains v reserved) of
+      False -> Just v
+      True -> Nothing
+    True -> Nothing
+  t -> Nothing)
+
+parenP = \p -> between (symP '(') p (symP ')')
+
+varP = parseToken (\t -> case t of
+  Token (IdTok) v l c -> case (contains v reserved) of
+    True -> Nothing
+    False -> Just (Var v)
+  x -> Nothing)
+
+cnumP = parseToken (\t -> case t of
+  Token (NumTok) v l c -> Just (Const (CNum (unsafeStringToInt v)))
+  x -> Nothing)
+
+cstrP = parseToken (\t -> case t of
+  Token (StrTok) v l c -> Just (Const (CStr v))
+  x -> Nothing)
+  
+constP = or cstrP cnumP
+
+simpleExprP = \s -> or varP (or constP (parenP exprP)) s
+
+appP = \s -> apply
+  (\p -> case p of Pair f as -> foldl (\f a -> App f a) f as)
+  (andIndent (or varP (parenP exprP)) (many simpleExprP))
+  s
+
+lamP = \s -> apply
+  (\p -> case p of Pair _ (Pair ps a) -> foldr (\a p -> Lam p a) a ps)
+  (andIndent (symP '\\') (and (many1 notUpperCaseId) (precedes (operatorP '->') exprP)))
+  s
+
+pvarP = apply PVar notUpperCaseId
+
+pcnumP = parseToken (\t -> case t of
+  Token (NumTok) v l c -> Just (PConst (CNum (unsafeStringToInt v)))
+  x -> Nothing)
+
+pcstrP = parseToken (\t -> case t of
+  Token (StrTok) v l c -> Just (PConst (CStr v))
+  x -> Nothing)
+
+strP = parseToken (\t -> case t of
+  Token (StrTok) v l c -> Just v
+  x -> Nothing)
+
+pconstP = or pcnumP pcstrP
+
+pdataP = \s -> apply
+  (\p -> case p of Pair n ps -> PData n ps)
+  (andIndent upperCaseId (many (or pvarP (or pconstP (parenP patP)))))
+  s
+
+patP = or pvarP (or pconstP pdataP)
+
+ofP = \s -> andIndent patP (precedes (operatorP '->') exprP) s
+
+caseP = apply
+  (\p -> case p of Pair _ (Pair e ps) -> Case e ps)
+  (andIndent (reservedP 'case') (and simpleExprP (precedes (reservedP 'of') (many1 ofP))))
+
+primaryExprP = \s -> or appP (or constP (or lamP caseP)) s
+
+exprP = apply
+  (\p -> case p of Pair e oes -> foldl (\a ob -> case ob of Pair op b -> App (App (Var op) a) b) e oes)
+  (andIndent primaryExprP (many (and anyOpP primaryExprP)))
+
+// --------------- types -------------------
+
+tconstP = apply TConst upperCaseId
+
+tvarP = apply TVar notUpperCaseId
+
+simpleTypeP = \s -> or tconstP (or tvarP (parenP typeP)) s
+
+tappP = apply
+  (\p -> case p of Pair t ts -> foldl (\a b -> TApp a b) t ts)
+  (andIndent simpleTypeP (many simpleTypeP))
+
+tfunP = apply
+  (\p -> case p of Pair t ts -> foldr1 (\b a -> TFun a b) (enqueue t ts))
+  (andIndent tappP (many (precedes (operatorP '->') tappP)))
+
+typeP = tfunP
+
+// --------------- module ------------------
+
+dataConP = apply
+  (\p -> case p of Pair n ts -> DataCon n ts)
+  (andIndent upperCaseId (many simpleTypeP))
+
+dataP = apply
+  (\r -> case r of Pair _ (Pair n (Pair ps cs)) -> Data n ps cs)
+  (andIndent (reservedP 'data') (and upperCaseId (and (many notUpperCaseId) (precedes (operatorP '=') (sepBy1 dataConP (operatorP '|'))))))
+
+defP = andIndent notUpperCaseId (precedes (operatorP '=') exprP)
+
+importClosedP = apply
+  (\p -> case p of Pair n f -> ImportClosed f n)
+  (and nonReservedP (precedes (reservedP 'from') strP))
+
+importOpenP = apply
+  (\p -> case p of Pair ns f -> ImportOpen f ns)
+  (and (between (symP '{') (sepBy1 nonReservedP (symP ',')) (symP '}')) (precedes (reservedP 'from') strP))
+
+importAllP = apply
+  (\p -> case p of Pair n f -> ImportAll f)
+  (and (operatorP '*') (precedes (reservedP 'from') strP))
+
+importP = apply snd (andIndent (reservedP 'import') (or importClosedP (or importOpenP importAllP)))
+
+moduleP = apply
+  (\p -> case p of Pair is es -> case (splitEither es) of Pair dts dfs -> Module is dts dfs)
+  (and (many importP) (many1 (or (apply Left dataP) (apply Right defP))))
+  
+parseModule = runParser moduleP
+parseImports = runParser (many importP)

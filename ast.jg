@@ -1,0 +1,33 @@
+data Expr =
+  Var String
+  | Const CVal
+  | App Expr Expr
+  | Lam String String  | Case Expr (Array (Pair Pat Expr))
+
+data CVal =
+  CNum Number
+  | CStr String
+
+data Pat =
+  PVar String
+  | PConst CVal
+  | PData String (Array Pat)
+
+data Module = Module
+  (Array Import)             // imports
+  (Array Data)               // ADT definitions
+  (Array (Pair String Expr)) // value definitions
+
+data Data = Data String (Array String) (Array DataCon)
+data DataCon = DataCon String (Array Type)
+
+data Type =
+  TConst String
+  | TVar String
+  | TApp Type Type
+  | TFun Type Type
+
+data Import =
+  ImportClosed String String
+  | ImportOpen String (Array String)
+  | ImportAll String
