@@ -217,4 +217,4 @@ builtins.True = true;
 
 builtins.False = false;
 
-exports = builtins;
+module.exports = builtins;
