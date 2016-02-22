@@ -1,0 +1,8 @@
+import * from 'prelude.jg'
+import {jaguarExprToJsExpr, moduleToJs} from 'js/jaguarToJs.jg'
+import {jsExprToString, jsStmtToString} from 'js/printer.jg'
+
+compileExpr = \e -> jsExprToString (jaguarExprToJsExpr e)
+
+compileModule = \importSymbols m ->
+  join (map jsStmtToString (moduleToJs importSymbols m)) ';\n'

@@ -1,0 +1,53 @@
+import * from 'prelude.jg'
+import * from 'js/ast.jg'
+
+jsExprToString = \e -> case e of
+  JSNull -> 'null'
+  JSUndefined -> 'undefined'
+  JSBool (True) -> 'true'
+  JSBool (False) -> 'false'
+  JSNum n -> jsonStringify n
+  JSString s -> jsonStringify s
+  JSRef '+' -> '$add'
+  JSRef '-' -> '$del'
+  JSRef '*' -> '$mul'
+  JSRef '<' -> '$lt'
+  JSRef '>' -> '$gt'
+  JSRef '==' -> '$eq'
+  JSRef '/=' -> '$neq'
+  JSRef '&&' -> '$and'
+  JSRef '||' -> '$or'
+  JSRef '++' -> '$concat'
+  JSRef v -> v
+  JSIndex xs i -> paren (jsExprToString xs) ++ '[' ++ jsExprToString i ++ ']'
+  JSUnOp op e -> op ++ paren (jsExprToString e)
+  JSBinOp op a b -> paren (jsExprToString a) ++ op ++ paren (jsExprToString b)
+  JSCall f xs -> paren (jsExprToString f)
+    ++ paren (intercalate ',' (map jsExprToString xs))
+  JSNew c xs -> 'new ' ++ paren (jsExprToString c)
+    ++ paren (intercalate ',' (map jsExprToString xs))
+  JSFun ps bs -> 'function(' ++ intercalate ',' ps ++ '){'
+    ++ (intercalate ';' (map jsStmtToString bs)) ++ '}'
+  JSTernary b x y -> paren (jsExprToString b) ++ '?'
+    ++ paren (jsExprToString x) ++ ':'
+    ++ paren (jsExprToString y)
+  JSObject kvs -> '{' ++ intercalate ',' (map keyValueToString kvs) ++ '}'
+  JSInstanceOf x c -> paren (jsExprToString x) ++ ' instanceof '
+    ++ paren (jsExprToString c)
+
+keyValueToString = \kv -> case kv of
+  Pair k v -> k ++ ':' ++ jsExprToString v
+
+jsStmtToString = \s -> case s of
+  JSExpr e -> jsExprToString e
+  JSReturn e -> 'return ' ++ jsExprToString e
+  JSVar v e -> 'var ' ++ v ++ ' = ' ++ jsExprToString e
+  JSBreak -> 'break'
+  JSSwitch e cs -> 'switch' ++ paren (jsExprToString e) ++ '{'
+    ++ intercalate ';\n' (map caseToString cs) ++ '}'
+
+caseToString = \c -> case c of
+  Pair m ss -> 'case ' ++ paren (jsExprToString m) ++ ':\n  '
+    ++ intercalate ';' (map jsStmtToString ss)
+
+paren = \s -> '(' ++ s ++ ')'

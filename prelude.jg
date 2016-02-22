@@ -43,3 +43,19 @@ zipWithIndex2 = \n xs -> case (length xs) of
 zipWithIndex = zipWithIndex2 0
 
 concatMap = \f a -> foldl concat emptyArray (map f a)
+
+head = get 0
+tail = slice 1
+
+arr1 = \x -> push x emptyArray
+arr2 = \x y -> push y (arr1 x)
+
+mergeSet = \xs ys -> case (length xs) of
+  0 -> ys
+  lx -> case (length ys) of
+    0 -> xs
+    ly -> case (head xs < head ys) of
+      True -> enqueue (head xs) (mergeSet (tail xs) ys)
+      False -> case (head xs == head ys) of
+        True -> enqueue(head xs) (mergeSet (tail xs) (tail ys))
+        False -> enqueue (head ys) (mergeSet xs (tail ys))

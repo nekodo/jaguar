@@ -1,0 +1,22 @@
+import * from 'prelude.jg'
+import * from 'parsers.jg'
+import * from 'ast.jg'
+import {parseExpr, parseModule} from 'jaguarParser.jg'
+import {compileExpr, compileModule} from 'js/backend.jg'
+
+transpileExpr = \s -> case (parseExpr s) of
+  Success e ps -> compileExpr e
+  e -> error e
+
+transpileModule = \importSymbols s -> case (parseModule s) of
+  Success m ps -> compileModule importSymbols m
+  e -> error e
+
+importFileName = \i -> case i of
+  ImportAll f -> f
+  ImportOpen f ns -> f
+  ImportClosed f n -> f
+
+findImports = \s -> case (parseModule s) of
+  Success (Module is ds vs) ps -> push ('../builtins.js') (map importFileName is)
+  e -> error e

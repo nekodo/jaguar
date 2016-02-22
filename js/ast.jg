@@ -1,0 +1,23 @@
+data JSExpr =
+  JSRef String
+  | JSIndex JSExpr JSExpr
+  | JSUnOp String JSExpr
+  | JSBinOp String JSExpr JSExpr
+  | JSCall JSExpr (Array JSExpr)
+  | JSFun (Array String) (Array JSStmt)
+  | JSTernary JSExpr JSExpr JSExpr
+  | JSNum Number
+  | JSString String
+  | JSBool Bool
+  | JSObject (Array (Pair String JSExpr))
+  | JSNull
+  | JSUndefined
+  | JSInstanceOf JSExpr JSExpr
+  | JSNew JSExpr (Array JSExpr)
+
+data JSStmt =
+  JSExpr JSExpr
+  | JSReturn JSExpr
+  | JSVar String JSExpr
+  | JSSwitch JSExpr (Array (Pair JSExpr (Array JSStmt)))
+  | JSBreak
