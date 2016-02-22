@@ -19,21 +19,34 @@ jsExprToString = \e -> case e of
   JSRef '||' -> '$or'
   JSRef '++' -> '$concat'
   JSRef v -> v
-  JSIndex xs i -> paren (jsExprToString xs) ++ '[' ++ jsExprToString i ++ ']'
-  JSUnOp op e -> op ++ paren (jsExprToString e)
-  JSBinOp op a b -> paren (jsExprToString a) ++ op ++ paren (jsExprToString b)
-  JSCall f xs -> paren (jsExprToString f)
+  JSIndex xs (JSString i) -> case (match '^[a-zA-Z_$][a-zA-Z0-9_$]*$' i) of
+    '' -> jsExprToParenString xs ++ '[' ++ jsExprToString i ++ ']'
+    i -> jsExprToParenString xs ++ '.' ++ i
+  JSIndex xs i -> jsExprToParenString xs ++ '[' ++ jsExprToString i ++ ']'
+  JSUnOp op e -> op ++ jsExprToParenString e
+  JSBinOp op a b -> jsExprToParenString a ++ op ++ jsExprToParenString b
+  JSCall f xs -> jsExprToParenString f
     ++ paren (intercalate ',' (map jsExprToString xs))
-  JSNew c xs -> 'new ' ++ paren (jsExprToString c)
+  JSNew c xs -> 'new ' ++ jsExprToParenString c
     ++ paren (intercalate ',' (map jsExprToString xs))
   JSFun ps bs -> 'function(' ++ intercalate ',' ps ++ '){'
     ++ (intercalate ';' (map jsStmtToString bs)) ++ '}'
-  JSTernary b x y -> paren (jsExprToString b) ++ '?'
-    ++ paren (jsExprToString x) ++ ':'
-    ++ paren (jsExprToString y)
+  JSTernary b x y -> jsExprToParenString b ++ '?'
+    ++ jsExprToParenString x ++ ':'
+    ++ jsExprToParenString y
   JSObject kvs -> '{' ++ intercalate ',' (map keyValueToString kvs) ++ '}'
-  JSInstanceOf x c -> paren (jsExprToString x) ++ ' instanceof '
-    ++ paren (jsExprToString c)
+  JSInstanceOf x c -> jsExprToParenString x ++ ' instanceof '
+    ++ jsExprToParenString c
+
+jsExprToParenString = \e -> case e of
+  JSRef r -> jsExprToString e
+  JSNum n -> jsExprToString e
+  JSString s -> jsExprToString e
+  JSBool b -> jsExprToString e
+  JSIndex xs i -> jsExprToString e
+  JSNew c xs -> jsExprToString e
+  JSObject kvs -> jsExprToString e
+  e -> paren (jsExprToString e)
 
 keyValueToString = \kv -> case kv of
   Pair k v -> k ++ ':' ++ jsExprToString v

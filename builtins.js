@@ -96,7 +96,7 @@ builtins.unsafeStringToInt = function(s) {
 builtins.match = function(r) {
   return function(s) {
 		var m = s.match(r);
-  	return m ? exports.Just(m[0]) : exports.Nothing;
+  	return m ? m[0] : '';
   };
 }
 
@@ -155,7 +155,7 @@ builtins.concat = function(a) {
 
 builtins.map = function(f) {
 	return function(arr) {
-	    console.log(arr);
+	    //console.log(arr);
       	return arr.map(f)
     }
 }

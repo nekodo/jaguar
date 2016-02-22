@@ -1,0 +1,26 @@
+import * from 'prelude.jg'
+import * from 'js/ast.jg'
+
+tryDCE = \e -> case e of
+  JSBinOp '&&' (JSBool (True)) e -> e
+  JSBinOp '&&' e (JSBool (True)) -> e
+  JSTernary (JSBool (True)) a b -> a
+  JSTernary (JSBool (False)) a b -> b
+  e -> e
+
+rewriteDCE = \e -> case e of
+  JSIndex xs i -> JSIndex (rewriteDCE xs) (rewriteDCE i)
+  JSBinOp op a b -> tryDCE (JSBinOp op (rewriteDCE a) (rewriteDCE b))
+  JSCall f xs -> JSCall (rewriteDCE f) (map rewriteDCE xs)
+  JSFun ps bs -> JSFun ps (map rewriteStmt bs)
+  JSTernary b x y -> tryDCE (JSTernary (rewriteDCE b) (rewriteDCE x) (rewriteDCE y))
+  JSObject kvs -> JSObject (map (\kv -> case kv of Pair k v -> Pair k (rewriteDCE v)) kvs)
+  JSInstanceOf x c -> JSInstanceOf (rewriteDCE x) (rewriteDCE c)
+  JSNew c xs -> JSNew (rewriteDCE c) (map rewriteDCE xs)
+  e -> e
+  
+rewriteStmt = \s -> case s of
+  JSExpr e -> JSExpr (rewriteDCE e)
+  JSReturn e -> JSReturn (rewriteDCE e)
+  JSVar n v -> JSVar n (rewriteDCE v)
+  s -> s
