@@ -26,13 +26,14 @@ function compileSingle(fileName) {
 
 function outputBundle(compiled) {
   const jaguarSources = [compiled];
-  jaguarSources.forEach(s => {
+  for (let i = 0; i < jaguarSources.length; i++) {
+    const s = jaguarSources[i];
     s.imports.forEach(i => {
       if (i.endsWith('.jg') && !jaguarSources.some(src => src.fileName == i)) {
         jaguarSources.push(cache[i].compiled);
       }
     });
-  });
+  }
   const orderedSources = [];
   while (orderedSources.length != jaguarSources.length) {
     const srcs = jaguarSources.filter(s =>
@@ -42,12 +43,13 @@ function outputBundle(compiled) {
     if (srcs.length) {
       srcs.forEach(s => orderedSources.push(s));
     } else {
+      console.log(jaguarSources.map(s => s.fileName), orderedSources.map(s => s.fileName));
       throw Error('Cannot order Jaguar sources');
     }
   }
   let fullSource = 'var cache = {}\n' +
       'function _require(f) {\n' +
-      '  return cache[f] || require(f);\n' +
+      '  return cache[f] || require(f == "../builtins.js" ? "./builtins.js" : f);\n' +
       '}\n';
   orderedSources.forEach(s => {
     fullSource += 'cache["' + s.fileName + '"] = ' +

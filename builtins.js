@@ -155,8 +155,9 @@ builtins.concat = function(a) {
 
 builtins.map = function(f) {
 	return function(arr) {
-  	return arr.map(f)
-  }
+	    //console.log(arr);
+      	return arr.map(f)
+    }
 }
 
 builtins.filter = function(f) {

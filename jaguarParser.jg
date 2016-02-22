@@ -205,3 +205,4 @@ moduleP = apply
   
 parseModule = runParser moduleP
 parseImports = runParser (many importP)
+parseExpr = runParser exprP

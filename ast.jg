@@ -2,7 +2,8 @@ data Expr =
   Var String
   | Const CVal
   | App Expr Expr
-  | Lam String String  | Case Expr (Array (Pair Pat Expr))
+  | Lam String Expr
+  | Case Expr (Array (Pair Pat Expr))
 
 data CVal =
   CNum Number

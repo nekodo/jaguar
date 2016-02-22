@@ -1,0 +1,131 @@
+import * from 'prelude.jg'
+import * from 'ast.jg'
+import * from 'parsers.jg'
+import {parseExpr} from 'jaguarParser.jg'
+
+data JSExpr =
+  JSRef String
+  | JSIndex JSExpr JSExpr
+  | JSUnOp String JSExpr
+  | JSBinOp String JSExpr JSExpr
+  | JSCall JSExpr (Array JSExpr)
+  | JSFun (Array String) (Array JSStmt)
+  | JSTernary JSExpr JSExpr JSExpr
+  | JSNum Number
+  | JSString String
+  | JSBool Bool
+  | JSObject (Array (Pair String JSExpr))
+  | JSNull
+  | JSUndefined
+  | JSInstanceOf JSExpr JSExpr
+
+data JSStmt =
+  JSExpr JSExpr
+  | JSReturn JSExpr
+  | JSVar String JSExpr
+  | JSSwitch JSExpr (Array (Pair JSExpr (Array JSStmt)))
+  | JSBreak
+
+jsExprToString = \e -> case e of
+  JSNull -> 'null'
+  JSUndefined -> 'undefined'
+  JSBool (True) -> 'true'
+  JSBool (False) -> 'false'
+  JSNum n -> jsonStringify n
+  JSString s -> jsonStringify s
+  JSRef '+' -> '$add'
+  JSRef '-' -> '$del'
+  JSRef '*' -> '$mul'
+  JSRef '<' -> '$lt'
+  JSRef '>' -> '$gt'
+  JSRef '==' -> '$eq'
+  JSRef '!=' -> '$neq'
+  JSRef '&&' -> '$and'
+  JSRef '||' -> '$or'
+  JSRef '++' -> '$concat'
+  JSRef v -> v
+  JSIndex xs i -> paren (jsExprToString xs) ++ '[' ++ jsExprToString i ++ ']'
+  JSUnOp op e -> op ++ paren (jsExprToString e)
+  JSBinOp op a b -> paren (jsExprToString a) ++ op ++ paren (jsExprToString b)
+  JSCall f xs -> paren (jsExprToString f)
+    ++ paren (intercalate ',' (map jsExprToString xs))
+  JSFun ps bs -> 'function(' ++ intercalate ',' ps ++ '){'
+    ++ (intercalate ';' (map jsStmtToString bs)) ++ '}'
+  JSTernary b x y -> paren (jsExprToString b) ++ '?'
+    ++ paren (jsExprToString x) ++ ':'
+    ++ paren (jsExprToString y)
+  JSObject kvs -> '{' ++ intercalate ',' (map keyValueToString kvs) ++ '}'
+  JSInstanceOf x c -> paren (jsExprToString x) ++ ' instanceof '
+    ++ paren (jsExprToString c)
+
+keyValueToString = \kv -> case kv of
+  Pair k v -> k ++ ':' ++ jsExprToString v
+
+jsStmtToString = \s -> case s of
+  JSExpr e -> jsExprToString e
+  JSReturn e -> 'return ' ++ jsExprToString e
+  JSVar v e -> 'var ' ++ v ++ ' = ' ++ jsExprToString e
+  JSBreak -> 'break'
+  JSSwitch e cs -> 'switch' ++ paren (jsExprToString e) ++ '{'
+    ++ intercalate ';\n' (map caseToString cs) ++ '}'
+
+caseToString = \c -> case c of
+  Pair m ss -> 'case ' ++ paren (jsExprToString m) ++ ':\n  '
+    ++ intercalate ';' (map jsStmtToString ss)
+
+paren = \s -> '(' ++ s ++ ')'
+
+jaguarExprToJsExpr = \e -> case e of
+  Var 'True' -> JSBool True
+  Var 'False' -> JSBool False
+  Var v -> JSRef v
+  Const (CNum n) -> JSNum n
+  Const (CStr s) -> JSString s
+  App f a -> JSCall (jaguarExprToJsExpr f) (arr1 (jaguarExprToJsExpr a))
+  Lam p e -> JSFun (arr1 p) (arr1 (JSReturn (jaguarExprToJsExpr e)))
+  Case e ps -> JSCall
+    (JSFun
+      emptyArray
+      (arr2
+        (JSVar '$pm' (jaguarExprToJsExpr e))
+        (JSReturn (foldr
+          assemblePatternMatch
+          (JSCall (JSRef 'error') (arr1 (JSString 'pattern match fail')))
+          ps))))
+    emptyArray
+
+assemblePatternMatch = \alt p -> case p of
+  Pair pat e -> case (processPattern (JSRef '$pm') pat) of
+    Pair f (Pair ns vs) ->
+      JSTernary
+        f
+        (JSCall (JSFun ns (arr1 (JSReturn (jaguarExprToJsExpr e)))) vs)
+        alt
+
+processPattern = \pm p -> case p of
+  PVar v -> Pair (JSBool True) (Pair (arr1 v) (arr1 pm))
+  PConst (CNum n) -> Pair
+    (JSBinOp '==' (JSNum n) pm)
+    (Pair emptyArray emptyArray)
+  PData 'True' ps -> Pair pm (Pair emptyArray emptyArray)
+  PData 'False' ps -> Pair (JSUnOp '!' pm) (Pair emptyArray emptyArray)
+  PData t ps -> 
+    foldl
+      (\a b -> case a of
+        Pair fa (Pair na va) -> case b of
+          Pair fb (Pair nb vb) ->
+            Pair (JSBinOp '&&' fa fb) (Pair (concat na nb) (concat va vb)))
+      (Pair (JSInstanceOf pm (JSRef ('$' ++ t))) (Pair emptyArray emptyArray))
+      (map
+        (\p -> case p of
+          Pair n pat ->
+            processPattern (JSIndex pm (JSString ('$' ++ intToString n))) pat)
+        (zipWithIndex ps))
+  z -> error 'failure to match pattern during processing'
+
+arr1 = \x -> push x emptyArray
+arr2 = \x y -> push y (arr1 x)
+
+compileExpr = \s -> case (parseExpr s) of
+  Success e ps -> jsExprToString (jaguarExprToJsExpr e)
+  e -> error e
