@@ -1,7 +1,7 @@
 import * from 'prelude.jg'
 import * from 'ast.jg'
 import * from 'parsers.jg'
-import {parseExpr} from 'jaguarParser.jg'
+import {parseExpr, parseModule} from 'jaguarParser.jg'
 
 data JSExpr =
   JSRef String
@@ -18,6 +18,7 @@ data JSExpr =
   | JSNull
   | JSUndefined
   | JSInstanceOf JSExpr JSExpr
+  | JSNew JSExpr (Array JSExpr)
 
 data JSStmt =
   JSExpr JSExpr
@@ -48,6 +49,8 @@ jsExprToString = \e -> case e of
   JSUnOp op e -> op ++ paren (jsExprToString e)
   JSBinOp op a b -> paren (jsExprToString a) ++ op ++ paren (jsExprToString b)
   JSCall f xs -> paren (jsExprToString f)
+    ++ paren (intercalate ',' (map jsExprToString xs))
+  JSNew c xs -> 'new ' ++ paren (jsExprToString c)
     ++ paren (intercalate ',' (map jsExprToString xs))
   JSFun ps bs -> 'function(' ++ intercalate ',' ps ++ '){'
     ++ (intercalate ';' (map jsStmtToString bs)) ++ '}'
@@ -107,6 +110,9 @@ processPattern = \pm p -> case p of
   PConst (CNum n) -> Pair
     (JSBinOp '==' (JSNum n) pm)
     (Pair emptyArray emptyArray)
+  PConst (CStr s) -> Pair
+    (JSBinOp '==' (JSString s) pm)
+    (Pair emptyArray emptyArray)
   PData 'True' ps -> Pair pm (Pair emptyArray emptyArray)
   PData 'False' ps -> Pair (JSUnOp '!' pm) (Pair emptyArray emptyArray)
   PData t ps -> 
@@ -128,4 +134,56 @@ arr2 = \x y -> push y (arr1 x)
 
 compileExpr = \s -> case (parseExpr s) of
   Success e ps -> jsExprToString (jaguarExprToJsExpr e)
+  e -> error e
+
+defToJs = \p -> case p of
+  Pair n e -> JSVar n (jaguarExprToJsExpr e)
+
+requireExpr = \f -> JSCall (JSRef '_require') (arr1 (JSString f))
+
+buildImports = \f ns ->
+  map (\n -> JSVar n (JSIndex (requireExpr f) (JSString n))) ns
+
+importToJs = \importSymbols i -> case i of
+  ImportClosed f n -> arr1 (JSVar n (requireExpr f))
+  ImportOpen f ns -> buildImports f ns
+  ImportAll f -> buildImports f (get f importSymbols)
+
+dataConFieldIds = \ts ->
+  map (\p -> '$' ++ intToString (fst p)) (zipWithIndex ts)
+
+dataConToJs = \dc -> case dc of
+  DataCon n ts -> arr2
+    (JSVar ('$' ++ n) (JSFun (dataConFieldIds ts) (map (\f -> JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString f)) (JSRef f))) (dataConFieldIds ts))))
+    (JSVar n (foldr (\b f -> JSFun (arr1 f) (arr1 (JSReturn b))) (JSNew (JSRef ('$' ++ n)) (map JSRef (dataConFieldIds ts))) (dataConFieldIds ts)))
+
+dataToJs = \d -> case d of
+  Data n ps cs -> concatMap dataConToJs cs
+
+dataConName = \dc -> case dc of DataCon n ts -> arr2 n ('$' ++ n)
+dataConNames = \d -> case d of Data n ps cs -> concatMap dataConName cs
+
+exportObject = \ds vs -> JSObject (map (\n -> Pair n (JSRef n)) (concat (concatMap dataConNames ds) (map fst vs)))
+
+moduleToJs = \importSymbols m -> case m of
+  Module is ds vs ->
+    push
+      (JSVar 'exports' (exportObject ds vs))
+      (concat
+        (concatMap (importToJs importSymbols) (enqueue (ImportAll '../builtins.js') is))
+        (concat
+          (concatMap dataToJs ds)
+          (map defToJs vs)))
+
+transpileModule = \importSymbols s -> case (parseModule s) of
+  Success m ps -> join (map jsStmtToString (moduleToJs importSymbols m)) ';\n'
+  e -> error e
+
+importFileName = \i -> case i of
+  ImportAll f -> f
+  ImportOpen f ns -> f
+  ImportClosed f n -> f
+
+findImports = \s -> case (parseModule s) of
+  Success (Module is ds vs) ps -> push ('../builtins.js') (map importFileName is)
   e -> error e

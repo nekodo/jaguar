@@ -155,7 +155,7 @@ builtins.concat = function(a) {
 
 builtins.map = function(f) {
 	return function(arr) {
-	    //console.log(arr);
+	    console.log(arr);
       	return arr.map(f)
     }
 }
@@ -195,7 +195,7 @@ builtins.foldl1 = function(f) {
 }
 
 builtins.error = function(s) {
-	throw s;
+	throw Error(s);
 }
 
 builtins.jsonStringify = function(s) {
