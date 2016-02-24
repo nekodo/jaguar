@@ -1,6 +1,6 @@
 var cache = {}
-function _require(f == "../builtins.js" ? "./builtins.js" : f) {
-  return cache[f] || require(f);
+function _require(f) {
+  return cache[f] || require(f == "../builtins.js" ? "./builtins.js" : f);
 }
 cache["prelude.jg"] = (function() {var $add = ((_require)("../builtins.js"))["$add"];
 var $del = ((_require)("../builtins.js"))["$del"];
