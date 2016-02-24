@@ -1,4 +1,4 @@
-var $import$0 = require('../builtins.js');
+var $import$0 = require('./builtins.js');
 var $add = $import$0.$add;
 var $del = $import$0.$del;
 var $mul = $import$0.$mul;
