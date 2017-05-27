@@ -1,3 +1,5 @@
+console.log('bin builtins');
+
 var builtins = {};
 
 builtins.$add = function(a) {
@@ -208,7 +210,7 @@ builtins.iterate = start => isFinished => fun => {
   while (!isFinished(x)) {
   	x = fun(x);
     if (i++ > 1000000) {
-    	throw 'infinite loop protection' + i;
+    	throw 'infinite loop protection ' + i;
     }
   }
   return x;
