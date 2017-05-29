@@ -80,20 +80,15 @@ dataConToJs = \dc -> case dc of
 dataToJs = \d -> case d of
   Data n ps cs -> concatMap dataConToJs cs
 
-dataConName = \dc -> case dc of DataCon n ts -> n
-dataConNames = \d -> case d of Data n ps cs -> map dataConName cs
+exportObject = \m -> JSObject (map (\n -> Pair n (JSRef n)) (getExports m))
 
-exportObject = \ds vs -> JSObject (map (\n -> Pair n (JSRef n)) (concat (concatMap dataConNames ds) (map fst vs)))
-
-moduleToJs = \importSymbols m -> case m of
+moduleToJs = \importSymbols m -> push (JSVar 'exports' (exportObject m)) (case m of
   Module is ds vs ->
-    push
-      (JSVar 'exports' (exportObject ds vs))
+    concat
+      (concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll './builtins.js') is))
       (concat
-        (concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll './builtins.js') is))
-        (concat
-          (concatMap dataToJs ds)
-          (map defToJs vs)))
+        (concatMap dataToJs ds)
+        (map defToJs vs)))
 
 opName = \op -> case op of
   '+' -> '$add'

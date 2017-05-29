@@ -20,3 +20,7 @@ importFileName = \i -> case i of
 findImports = \s -> case (parseModule s) of
   Success (Module is ds vs) ps -> push ('./builtins.js') (map importFileName is)
   e -> error e
+
+findExports = \s -> case (parseModule s) of
+  Success m ps -> getExports m
+  e -> error e

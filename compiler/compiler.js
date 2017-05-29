@@ -17,6 +17,19 @@ function main() {
   outputBundle(compileSingle(compiler, path.basename(fileName), path.dirname(fileName)), builtins, out);
 }
 
+function compileBundle(compiler, main) {
+  // Construct import graph.
+  // Compile each module.
+}
+
+function resolveImport(importer, importee) {
+  if (importee.startsWith('.') && importee != './builtins.js') {
+    return path.join(path.dirname(importer), importee);
+  } else {
+    return importee;
+  }
+}
+
 function compileSingle(compiler, fileName, dirname) {
   const contents = fs.readFileSync(dirname + '/' + fileName, 'utf8');
   const imports = compiler.findImports(contents);

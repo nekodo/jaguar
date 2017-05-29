@@ -1,3 +1,5 @@
+import * from 'prelude.jg'
+
 data Expr =
   Var String
   | Const CVal
@@ -32,3 +34,8 @@ data Import =
   ImportClosed String String
   | ImportOpen String (Array String)
   | ImportAll String
+
+dataConName = \dc -> case dc of DataCon n ts -> n
+dataConNames = \d -> case d of Data n ps cs -> map dataConName cs
+getExports = \m -> case m of
+    Module is ds vs -> concat (concatMap dataConNames ds) (map fst vs)
