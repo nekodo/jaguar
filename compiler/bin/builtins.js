@@ -1,5 +1,3 @@
-console.log('bin builtins');
-
 var builtins = {};
 
 builtins.$add = function(a) {

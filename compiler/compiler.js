@@ -1,21 +1,27 @@
 "use strict";
 
-const compiler = require('./0.7.js');
 const fs = require('fs');
 const vm = require('vm');
+const path = require("path");
 
 function main() {
-  const fileName = process.argv[2];
-  console.log('compiling', fileName);
-  outputBundle(compileSingle(fileName), './builtins.js');
+  const fileName = fs.realpathSync(process.argv[2]);
+  let out = null;
+  if (process.argv[3]) {
+    out = fs.openSync(process.argv[3], 'w');
+  }
+  console.log("compiling with", process.argv[4], 'in', process.cwd());
+  const builtins = process.argv[5];
+  const compiler = require(fs.realpathSync(process.argv[4]));
+  outputBundle(compileSingle(compiler, path.basename(fileName), path.dirname(fileName)), builtins, out);
 }
 
-function compileSingle(fileName) {
-  const contents = fs.readFileSync(fileName, 'utf8');
+function compileSingle(compiler, fileName, dirname) {
+  const contents = fs.readFileSync(dirname + '/' + fileName, 'utf8');
   const imports = compiler.findImports(contents);
   const importSymbols = {};
   imports.forEach(i => {
-    importSymbols[i] = getExports(i);
+    importSymbols[i] = getExports(compiler, dirname, i);
   });
   return {
     fileName,
@@ -26,6 +32,7 @@ function compileSingle(fileName) {
 
 function outputBundle(compiled, builtinsPath, outputFile) {
   const jaguarSources = [compiled];
+  const dirname = path.dirname(compiled.fileName);
   for (let i = 0; i < jaguarSources.length; i++) {
     const s = jaguarSources[i];
     s.imports.forEach(i => {
@@ -49,7 +56,7 @@ function outputBundle(compiled, builtinsPath, outputFile) {
   }
   let fullSource = 'var cache = {}\n' +
       'function _require(f) {\n' +
-      `  return cache[f] || require(f == "../builtins.js" ? "${builtinsPath}" : f);\n` +
+      `  return cache[f] || require(f == "./builtins.js" ? process.cwd() + "/" + "${builtinsPath}" : f);\n` +
       '}\n';
   orderedSources.forEach(s => {
     fullSource += 'cache["' + s.fileName + '"] = ' +
@@ -80,19 +87,19 @@ function _require(f) {
 }
 
 const cache = {};
-function getExports(f) {
+function getExports(compiler, dirname, f) {
   if (cache[f]) {
     return cache[f].exports;
   }
   if (f.endsWith('.js')) {
-    const module = require(f);
+    const module = require(dirname + '/' + f);
     cache[f] = {
       module: module,
       exports: Object.keys(module)
     };
     return Object.keys(module);
   } else if (f.endsWith('.jg')) {
-    const compiled = compileSingle(f);
+    const compiled = compileSingle(compiler, f, dirname);
     const module = instantiate(compiled);
     cache[f] = {
       compiled,

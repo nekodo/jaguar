@@ -89,7 +89,7 @@ moduleToJs = \importSymbols m -> case m of
     push
       (JSVar 'exports' (exportObject ds vs))
       (concat
-        (concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll '../builtins.js') is))
+        (concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll './builtins.js') is))
         (concat
           (concatMap dataToJs ds)
           (map defToJs vs)))

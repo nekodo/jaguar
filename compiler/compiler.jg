@@ -18,5 +18,5 @@ importFileName = \i -> case i of
   ImportClosed f n -> f
 
 findImports = \s -> case (parseModule s) of
-  Success (Module is ds vs) ps -> push ('../builtins.js') (map importFileName is)
+  Success (Module is ds vs) ps -> push ('./builtins.js') (map importFileName is)
   e -> error e

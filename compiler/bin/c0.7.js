@@ -1,15 +1,26 @@
 "use strict";
 
+const compiler = require('./0.7.js');
 const fs = require('fs');
 const vm = require('vm');
+const path = require("path");
 
-function compileSingle(compilerFilename, fileName) {
-  const compiler = require(compilerFilename);
-  const contents = fs.readFileSync(fileName, 'utf8');
+function main() {
+  const fileName = fs.realpathSync(process.argv[2]);
+  let out = null;
+  if (process.argv[3]) {
+    out = fs.openSync(process.argv[3], 'w');
+  }
+  const builtins = process.argv[5];
+  outputBundle(compileSingle(path.basename(fileName), path.dirname(fileName)), builtins, out);
+}
+
+function compileSingle(fileName, dirname) {
+  const contents = fs.readFileSync(dirname + '/' + fileName, 'utf8');
   const imports = compiler.findImports(contents);
   const importSymbols = {};
   imports.forEach(i => {
-    importSymbols[i] = getExports(compilerFilename, i);
+    importSymbols[i] = getExports(dirname, i);
   });
   return {
     fileName,
@@ -20,6 +31,7 @@ function compileSingle(compilerFilename, fileName) {
 
 function outputBundle(compiled, builtinsPath, outputFile) {
   const jaguarSources = [compiled];
+  const dirname = path.dirname(compiled.fileName);
   for (let i = 0; i < jaguarSources.length; i++) {
     const s = jaguarSources[i];
     s.imports.forEach(i => {
@@ -43,7 +55,7 @@ function outputBundle(compiled, builtinsPath, outputFile) {
   }
   let fullSource = 'var cache = {}\n' +
       'function _require(f) {\n' +
-      `  return cache[f] || require(f == "../builtins.js" ? "${builtinsPath}" : f);\n` +
+      `  return cache[f] || require(f == "./builtins.js" ? process.cwd() + "/" + "${builtinsPath}" : f);\n` +
       '}\n';
   orderedSources.forEach(s => {
     fullSource += 'cache["' + s.fileName + '"] = ' +
@@ -66,10 +78,7 @@ function instantiate(compiled) {
 }
 
 function _require(f) {
-  if (f == '../builtins.js') {
-    return require('./builtins.js');
-  }
-  else if (f.endsWith('.js')) {
+  if (f.endsWith('.js')) {
     return require(f);
   } else {
     return cache[f].module;
@@ -77,19 +86,19 @@ function _require(f) {
 }
 
 const cache = {};
-function getExports(compilerFilename, f) {
+function getExports(dirname, f) {
   if (cache[f]) {
     return cache[f].exports;
   }
   if (f.endsWith('.js')) {
-    const module = require(f == '../builtins.js' ? './builtins.js': f);
+    const module = require(dirname + '/' + f);
     cache[f] = {
       module: module,
       exports: Object.keys(module)
     };
     return Object.keys(module);
   } else if (f.endsWith('.jg')) {
-    const compiled = compileSingle(compilerFilename, f);
+    const compiled = compileSingle(f, dirname);
     const module = instantiate(compiled);
     cache[f] = {
       compiled,
@@ -101,5 +110,8 @@ function getExports(compilerFilename, f) {
     throw Error('Unknown import: ' + f);
   }
 }
+
+if (process.argv[2])
+  main();
 
 module.exports = {compileSingle, instantiate, outputBundle};
