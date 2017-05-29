@@ -149,7 +149,9 @@ caseP = apply
   (\p -> case p of Pair _ (Pair e ps) -> Case e ps)
   (andIndent (reservedP 'case') (and simpleExprP (precedes (reservedP 'of') (many1 ofP))))
 
-defP = \s -> (andIndent notUpperCaseId (precedes (operatorP '=') exprP)) s
+defP = apply
+  (\p -> case p of Pair (Pair n ps) e -> Pair n (foldr (\e p -> Lam p e) e ps))
+  (andIndent (andIndent notUpperCaseId (many notUpperCaseId)) (precedes (operatorP '=') (\s -> exprP s)))
 
 letDefsP = apply
   snd

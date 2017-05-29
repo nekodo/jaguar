@@ -1,10 +1,13 @@
 import * from '//compiler/prelude.jg'
 
+// Simple operator.
 addition = 6 + 5
 
+// Pattern match.
 match = case (Pair 'foo' 'bar') of
   Pair a b -> a
 
+// Data definitions
 data Friend =
   Kitten String
   | Pony String String
@@ -13,9 +16,11 @@ getName = \f -> case f of
   Kitten n -> n
   Pony c n -> n
 
+// Pattern matches on ADTs.
 kittenName = getName (Kitten 'Fluffbun')
 ponyName = getName (Pony 'pink' 'Fluttershy')
 
+// Nested pattern matches.
 nestedMatch = case (Pair (Kitten 'Fluffbun') 7) of
   9 -> 1
   Pair k 8 -> 2
@@ -24,11 +29,21 @@ nestedMatch = case (Pair (Kitten 'Fluffbun') 7) of
   Pair (Kitten 'Buba') 7 -> 5
   Pair (Kitten 'Fluffbun') 7 -> 6
 
+// Simple let.
 letExpr =
   let
     x = 7
     y = 8
   in x + y
 
+// Check that shadowing works as expected.
 letExpr2 =
   let contains = False in not contains
+  
+// Syntax-sugar for function definitions.
+f x = x + 1
+fx = f 41
+
+// Syntax sugar for funs in lets.
+letF = let g y z = y + z + 1
+       in g 10 2
