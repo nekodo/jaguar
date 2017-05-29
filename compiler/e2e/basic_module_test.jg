@@ -1,4 +1,4 @@
-import * from '../prelude.jg'
+import * from '//compiler/prelude.jg'
 
 addition = 6 + 5
 

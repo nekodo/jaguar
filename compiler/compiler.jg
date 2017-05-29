@@ -1,8 +1,8 @@
-import * from 'prelude.jg'
-import * from 'parsers.jg'
-import * from 'ast.jg'
-import {parseExpr, parseModule} from 'jaguarParser.jg'
-import {compileExpr, compileModule} from 'js/backend.jg'
+import * from '//compiler/prelude.jg'
+import * from '//compiler/parsers.jg'
+import * from '//compiler/ast.jg'
+import {parseExpr, parseModule} from '//compiler/jaguarParser.jg'
+import {compileExpr, compileModule} from '//compiler/js/backend.jg'
 
 transpileExpr = \s -> case (parseExpr s) of
   Success e ps -> compileExpr e

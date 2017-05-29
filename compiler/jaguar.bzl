@@ -2,59 +2,36 @@
 
 CompilerInfo = provider()
 
-def _library_impl(ctx):
+def _js_library_impl(ctx):
   main = ctx.file.main
   srcs = ctx.files.srcs
   out = ctx.outputs.out
-  bundle = ctx.attr.compiler[CompilerInfo].bundle
-  builtins = ctx.attr.compiler[CompilerInfo].builtins
-  node = ctx.executable._node
-  js_wrapper = ctx.attr.compiler[CompilerInfo].js
+  compiler = ctx.executable.compiler
   
-  inputs = [main, builtins, js_wrapper] + srcs
-  #print(compiler.default_runfiles.files)
+  inputs = [main, compiler] + srcs + list(ctx.attr.compiler.default_runfiles.files)
+  args = [out.path, main.path] + [src.path for src in srcs]
 
-  args = [js_wrapper.path, main.path, out.path]
-
-  if bundle:
-    #print("########## BUNDLE ###########")
-    #print(bundle)
-    #print(bundle.default_runfiles.files)
-    #print(bundle.files)
-    inputs += list(bundle.default_runfiles.files)
-    inputs += list(bundle.files)
-    #inputs += list(ctx.attr.compiler.default_runfiles.files)
-    #inputs += list(compiler.default_runfiles.files)
-    #inputs.append(compiler)
-    args += [list(bundle.files)[0].path]
-  else:
-    args += ['foo']
-  args += [builtins.path]
-  #print(inputs)
-  #print(args)
-  #ctx.action(command="find . && ls -al .", outputs=[ctx.outputs.blah])
   ctx.action(
       inputs=inputs,
       outputs=[out],
       arguments=args,
       progress_message="Compiling %s" % main.short_path,
-      executable=node,
+      executable=compiler,
   )
-  runfiles = ctx.runfiles(files=[builtins])
+  runfiles = ctx.runfiles(files=[ctx.attr.compiler[CompilerInfo].builtins])
   return [DefaultInfo(runfiles=runfiles)]
 
-jaguar_library = rule(
-    implementation=_library_impl,
+jaguar_js_library = rule(
+    implementation=_js_library_impl,
     attrs={
         "main": attr.label(allow_single_file=True),
         "srcs": attr.label_list(allow_files=True),
-        "compiler": attr.label(providers=[CompilerInfo]),
-        "_node": attr.label(
-            default = Label("@org_pubref_rules_node_toolchain//:node_tool"),
+        "compiler": attr.label(
             single_file = True,
             allow_files = True,
             executable = True,
             cfg = "host",
+            providers = [CompilerInfo],
         ),
     },
     outputs={
@@ -64,15 +41,45 @@ jaguar_library = rule(
 )
 
 def _compiler_impl(ctx):
-  runfiles = ctx.runfiles(files=[ctx.file.builtins])
-  return [
-    DefaultInfo(runfiles=runfiles),
-    CompilerInfo(
-        bundle = ctx.attr.jaguar,
-        builtins = ctx.file.builtins,
-        js = ctx.file.js_wrapper,
-    ),
-  ]
+  node = ctx.executable._node
+  
+  runfiles = ctx.runfiles(files=[
+      ctx.file.js_wrapper,
+      ctx.file.jaguar,
+      node,
+      ctx.file.builtins,
+  ]).merge(
+      ctx.attr.js_wrapper.default_runfiles,
+  ).merge(
+      ctx.attr.jaguar.default_runfiles,
+  ).merge(
+      ctx.attr.builtins.default_runfiles,
+  ).merge(
+      ctx.attr._node.default_runfiles,
+  )
+  
+  ctx.file_action(
+      output=ctx.outputs.executable,
+      content="""
+      #!/bin/bash
+      
+      NODE=%s
+      JS_MAIN=%s
+      JG_MAIN=%s
+      BUILTINS=%s
+      pwd
+      echo $NODE $JS_MAIN $FILE $OUT $JG_MAIN $BUILTINS
+      $NODE $JS_MAIN $JG_MAIN $BUILTINS $@
+      """ % (
+          node.path,
+          ctx.file.js_wrapper.path,
+          ctx.file.jaguar.path,
+          ctx.file.builtins.path,
+      ),
+      executable=True,
+  )
+  
+  return [DefaultInfo(runfiles=runfiles), CompilerInfo(builtins=ctx.file.builtins)]
 
 _jaguar_compiler = rule(
     implementation=_compiler_impl,
@@ -80,16 +87,23 @@ _jaguar_compiler = rule(
         "builtins": attr.label(allow_single_file=True),
         "jaguar": attr.label(allow_single_file=True),
         "js_wrapper": attr.label(allow_single_file=True),
+        "_node": attr.label(
+            default = Label("@org_pubref_rules_node_toolchain//:node_tool"),
+            single_file = True,
+            allow_files = True,
+            executable = True,
+            cfg = "host",
+        ),
     },
+    executable = True,
 )
 
-def jaguar_compiler(name, js_wrapper, jaguar_bundle,
-                    builtins, visibility=None):
+def jaguar_compiler(name, js_wrapper, jaguar, builtins, visibility=None):
   
   _jaguar_compiler(
       name = name,
       js_wrapper = js_wrapper,
-      jaguar = jaguar_bundle,
+      jaguar = jaguar,
       builtins = builtins,
       visibility = visibility,
   )

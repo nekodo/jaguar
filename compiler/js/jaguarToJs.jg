@@ -1,6 +1,6 @@
-import * from 'prelude.jg'
-import * from 'ast.jg'
-import * from 'js/ast.jg'
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import * from '//compiler/js/ast.jg'
 
 jaguarExprToJsExpr = \e -> case e of
   Var 'True' -> JSBool True

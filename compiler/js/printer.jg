@@ -1,5 +1,5 @@
-import * from 'prelude.jg'
-import * from 'js/ast.jg'
+import * from '//compiler/prelude.jg'
+import * from '//compiler/js/ast.jg'
 
 jsExprToString = \e -> case e of
   JSNull -> 'null'

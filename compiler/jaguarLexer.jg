@@ -1,5 +1,5 @@
-import * from 'prelude.jg'
-import * from 'parsers.jg'
+import * from '//compiler/prelude.jg'
+import * from '//compiler/parsers.jg'
 
 data LexerState = LexerState
   String // input

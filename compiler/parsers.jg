@@ -1,4 +1,4 @@
-import * from 'prelude.jg'
+import * from '//compiler/prelude.jg'
 
 data ParseResult a s =
   Success a s

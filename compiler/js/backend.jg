@@ -1,7 +1,7 @@
-import * from 'prelude.jg'
-import {jaguarExprToJsExpr, moduleToJs} from 'js/jaguarToJs.jg'
-import {jsExprToString, jsStmtToString} from 'js/printer.jg'
-import {rewriteStmt} from 'js/deadCode.jg'
+import * from '//compiler/prelude.jg'
+import {jaguarExprToJsExpr, moduleToJs} from '//compiler/js/jaguarToJs.jg'
+import {jsExprToString, jsStmtToString} from '//compiler/js/printer.jg'
+import {rewriteStmt} from '//compiler/js/deadCode.jg'
 
 compileExpr = \e -> jsExprToString (jaguarExprToJsExpr e)
 
