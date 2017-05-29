@@ -4,7 +4,7 @@ jaguar_library(
     name = "stage1_lib",
     main = "compiler.jg",
     srcs = glob(["*.jg", "js/*.jg"]),
-    compiler = "//compiler/bin:latest2",
+    compiler = "//compiler/bin:latest",
 )
 
 jaguar_compiler(
@@ -12,6 +12,7 @@ jaguar_compiler(
     js_wrapper = "compiler.js",
     jaguar_bundle = ":stage1_lib",
     builtins =  "builtins.js",
+    visibility = ["//visibility:public"],
 )
 
 jaguar_library(

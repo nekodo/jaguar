@@ -1,7 +1,7 @@
-load("//compiler:jaguar.bzl", "jaguar_library")
+load("//compiler/e2e:test.bzl", "compiler_diff_test")
 
-jaguar_library(
-    name = "basic_module_test_lib",
-    main = "basic_module_test.jg",
-    compiler = "//compiler:stage2",
+compiler_diff_test(
+    name = "basic_module_test",
+    actual = "basic_module_test.jg",
+    expected = "basic_module_test_expected.js",
 )

@@ -30,7 +30,7 @@ def _library_impl(ctx):
   else:
     args += ['foo']
   args += [builtins.path]
-  print(inputs)
+  #print(inputs)
   #print(args)
   #ctx.action(command="find . && ls -al .", outputs=[ctx.outputs.blah])
   ctx.action(

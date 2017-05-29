@@ -12,6 +12,7 @@ function main() {
   }
   console.log("compiling with", process.argv[4], 'in', process.cwd());
   const builtins = process.argv[5];
+  loadBuiltins(process.cwd() + '/' + builtins);
   const compiler = require(fs.realpathSync(process.argv[4]));
   outputBundle(compileSingle(compiler, path.basename(fileName), path.dirname(fileName)), builtins, out);
 }
@@ -87,6 +88,13 @@ function _require(f) {
 }
 
 const cache = {};
+function loadBuiltins(f) {
+  const module = require(f);
+  cache['./builtins.js'] = {
+    module: module,
+    exports: Object.keys(module)
+  };
+}
 function getExports(compiler, dirname, f) {
   if (cache[f]) {
     return cache[f].exports;
