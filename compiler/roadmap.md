@@ -16,4 +16,8 @@
 -   E2E tests run against both stage1 and stage2 compilers
 -   slightly saner handling of builtins thanks to bazel
 -   workspace-relative imports (//)
--   let expressions xD
+-   0.10
+    -   let expressions xD
+    -   syntax sugar for function defs
+-   0.11 (TBD)
+    -   
