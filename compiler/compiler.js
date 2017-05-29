@@ -39,16 +39,14 @@ function compileSingle(compiler, fileName, dirname, srcs) {
   let actualFile = fileName;
   if (fileName.startsWith('//')) {
     actualFile = fileName.substring(2);
-  } else if (!fileName.startsWith('compiler/')) {
-    actualFile = 'compiler/' + actualFile;
   }
   const contents = fs.readFileSync(actualFile, 'utf8');
   const imports = compiler.findImports(contents);
   const importSymbols = {};
   imports.forEach(i => {
-    // if (i != './builtins.js' && !srcs.has('compiler/' + i)) {
-    //   throw Error(`Unknown import compiler/${i} in ${Array.from(srcs)}`);
-    // }
+    if (i != './builtins.js' && !srcs.has(actualFile)) {
+      throw Error(`Unknown import ${i} in ${Array.from(srcs)}`);
+    }
     importSymbols[i] = getExports(compiler, dirname, i, srcs);
   });
   return {
