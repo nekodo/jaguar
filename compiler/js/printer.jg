@@ -37,6 +37,7 @@ jsExprToString = \e -> case e of
   JSObject kvs -> '{' ++ intercalate ',' (map keyValueToString kvs) ++ '}'
   JSInstanceOf x c -> jsExprToParenString x ++ ' instanceof '
     ++ jsExprToParenString c
+  e -> error e
 
 jsExprToParenString = \e -> case e of
   JSRef r -> jsExprToString e
@@ -58,6 +59,7 @@ jsStmtToString = \s -> case s of
   JSBreak -> 'break'
   JSSwitch e cs -> 'switch' ++ paren (jsExprToString e) ++ '{'
     ++ intercalate ';\n' (map caseToString cs) ++ '}'
+  JSAssign l r -> jsExprToParenString l ++ ' = ' ++ jsExprToParenString r
 
 caseToString = \c -> case c of
   Pair m ss -> 'case ' ++ paren (jsExprToString m) ++ ':\n  '

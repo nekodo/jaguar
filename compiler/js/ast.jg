@@ -21,3 +21,4 @@ data JSStmt =
   | JSVar String JSExpr
   | JSSwitch JSExpr (Array (Pair JSExpr (Array JSStmt)))
   | JSBreak
+  | JSAssign JSExpr JSExpr

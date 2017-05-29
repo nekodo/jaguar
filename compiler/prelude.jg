@@ -49,6 +49,7 @@ tail = slice 1
 
 arr1 = \x -> push x emptyArray
 arr2 = \x y -> push y (arr1 x)
+arr3 = \x y z -> push z (arr2 x y)
 
 mergeSet = \xs ys -> case (length xs) of
   0 -> ys

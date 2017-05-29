@@ -23,4 +23,5 @@ rewriteStmt = \s -> case s of
   JSExpr e -> JSExpr (rewriteDCE e)
   JSReturn e -> JSReturn (rewriteDCE e)
   JSVar n v -> JSVar n (rewriteDCE v)
+  JSExpr l r -> JSExpr (rewriteDCE l) (rewriteDCE r)
   s -> s

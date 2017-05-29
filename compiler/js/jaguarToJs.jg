@@ -45,7 +45,7 @@ processPattern = \pm p -> case p of
         Pair fa (Pair na va) -> case b of
           Pair fb (Pair nb vb) ->
             Pair (JSBinOp '&&' fa fb) (Pair (concat na nb) (concat va vb)))
-      (Pair (JSInstanceOf pm (JSRef ('$' ++ t))) (Pair emptyArray emptyArray))
+      (Pair (JSInstanceOf pm (JSIndex (JSRef t) (JSString '$con'))) (Pair emptyArray emptyArray))
       (map
         (\p -> case p of
           Pair n pat ->
@@ -72,15 +72,16 @@ dataConFieldIds = \ts ->
   map (\p -> '$' ++ intToString (fst p)) (zipWithIndex ts)
 
 dataConToJs = \dc -> case dc of
-  DataCon n ts -> arr2
-    (JSVar ('$' ++ n) (JSFun (dataConFieldIds ts) (map (\f -> JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString f)) (JSRef f))) (dataConFieldIds ts))))
-    (JSVar n (foldr (\b f -> JSFun (arr1 f) (arr1 (JSReturn b))) (JSNew (JSRef ('$' ++ n)) (map JSRef (dataConFieldIds ts))) (dataConFieldIds ts)))
+  DataCon n ts -> arr3
+    (JSVar ('$' + n) (JSFun (dataConFieldIds ts) (map (\f -> JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString f)) (JSRef f))) (dataConFieldIds ts))))
+    (JSVar n (foldr (\b f -> JSFun (arr1 f) (arr1 (JSReturn b))) (JSNew (JSRef ('$' + n)) (map JSRef (dataConFieldIds ts))) (dataConFieldIds ts)))
+    (JSAssign (JSIndex (JSRef n) (JSString '$con')) (JSRef ('$' + n)))
 
 dataToJs = \d -> case d of
   Data n ps cs -> concatMap dataConToJs cs
 
-dataConName = \dc -> case dc of DataCon n ts -> arr2 n ('$' ++ n)
-dataConNames = \d -> case d of Data n ps cs -> concatMap dataConName cs
+dataConName = \dc -> case dc of DataCon n ts -> n
+dataConNames = \d -> case d of Data n ps cs -> map dataConName cs
 
 exportObject = \ds vs -> JSObject (map (\n -> Pair n (JSRef n)) (concat (concatMap dataConNames ds) (map fst vs)))
 
@@ -126,7 +127,7 @@ freeVarsInPat = \p -> case p of
       (freeVarsInPData pat)
 
 freeVarsInPData = \p -> case p of
-  PData n ps -> foldl mergeSet (arr1 ('$' ++ n)) (map freeVarsInPData ps)
+  PData n ps -> foldl mergeSet (arr1 n) (map freeVarsInPData ps)
   p -> emptyArray
 
 namesInPat = \p -> case p of
