@@ -23,3 +23,12 @@ nestedMatch = case (Pair (Kitten 'Fluffbun') 7) of
   Pair (Kitten n) 8 -> 4
   Pair (Kitten 'Buba') 7 -> 5
   Pair (Kitten 'Fluffbun') 7 -> 6
+
+letExpr =
+  let
+    x = 7
+    y = 8
+  in x + y
+
+letExpr2 =
+  let contains = False in not contains

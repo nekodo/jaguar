@@ -46,7 +46,7 @@ andIndent = \a b s -> case s of
       e -> e
     e -> e
 
-reserved = push 'from' (push 'import' (push 'case' (push 'of' (push 'data' emptyArray))))
+reserved = push 'let' (push 'in' (push 'from' (push 'import' (push 'case' (push 'of' (push 'data' emptyArray))))))
 
 symP = \s -> parseToken (\t -> case t of
   Token (SymTok) v i c -> case (v == s) of
@@ -149,7 +149,19 @@ caseP = apply
   (\p -> case p of Pair _ (Pair e ps) -> Case e ps)
   (andIndent (reservedP 'case') (and simpleExprP (precedes (reservedP 'of') (many1 ofP))))
 
-primaryExprP = \s -> or appP (or constP (or lamP caseP)) s
+defP = \s -> (andIndent notUpperCaseId (precedes (operatorP '=') exprP)) s
+
+letDefsP = apply
+  snd
+  (andIndent (reservedP 'let') (many1 defP))
+
+letInP = \s -> (precedes (reservedP 'in') exprP) s
+
+letP = apply
+  (\p -> case p of Pair ds e -> Let ds e)
+  (and letDefsP letInP)
+
+primaryExprP = \s -> or appP (or constP (or lamP (or caseP letP))) s
 
 exprP = apply
   (\p -> case p of Pair e oes -> foldl (\a ob -> case ob of Pair op b -> App (App (Var op) a) b) e oes)
@@ -182,8 +194,6 @@ dataConP = apply
 dataP = apply
   (\r -> case r of Pair _ (Pair n (Pair ps cs)) -> Data n ps cs)
   (andIndent (reservedP 'data') (and upperCaseId (and (many notUpperCaseId) (precedes (operatorP '=') (sepBy1 dataConP (operatorP '|'))))))
-
-defP = andIndent notUpperCaseId (precedes (operatorP '=') exprP)
 
 importClosedP = apply
   (\p -> case p of Pair n f -> ImportClosed f n)

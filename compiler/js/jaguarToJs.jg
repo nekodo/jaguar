@@ -20,6 +20,13 @@ jaguarExprToJsExpr = \e -> case e of
           (JSCall (JSRef 'error') (arr1 (JSString 'pattern match fail')))
           ps))))
     emptyArray
+  Let ds e-> JSCall
+    (JSFun
+      emptyArray
+      (push
+        (JSReturn (jaguarExprToJsExpr e))
+        (map defToJs ds)))
+    emptyArray
 
 assemblePatternMatch = \alt p -> case p of
   Pair pat e -> case (processPattern (JSRef '$pm') pat) of
@@ -114,6 +121,7 @@ freeVarsInExpr = \e -> case e of
   App f x -> mergeSet (freeVarsInExpr f) (freeVarsInExpr x)
   Lam p b -> filter (\v -> v /= p) (freeVarsInExpr b)
   Case e ps -> foldl mergeSet (freeVarsInExpr e) (map freeVarsInPat ps)
+  Let ds e -> filter (\v -> not (contains v (map fst ds))) (foldl mergeSet (freeVarsInExpr e) (map (\d -> freeVarsInExpr (snd d)) ds))
 
 freeVarsInPat = \p -> case p of
   Pair pat e ->

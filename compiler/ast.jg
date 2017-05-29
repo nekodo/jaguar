@@ -6,6 +6,7 @@ data Expr =
   | App Expr Expr
   | Lam String Expr
   | Case Expr (Array (Pair Pat Expr))
+  | Let (Array (Pair String Expr)) Expr
 
 data CVal =
   CNum Number
