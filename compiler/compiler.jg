@@ -4,23 +4,24 @@ import * from '//compiler/ast.jg'
 import {parseExpr, parseModule} from '//compiler/jaguarParser.jg'
 import {compileExpr, compileModule} from '//compiler/js/backend.jg'
 
-transpileExpr = \s -> case (parseExpr s) of
+transpileExpr s = case (parseExpr s) of
   Success e ps -> compileExpr e
   e -> error e
 
-transpileModule = \importSymbols s -> case (parseModule s) of
+transpileModule importSymbols s = case (parseModule s) of
   Success m ps -> compileModule importSymbols m
   e -> error e
 
-importFileName = \i -> case i of
-  ImportAll f -> f
-  ImportOpen f ns -> f
-  ImportClosed f n -> f
+findImports s =
+  let
+    importFileName i = case i of
+      ImportAll f -> f
+      ImportOpen f ns -> f
+      ImportClosed f n -> f
+  in case (parseModule s) of
+    Success (Module is ds vs) ps -> push ('./builtins.js') (map importFileName is)
+    e -> error e
 
-findImports = \s -> case (parseModule s) of
-  Success (Module is ds vs) ps -> push ('./builtins.js') (map importFileName is)
-  e -> error e
-
-findExports = \s -> case (parseModule s) of
+findExports s = case (parseModule s) of
   Success m ps -> getExports m
   e -> error e
