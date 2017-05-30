@@ -95,15 +95,15 @@ parenP = \p -> between (symP '(') p (symP ')')
 varP = parseToken (\t -> case t of
   Token (IdTok) v l c -> case (contains v reserved) of
     True -> Nothing
-    False -> Just (Var v)
+    False -> Just (Var emptyAnn v)
   x -> Nothing)
 
 cnumP = parseToken (\t -> case t of
-  Token (NumTok) v l c -> Just (Const (CNum (unsafeStringToInt v)))
+  Token (NumTok) v l c -> Just (Const emptyAnn (CNum (unsafeStringToInt v)))
   x -> Nothing)
 
 cstrP = parseToken (\t -> case t of
-  Token (StrTok) v l c -> Just (Const (CStr v))
+  Token (StrTok) v l c -> Just (Const emptyAnn (CStr v))
   x -> Nothing)
   
 constP = or cstrP cnumP
@@ -111,23 +111,23 @@ constP = or cstrP cnumP
 simpleExprP = \s -> or varP (or constP (parenP exprP)) s
 
 appP = \s -> apply
-  (\p -> case p of Pair f as -> foldl (\f a -> App f a) f as)
+  (\p -> case p of Pair f as -> foldl (\f a -> App emptyAnn f a) f as)
   (andIndent (or varP (parenP exprP)) (many simpleExprP))
   s
 
 lamP = \s -> apply
-  (\p -> case p of Pair _ (Pair ps a) -> foldr (\a p -> Lam p a) a ps)
+  (\p -> case p of Pair _ (Pair ps a) -> foldr (\a p -> Lam emptyAnn p a) a ps)
   (andIndent (symP '\\') (and (many1 notUpperCaseId) (precedes (operatorP '->') exprP)))
   s
 
-pvarP = apply PVar notUpperCaseId
+pvarP = apply (PVar emptyAnn) notUpperCaseId
 
 pcnumP = parseToken (\t -> case t of
-  Token (NumTok) v l c -> Just (PConst (CNum (unsafeStringToInt v)))
+  Token (NumTok) v l c -> Just (PConst emptyAnn (CNum (unsafeStringToInt v)))
   x -> Nothing)
 
 pcstrP = parseToken (\t -> case t of
-  Token (StrTok) v l c -> Just (PConst (CStr v))
+  Token (StrTok) v l c -> Just (PConst emptyAnn (CStr v))
   x -> Nothing)
 
 strP = parseToken (\t -> case t of
@@ -137,7 +137,7 @@ strP = parseToken (\t -> case t of
 pconstP = or pcnumP pcstrP
 
 pdataP = \s -> apply
-  (\p -> case p of Pair n ps -> PData n ps)
+  (\p -> case p of Pair n ps -> PData emptyAnn n ps)
   (andIndent upperCaseId (many (or pvarP (or pconstP (parenP patP)))))
   s
 
@@ -146,11 +146,11 @@ patP = or pvarP (or pconstP pdataP)
 ofP = \s -> andIndent patP (precedes (operatorP '->') exprP) s
 
 caseP = apply
-  (\p -> case p of Pair _ (Pair e ps) -> Case e ps)
+  (\p -> case p of Pair _ (Pair e ps) -> Case emptyAnn e ps)
   (andIndent (reservedP 'case') (and simpleExprP (precedes (reservedP 'of') (many1 ofP))))
 
 defP = apply
-  (\p -> case p of Pair (Pair n ps) e -> Pair n (foldr (\e p -> Lam p e) e ps))
+  (\p -> case p of Pair (Pair n ps) e -> Pair n (foldr (\e p -> Lam emptyAnn p e) e ps))
   (andIndent (andIndent notUpperCaseId (many notUpperCaseId)) (precedes (operatorP '=') (\s -> exprP s)))
 
 letDefsP = apply
@@ -160,29 +160,29 @@ letDefsP = apply
 letInP = \s -> (precedes (reservedP 'in') exprP) s
 
 letP = apply
-  (\p -> case p of Pair ds e -> Let ds e)
+  (\p -> case p of Pair ds e -> Let emptyAnn ds e)
   (and letDefsP letInP)
 
 primaryExprP = \s -> or appP (or constP (or lamP (or caseP letP))) s
 
 exprP = apply
-  (\p -> case p of Pair e oes -> foldl (\a ob -> case ob of Pair op b -> App (App (Var op) a) b) e oes)
+  (\p -> case p of Pair e oes -> foldl (\a ob -> case ob of Pair op b -> App emptyAnn (App emptyAnn (Var emptyAnn op) a) b) e oes)
   (andIndent primaryExprP (many (and anyOpP primaryExprP)))
 
 // --------------- types -------------------
 
-tconstP = apply TConst upperCaseId
+tconstP = apply (TConst emptyAnn) upperCaseId
 
-tvarP = apply TVar notUpperCaseId
+tvarP = apply (TVar emptyAnn) notUpperCaseId
 
 simpleTypeP = \s -> or tconstP (or tvarP (parenP typeP)) s
 
 tappP = apply
-  (\p -> case p of Pair t ts -> foldl (\a b -> TApp a b) t ts)
+  (\p -> case p of Pair t ts -> foldl (\a b -> TApp emptyAnn a b) t ts)
   (andIndent simpleTypeP (many simpleTypeP))
 
 tfunP = apply
-  (\p -> case p of Pair t ts -> foldr1 (\b a -> TFun a b) (enqueue t ts))
+  (\p -> case p of Pair t ts -> foldr1 (\b a -> TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b) (enqueue t ts))
   (andIndent tappP (many (precedes (operatorP '->') tappP)))
 
 typeP = tfunP
@@ -190,31 +190,32 @@ typeP = tfunP
 // --------------- module ------------------
 
 dataConP = apply
-  (\p -> case p of Pair n ts -> DataCon n ts)
+  (\p -> case p of Pair n ts -> DataCon emptyAnn n ts)
   (andIndent upperCaseId (many simpleTypeP))
 
 dataP = apply
-  (\r -> case r of Pair _ (Pair n (Pair ps cs)) -> Data n ps cs)
+  (\r -> case r of Pair _ (Pair n (Pair ps cs)) -> Data emptyAnn n ps cs)
   (andIndent (reservedP 'data') (and upperCaseId (and (many notUpperCaseId) (precedes (operatorP '=') (sepBy1 dataConP (operatorP '|'))))))
 
 importClosedP = apply
-  (\p -> case p of Pair n f -> ImportClosed f n)
+  (\p -> case p of Pair n f -> ImportClosed emptyAnn f n)
   (and nonReservedP (precedes (reservedP 'from') strP))
 
 importOpenP = apply
-  (\p -> case p of Pair ns f -> ImportOpen f ns)
+  (\p -> case p of Pair ns f -> ImportOpen emptyAnn f ns)
   (and (between (symP '{') (sepBy1 nonReservedP (symP ',')) (symP '}')) (precedes (reservedP 'from') strP))
 
 importAllP = apply
-  (\p -> case p of Pair n f -> ImportAll f)
+  (\p -> case p of Pair n f -> ImportAll emptyAnn f)
   (and (operatorP '*') (precedes (reservedP 'from') strP))
 
 importP = apply snd (andIndent (reservedP 'import') (or importClosedP (or importOpenP importAllP)))
 
 moduleP = apply
-  (\p -> case p of Pair is es -> case (splitEither es) of Pair dts dfs -> Module is dts dfs)
+  (\p -> case p of Pair is es -> case (splitEither es) of Pair dts dfs -> Module emptyAnn is dts dfs)
   (and (many importP) (many1 (or (apply Left dataP) (apply Right defP))))
   
 parseModule = runParser moduleP
 parseImports = runParser (many importP)
 parseExpr = runParser exprP
+parseType = runParser typeP

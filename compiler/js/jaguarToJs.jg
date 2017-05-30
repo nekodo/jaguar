@@ -3,14 +3,14 @@ import * from '//compiler/ast.jg'
 import * from '//compiler/js/ast.jg'
 
 jaguarExprToJsExpr = \e -> case e of
-  Var 'True' -> JSBool True
-  Var 'False' -> JSBool False
-  Var v -> JSRef v
-  Const (CNum n) -> JSNum n
-  Const (CStr s) -> JSString s
-  App f a -> JSCall (jaguarExprToJsExpr f) (arr1 (jaguarExprToJsExpr a))
-  Lam p e -> JSFun (arr1 p) (arr1 (JSReturn (jaguarExprToJsExpr e)))
-  Case e ps -> JSCall
+  Var _ 'True' -> JSBool True
+  Var _ 'False' -> JSBool False
+  Var _ v -> JSRef v
+  Const _ (CNum n) -> JSNum n
+  Const _ (CStr s) -> JSString s
+  App _ f a -> JSCall (jaguarExprToJsExpr f) (arr1 (jaguarExprToJsExpr a))
+  Lam _ p e -> JSFun (arr1 p) (arr1 (JSReturn (jaguarExprToJsExpr e)))
+  Case _ e ps -> JSCall
     (JSFun
       emptyArray
       (arr2
@@ -20,7 +20,7 @@ jaguarExprToJsExpr = \e -> case e of
           (JSCall (JSRef 'error') (arr1 (JSString 'pattern match fail')))
           ps))))
     emptyArray
-  Let ds e-> JSCall
+  Let _ ds e-> JSCall
     (JSFun
       emptyArray
       (push
@@ -37,16 +37,16 @@ assemblePatternMatch = \alt p -> case p of
         alt
 
 processPattern = \pm p -> case p of
-  PVar v -> Pair (JSBool True) (Pair (arr1 v) (arr1 pm))
-  PConst (CNum n) -> Pair
+  PVar _ v -> Pair (JSBool True) (Pair (arr1 v) (arr1 pm))
+  PConst _ (CNum n) -> Pair
     (JSBinOp '==' (JSNum n) pm)
     (Pair emptyArray emptyArray)
-  PConst (CStr s) -> Pair
+  PConst _ (CStr s) -> Pair
     (JSBinOp '==' (JSString s) pm)
     (Pair emptyArray emptyArray)
-  PData 'True' ps -> Pair pm (Pair emptyArray emptyArray)
-  PData 'False' ps -> Pair (JSUnOp '!' pm) (Pair emptyArray emptyArray)
-  PData t ps -> 
+  PData _ 'True' ps -> Pair pm (Pair emptyArray emptyArray)
+  PData _ 'False' ps -> Pair (JSUnOp '!' pm) (Pair emptyArray emptyArray)
+  PData _ t ps -> 
     foldl
       (\a b -> case a of
         Pair fa (Pair na va) -> case b of
@@ -69,30 +69,30 @@ buildImports = \f ns ->
   map (\n -> JSVar n (JSIndex (requireExpr f) (JSString n))) ns
 
 importToJs = \importSymbols freeVars i -> case i of
-  ImportClosed f n -> case (contains n freeVars) of
+  ImportClosed _ f n -> case (contains n freeVars) of
     True -> arr1 (JSVar n (requireExpr f))
     False -> emptyArray
-  ImportOpen f ns -> buildImports f (filter (\n -> contains n freeVars) ns)
-  ImportAll f -> buildImports f (filter (\n -> contains n freeVars) (get f importSymbols))
+  ImportOpen _ f ns -> buildImports f (filter (\n -> contains n freeVars) ns)
+  ImportAll _ f -> buildImports f (filter (\n -> contains n freeVars) (get f importSymbols))
 
 dataConFieldIds = \ts ->
   map (\p -> '$' ++ intToString (fst p)) (zipWithIndex ts)
 
 dataConToJs = \dc -> case dc of
-  DataCon n ts -> arr3
+  DataCon _ n ts -> arr3
     (JSVar ('$' + n) (JSFun (dataConFieldIds ts) (push (JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString '$tag')) (JSString n))) (map (\f -> JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString f)) (JSRef f))) (dataConFieldIds ts)))))
     (JSVar n (foldr (\b f -> JSFun (arr1 f) (arr1 (JSReturn b))) (JSNew (JSRef ('$' + n)) (map JSRef (dataConFieldIds ts))) (dataConFieldIds ts)))
     (JSAssign (JSIndex (JSRef n) (JSString '$tag')) (JSString n))
 
 dataToJs = \d -> case d of
-  Data n ps cs -> concatMap dataConToJs cs
+  Data _ n ps cs -> concatMap dataConToJs cs
 
 exportObject = \m -> JSObject (map (\n -> Pair n (JSRef n)) (getExports m))
 
 moduleToJs = \importSymbols m -> push (JSVar 'exports' (exportObject m)) (case m of
-  Module is ds vs ->
+  Module _ is ds vs ->
     concat
-      (concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll './builtins.js') is))
+      (concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll emptyAnn './builtins.js') is))
       (concat
         (concatMap dataToJs ds)
         (map defToJs vs)))
@@ -111,17 +111,17 @@ opName = \op -> case op of
   nonOp -> nonOp
 
 freeVarsInModule = \m -> case m of
-  Module is ds vs -> map
+  Module _ is ds vs -> map
     opName
     (foldl mergeSet emptyArray (map (\p -> freeVarsInExpr (snd p)) vs))
 
 freeVarsInExpr = \e -> case e of
-  Var v -> arr1 v
-  Const c -> emptyArray
-  App f x -> mergeSet (freeVarsInExpr f) (freeVarsInExpr x)
-  Lam p b -> filter (\v -> v /= p) (freeVarsInExpr b)
-  Case e ps -> foldl mergeSet (freeVarsInExpr e) (map freeVarsInPat ps)
-  Let ds e -> filter (\v -> not (contains v (map fst ds))) (foldl mergeSet (freeVarsInExpr e) (map (\d -> freeVarsInExpr (snd d)) ds))
+  Var _ v -> arr1 v
+  Const _ c -> emptyArray
+  App _ f x -> mergeSet (freeVarsInExpr f) (freeVarsInExpr x)
+  Lam _ p b -> filter (\v -> v /= p) (freeVarsInExpr b)
+  Case _ e ps -> foldl mergeSet (freeVarsInExpr e) (map freeVarsInPat ps)
+  Let _ ds e -> filter (\v -> not (contains v (map fst ds))) (foldl mergeSet (freeVarsInExpr e) (map (\d -> freeVarsInExpr (snd d)) ds))
 
 freeVarsInPat = \p -> case p of
   Pair pat e ->
@@ -130,10 +130,10 @@ freeVarsInPat = \p -> case p of
       (freeVarsInPData pat)
 
 freeVarsInPData = \p -> case p of
-  PData n ps -> foldl mergeSet (arr1 n) (map freeVarsInPData ps)
+  PData _ n ps -> foldl mergeSet (arr1 n) (map freeVarsInPData ps)
   p -> emptyArray
 
 namesInPat = \p -> case p of
-  PVar v -> arr1 v
-  PConst c -> emptyArray
-  PData n ps -> foldl mergeSet emptyArray (map namesInPat ps)
+  PVar _ v -> arr1 v
+  PConst _ c -> emptyArray
+  PData _ n ps -> foldl mergeSet emptyArray (map namesInPat ps)

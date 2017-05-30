@@ -1,0 +1,28 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+
+printType t = 
+  let
+    printParen t = '(' ++ printType t ++ ')'
+    printTypeInFun t = case t of
+      TApp _ (TApp _ (TConst _ '->') c) d -> printParen t
+      TForall _ v a -> printParen t
+      _ -> printType t
+    printFirstTypeInApp t = case t of
+      TApp _ (TApp _ (TConst _ '->') a) b -> printParen t
+      TForall _ v a -> printParen t
+      _ -> printType t
+    printSecondTypeInApp t = case t of
+      TApp _ a b -> printParen t
+      TForall _ v a -> printParen t
+      _ -> printType t
+  in case t of
+    TConst _ t -> t
+    TVar _ v -> v
+    TBot _ -> '~bottom~'
+    TUnknown _ -> '?'
+    TApp _ (TApp _ (TConst _ '->') a) b ->
+      printTypeInFun a ++ ' -> ' ++ printType b
+    TApp _ a b ->
+      printFirstTypeInApp a ++ ' ' ++ printSecondTypeInApp b
+    TForall _ v a -> 'forall ' ++ v ++ '. ' ++ printType a

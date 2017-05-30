@@ -1,42 +1,48 @@
 import * from '//compiler/prelude.jg'
 
+data Ann = Ann Type
+emptyAnn = Ann TUnknown
+
 data Expr =
-  Var String
-  | Const CVal
-  | App Expr Expr
-  | Lam String Expr
-  | Case Expr (Array (Pair Pat Expr))
-  | Let (Array (Pair String Expr)) Expr
+  Var Ann String
+  | Const Ann CVal
+  | App Ann Expr Expr
+  | Lam Ann String Expr
+  | Case Ann Expr (Array (Pair Pat Expr))
+  | Let Ann (Array (Pair String Expr)) Expr
 
 data CVal =
   CNum Number
   | CStr String
 
 data Pat =
-  PVar String
-  | PConst CVal
-  | PData String (Array Pat)
+  PVar Ann String
+  | PConst Ann CVal
+  | PData Ann String (Array Pat)
 
 data Module = Module
+  Ann                        // annotations
   (Array Import)             // imports
   (Array Data)               // ADT definitions
   (Array (Pair String Expr)) // value definitions
 
-data Data = Data String (Array String) (Array DataCon)
-data DataCon = DataCon String (Array Type)
+data Data = Data Ann String (Array String) (Array DataCon)
+data DataCon = DataCon Ann String (Array Type)
 
 data Type =
-  TConst String
-  | TVar String
-  | TApp Type Type
-  | TFun Type Type
+  TConst Ann String
+  | TVar Ann String
+  | TApp Ann Type Type
+  | TBot Ann
+  | TForall Ann String Type
+  | TUnknown Ann
 
 data Import =
-  ImportClosed String String
-  | ImportOpen String (Array String)
-  | ImportAll String
+  ImportClosed Ann String String
+  | ImportOpen Ann String (Array String)
+  | ImportAll Ann String
 
-dataConName = \dc -> case dc of DataCon n ts -> n
-dataConNames = \d -> case d of Data n ps cs -> map dataConName cs
+dataConName = \dc -> case dc of DataCon _ n ts -> n
+dataConNames = \d -> case d of Data _ n ps cs -> map dataConName cs
 getExports = \m -> case m of
-    Module is ds vs -> concat (concatMap dataConNames ds) (map fst vs)
+    Module _ is ds vs -> concat (concatMap dataConNames ds) (map fst vs)

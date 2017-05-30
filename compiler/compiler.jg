@@ -1,8 +1,9 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/parsers.jg'
 import * from '//compiler/ast.jg'
-import {parseExpr, parseModule} from '//compiler/jaguarParser.jg'
+import {parseExpr, parseModule, parseType} from '//compiler/jaguarParser.jg'
 import {compileExpr, compileModule} from '//compiler/js/backend.jg'
+import {printType} from '//compiler/typer.jg'
 
 transpileExpr s = case (parseExpr s) of
   Success e ps -> compileExpr e
@@ -15,13 +16,19 @@ transpileModule importSymbols s = case (parseModule s) of
 findImports s =
   let
     importFileName i = case i of
-      ImportAll f -> f
-      ImportOpen f ns -> f
-      ImportClosed f n -> f
+      ImportAll _ f -> f
+      ImportOpen _ f ns -> f
+      ImportClosed _ f n -> f
   in case (parseModule s) of
-    Success (Module is ds vs) ps -> push ('./builtins.js') (map importFileName is)
+    Success (Module _ is ds vs) ps -> push ('./builtins.js') (map importFileName is)
     e -> error e
 
 findExports s = case (parseModule s) of
   Success m ps -> getExports m
   e -> error e
+
+parseT s = case (parseType s) of
+  Success t ps -> t
+  e -> error e
+
+printT = printType
