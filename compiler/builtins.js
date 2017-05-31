@@ -68,6 +68,12 @@ builtins.get = function(f) {
     }
 }
 
+builtins.has = function(f) {
+    return function(r) {
+        return f in r;
+    }
+}
+
 builtins.del = function(f) {
     return function(r) {
         var out = {};
@@ -86,6 +92,26 @@ builtins.set = function(f) {
             out[f] = a;
             return out;
         }
+    }
+}
+
+builtins.mapRecord = function(f) {
+    return function(r) {
+        var out = {};
+        for (var x in r)
+            out[x] = f(r[x]);
+        return out;
+    }
+}
+
+builtins.merge = function(a) {
+    return function(b) {
+        var out = {};
+        for (var x in a)
+            out[x] = a[x];
+        for (var x in b)
+            out[x] = b[x];
+        return out;
     }
 }
 
@@ -144,6 +170,14 @@ builtins.intercalate = function(sep) {
 builtins.slice = function(i) {
 	return function(arr) {
   	return arr.slice(i);
+  }
+}
+
+builtins.slice2 = function(from) {
+  return function(to) {
+  	return function(arr) {
+    	return arr.slice(from, to);
+    }
   }
 }
 

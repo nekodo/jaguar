@@ -1,0 +1,90 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+
+printType t = 
+  let
+    printParen t = '(' ++ printType t ++ ')'
+    printTypeInFun t = case t of
+      TApp _ (TApp _ (TConst _ '->') c) d -> printParen t
+      TForall _ v a -> printParen t
+      _ -> printType t
+    printFirstTypeInApp t = case t of
+      TApp _ (TApp _ (TConst _ '->') a) b -> printParen t
+      TForall _ v a -> printParen t
+      _ -> printType t
+    printSecondTypeInApp t = case t of
+      TApp _ a b -> printParen t
+      TForall _ v a -> printParen t
+      _ -> printType t
+  in case t of
+    TConst _ t -> t
+    TVar _ v -> v
+    TBot _ -> '~bottom~'
+    TUnknown _ -> '?'
+    TApp _ (TApp _ (TConst _ '->') a) b ->
+      printTypeInFun a ++ ' -> ' ++ printType b
+    TApp _ a b ->
+      printFirstTypeInApp a ++ ' ' ++ printSecondTypeInApp b
+    TForall _ v a -> 'forall ' ++ v ++ '. ' ++ printType a
+    _ -> error ('cannot print ' ++ jsonStringify t)
+
+printExprTyped typed e = 
+  let
+    printParen e = sameLine3 (arr1 '(') (printExpr e) (arr1 ')')
+    sameLine as bs =
+      concat (init as) (enqueue (last as ++ head bs) (tail bs))
+    sameLine3 a b c = sameLine a (sameLine b c)
+    printCasePat cp = case cp of
+      Pair p e -> 
+        enqueue
+          (printPat p ++ ' ->')
+          (indent (printExpr e))
+    printPat p = case p of
+      PVar _ v -> v
+      PConst _ (CNum n) -> jsonStringify n
+      PConst _ (CStr s) -> jsonStringify s
+      PData _ n ps -> n ++ ' (' ++ join (map printPat ps) ') (' ++ ')'
+    printE e = case e of
+      Var _ n -> arr1 n
+      Const _ (CNum n) -> arr1 (jsonStringify n)
+      Const _ (CStr s) -> arr1 (jsonStringify s)
+      App _ f a ->
+        sameLine3 (printParen f) (arr1 ' ') (printParen a)
+      Lam _ v e ->
+        enqueue ('\\' ++ v ++ ' ->') (indent (printExpr e))
+      Case _ e ps ->
+        concat
+          (sameLine3 (arr1 'case ') (printParen e) (arr1 ' of'))
+          (indent (concatMap printCasePat ps))
+      Let _ ds e ->
+        concat
+          (push
+            'in'
+            (enqueue
+              'let'
+              (indent (concatMap printDef typed ds))))
+          (indent (printExpr e))
+    printT e = let
+      t = case e of
+        Var (Ann t) v -> t
+        Const (Ann t) c -> t
+        App (Ann t) f a -> t
+        Lam (Ann t) p b -> t
+        Case (Ann t) e ps -> t
+        Let (Ann t) ds e -> t
+      in printType t
+    printExpr e = case typed of
+      False -> printE e
+      True -> sameLine3 (arr1 '(') (printE e) (arr1 (' :: ' ++ printT e ++ ' )'))
+    pe = printE e
+  in printExpr e
+
+printDef typed d = case d of
+  Pair n e ->
+    enqueue
+      (n ++ ' =')
+      (indent (printExprTyped typed e))
+
+indent = map (\l -> '  ' ++ l)
+
+reallyPrintExpr typed e = join (printExprTyped typed e) '\n'

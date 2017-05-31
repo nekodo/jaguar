@@ -147,6 +147,14 @@ builtins.slice = function(i) {
   }
 }
 
+builtins.slice2 = function(from) {
+  return function(to) {
+  	return function(arr) {
+    	return arr.slice(from, to);
+    }
+  }
+}
+
 builtins.concat = function(a) {
     return function(b) {
         return a.concat(b)

@@ -46,6 +46,8 @@ concatMap = \f a -> foldl concat emptyArray (map f a)
 
 head = get 0
 tail = slice 1
+last l = get (length l - 1) l
+init l = slice2 0 (length l - 1) l
 
 arr1 = \x -> push x emptyArray
 arr2 = \x y -> push y (arr1 x)

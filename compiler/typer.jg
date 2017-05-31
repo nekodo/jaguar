@@ -1,28 +1,150 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
+import {printType} from '//compiler/printer.jg'
 
-printType t = 
-  let
-    printParen t = '(' ++ printType t ++ ')'
-    printTypeInFun t = case t of
-      TApp _ (TApp _ (TConst _ '->') c) d -> printParen t
-      TForall _ v a -> printParen t
-      _ -> printType t
-    printFirstTypeInApp t = case t of
-      TApp _ (TApp _ (TConst _ '->') a) b -> printParen t
-      TForall _ v a -> printParen t
-      _ -> printType t
-    printSecondTypeInApp t = case t of
-      TApp _ a b -> printParen t
-      TForall _ v a -> printParen t
-      _ -> printType t
-  in case t of
-    TConst _ t -> t
-    TVar _ v -> v
-    TBot _ -> '~bottom~'
-    TUnknown _ -> '?'
-    TApp _ (TApp _ (TConst _ '->') a) b ->
-      printTypeInFun a ++ ' -> ' ++ printType b
-    TApp _ a b ->
-      printFirstTypeInApp a ++ ' ' ++ printSecondTypeInApp b
-    TForall _ v a -> 'forall ' ++ v ++ '. ' ++ printType a
+data InferenceContext = ICtx (Record Type) Number
+
+f1 a b = TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b
+
+newTVar ctx = case ctx of
+  ICtx subs i -> let
+    n = '$' ++ intToString i
+    in Pair (ICtx subs (i + 1)) (TVar emptyAnn n)
+
+newCtx = ICtx empty 1
+
+instantiate ctx t = case t of
+  TForall _ v t -> case (newTVar ctx) of
+    Pair ctx2 tv -> case (instantiate ctx2 t) of
+      Pair ctx3 t2 -> Pair ctx3 (substitute v tv t2)
+  _ -> Pair ctx t
+
+substitute n s t = applySubs (set n s empty) t
+
+applySubs subs t = case t of
+  TForall ann v t -> TForall ann v (applySubs (del v subs) t)
+  TVar _ v -> case (has v subs) of
+    False -> t
+    True -> get v subs
+  TApp ann f a -> TApp ann (applySubs subs f) (applySubs subs a)
+  _ -> t
+
+applySubsEnv subs env = mapRecord (applySubs subs) env
+
+composeSubs sa sb = merge (mapRecord (applySubs sa) sb) sa
+
+unify a b = let
+  bind n t = case t of
+    TVar _ m -> case (n == m) of
+      True -> empty
+      False -> set n t empty
+    _ -> case (contains n (freeVars t)) of
+      True -> error 'occurs check failed'
+      False -> set n t empty
+  err a b = error
+    ('cannot unify ' ++ printType a ++ ' with ' ++ printType b)
+  in case a of
+    TVar _ v -> bind v b
+    TConst _ ca -> case b of
+      TConst _ cb -> case (ca == cb) of
+        True -> empty
+        False -> err a b
+      TVar _ v -> bind v a
+      _ -> err a b
+    TUnknown _ -> err a b
+    TBot _ -> err a b
+    TApp _ fa xa -> case b of
+      TVar _ v -> bind v a
+      TApp _ fb xb -> let
+        fsubs = unify fa fb
+        xsubs = unify (applySubs fsubs xa) (applySubs fsubs xb)
+        in composeSubs fsubs xsubs
+      _ -> err a b
+
+freeVars t = case t of
+  TVar _ v -> arr1 v
+  TBot _ -> emptyArray
+  TUnknown _ -> emptyArray
+  TConst _ c -> emptyArray
+  TForall _ v t -> filter (\n -> n /= v) (freeVars t)
+  TApp _ f a -> mergeSet (freeVars f) (freeVars a)
+
+inferType env ctx e = let
+  infer env ctx e = case e of
+    Const _ (CNum n) -> Pair ctx (setType (TConst emptyAnn 'Number') e)
+    Const _ (CStr s) -> Pair ctx (setType (TConst emptyAnn 'String') e)
+    Var _ v -> case (has v env) of
+      False -> error ('no var ' ++ v ++ ' in environment')
+      True -> case (instantiate ctx (get v env)) of
+        Pair ctx2 t -> Pair ctx2 (setType t e)
+    Lam ann p a -> case (newTVar ctx) of
+      Pair ctx2 tv -> case (infer (set p tv env) ctx2 a) of
+        Pair (ICtx subs i) a2 ->
+          Pair
+            (ICtx subs i)
+            (setType (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') (applySubs subs tv)) (getType a2)) (Lam ann p a2))
+    App ann f a -> case (newTVar ctx) of
+      Pair ctx2 tv -> case (infer env ctx2 f) of
+        Pair (ICtx subs i) f2 -> case (infer (applySubsEnv subs env) (ICtx subs i) a) of
+          Pair (ICtx subs2 i2) a2 -> let
+            usubs = unify (applySubs subs2 (getType f2)) (f1 (getType a2) tv)
+            subs3 = composeSubs usubs subs2
+            t = applySubs subs3 tv
+            in Pair (ICtx subs3 i2) (setType t (App ann f2 a2))
+    _ -> error 'type inference not supported for this AST node'
+  in case (infer env ctx e) of
+    Pair (ICtx subs i) e2 -> applySubsE subs e2
+
+applySubsE subs e = let
+    applySubsPat p = error 'not implemented'
+    applySubsDef d = error 'not implemented'
+  in case e of
+    Var (Ann t) v -> Var (Ann (applySubs subs t)) v
+    Const (Ann t) c -> Const (Ann (applySubs subs t)) c
+    App (Ann t) f a -> App (Ann (applySubs subs t)) (applySubsE subs f) (applySubsE subs a)
+    Lam (Ann t) p b -> Lam (Ann (applySubs subs t)) p (applySubsE subs b)
+    Case (Ann t) e ps -> Case (Ann (applySubs subs t)) (applySubsE subs e) (map applySubsPat ps)
+    Let (Ann t) ds e -> Let (Ann (applySubs subs t)) (map applySubsDef ds) (applySubsE subs e)
+
+setType t e = case e of
+  Var (Ann x) v -> Var (Ann t) v
+  Const (Ann x) c -> Const (Ann t) c
+  App (Ann x) f a -> App (Ann t) f a
+  Lam (Ann x) p b -> Lam (Ann t) p b
+  Case (Ann x) e ps -> Case (Ann t) e ps
+  Let (Ann x) ds e -> Let (Ann t) ds e
+
+getType e = case e of
+  Var (Ann t) v -> t
+  Const (Ann t) c -> t
+  App (Ann t) f a -> t
+  Lam (Ann t) p b -> t
+  Case (Ann t) e ps -> t
+  Let (Ann t) ds e -> t
+
+builtinTypes = let
+  num = TConst emptyAnn 'Number'
+  str = TConst emptyAnn 'String'
+  bool = TConst emptyAnn 'Bool'
+  rec a = TApp emptyAnn (TConst emptyAnn 'Record') a
+  prec n = rec (v n)
+  fa n t = TForall emptyAnn n t
+  v n = TVar emptyAnn n
+  f2 a b c = f1 a (f1 b c)
+  f3 a b c d = f1 a (f2 b c d)
+  in 
+    set '+' (f2 num num num)
+      (set '-' (f2 num num num)
+        (set '*' (f2 num num num)
+          (set '<' (f2 num num bool)
+            (set '>' (f2 num num bool)
+              (set '==' (fa'a' (f2 (v 'a') (v 'a') bool))
+                (set '/=' (fa 'a' (f2 (v 'a') (v 'a') bool))
+                  (set '&&' (f2 bool bool bool)
+                    (set '||' (f2 bool bool bool)
+                      (set '++' (f2 str str str)
+                        (set 'empty' (fa 'a' (prec 'a'))
+                          (set 'get' (fa 'a' (f2 str (prec 'a') (v 'a')))
+                            (set 'del' (fa 'a' (f2 str (prec 'a') (prec 'a')))
+                              (set 'set' (fa 'a' (f3 str (v 'a') (prec 'a') (prec 'a')))
+                                (empty))))))))))))))
