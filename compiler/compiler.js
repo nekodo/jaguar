@@ -17,8 +17,8 @@ function main() {
   
   console.log('main:', mainFile);
 
-  loadBuiltins(builtins);
   const compiler = requireFromWorkspace(compilerFile);
+  loadBuiltins(compiler, builtins);
   outputBundle(compileSingle(compiler, mainFile, path.dirname(mainFile), srcs), builtins, out);
 }
 
@@ -41,6 +41,7 @@ function compileSingle(compiler, fileName, dirname, srcs) {
     actualFile = fileName.substring(2);
   }
   const contents = fs.readFileSync(actualFile, 'utf8');
+  const exports = compiler.findExports(contents);
   const imports = compiler.findImports(contents);
   const importSymbols = {};
   imports.forEach(i => {
@@ -52,7 +53,8 @@ function compileSingle(compiler, fileName, dirname, srcs) {
   return {
     fileName,
     source: compiler.transpileModule(importSymbols)(contents),
-    imports
+    imports,
+    exports
   };
 }
 
@@ -62,7 +64,7 @@ function outputBundle(compiled, builtinsPath, outputFile) {
     const s = jaguarSources[i];
     s.imports.forEach(i => {
       if (i.endsWith('.jg') && !jaguarSources.some(src => src.fileName == i)) {
-        jaguarSources.push(cache[i].compiled);
+        jaguarSources.push(cache[i]);
       }
     });
   }
@@ -96,24 +98,11 @@ function wrapModule(source) {
   return '(function() {' + source + '\nreturn exports;})()';
 }
 
-function instantiate(compiled) {
-  return vm.runInNewContext(wrapModule(compiled.source), {_require});
-}
-
-function _require(f) {
-  if (f.endsWith('.js')) {
-    return require(f);
-  } else {
-    return cache[f].module;
-  }
-}
-
 const cache = {};
-function loadBuiltins(f) {
+function loadBuiltins(compiler, f) {
   const module = requireFromWorkspace(f);
   cache['./builtins.js'] = {
-    module: module,
-    exports: Object.keys(module)
+    exports: module.$TYPE ? compiler.parseExports(module.$TYPE) : module,
   };
 }
 function getExports(compiler, dirname, f, srcs) {
@@ -130,13 +119,8 @@ function getExports(compiler, dirname, f, srcs) {
     throw Error('probably wouldn\'t work');
   } else if (f.endsWith('.jg')) {
     const compiled = compileSingle(compiler, f, dirname, srcs);
-    const module = instantiate(compiled);
-    cache[f] = {
-      compiled,
-      module,
-      exports: Object.keys(module)
-    };
-    return Object.keys(module);
+    cache[f] = compiled;
+    return compiled.exports;
   } else {
     throw Error('Unknown import: ' + f);
   }
@@ -145,4 +129,4 @@ function getExports(compiler, dirname, f, srcs) {
 if (process.argv[2])
   main();
 
-module.exports = {compileSingle, instantiate, outputBundle};
+module.exports = {compileSingle, outputBundle};

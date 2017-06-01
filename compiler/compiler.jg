@@ -4,7 +4,7 @@ import * from '//compiler/ast.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileExpr, compileModule} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {inferType, builtinTypes, newCtx} from '//compiler/typer.jg'
+import {inferType, builtinTypes, newCtx, scc, inferTypeModule, getTypedExports} from '//compiler/typer.jg'
 
 transpileExpr s = case (parseExpr s) of
   Success e ps -> compileExpr e
@@ -27,12 +27,14 @@ findImports s =
     e -> error e
 
 findExports s = case (parseModule s) of
-  Success m ps -> getExports m
+  Success m ps -> getTypedExports m
   e -> error e
 
 parseT s = case (parseType s) of
   Success t ps -> t
   e -> error e
+
+parseExports = mapRecord parseT
 
 parseE s = case (parseExpr s) of
   Success e (ParserState ts p li ri) -> case (p == length ts) of
@@ -42,4 +44,6 @@ parseE s = case (parseExpr s) of
 
 printT = printType
 printE = reallyPrintExpr
-inferT e = inferType builtinTypes newCtx e
+inferT env e = inferType (merge builtinTypes env) newCtx e
+mscc = scc
+inferM = inferTypeModule

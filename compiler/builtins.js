@@ -68,6 +68,10 @@ builtins.get = function(f) {
     }
 }
 
+builtins.keys = function(r) {
+    return Object.keys(r);
+}
+
 builtins.has = function(f) {
     return function(r) {
         return f in r;
@@ -101,6 +105,16 @@ builtins.mapRecord = function(f) {
         for (var x in r)
             out[x] = f(r[x]);
         return out;
+    }
+}
+
+builtins.foldRecord = function(f) {
+    return function(v) {
+        return function(r) {
+            for (var x in r)
+                v = f(v)(x)(r[x]);
+            return v;
+        }
     }
 }
 
@@ -228,8 +242,17 @@ builtins.foldl1 = function(f) {
   }
 }
 
+builtins.sort = function(arr) {
+	return arr.slice(0).sort();
+}
+
 builtins.error = function(s) {
 	throw Error(s);
+}
+
+builtins.debug = function(x) {
+	console.log(x);
+	return x;
 }
 
 builtins.jsonStringify = function(s) {
@@ -251,5 +274,52 @@ builtins.iterate = start => isFinished => fun => {
 builtins.True = true;
 
 builtins.False = false;
+
+builtins.$TYPE = {
+    $add: 'Number -> Number -> Number',
+    $del: 'Number -> Number -> Number',
+    $mul: 'Number -> Number -> Number',
+    $lt: 'Number -> Number -> Bool',
+    $gt: 'Number -> Number -> Bool',
+    $eq: 'a -> a -> Bool',
+    $neq: 'a -> a -> Bool',
+    $and: 'Bool -> Bool -> Bool',
+    $or: 'Bool -> Bool -> Bool',
+    $concat: 'String -> String -> String',
+    empty: 'Record a',
+    get: 'String -> Record a -> a',
+    keys: 'Record a -> Array String',
+    has: 'String -> Record a -> Bool',
+    del: 'String -> Record a -> Record a',
+    set: 'String -> a -> Record a -> Record a',
+    mapRecord: '(a -> b) -> Record a -> Record b',
+    foldRecord: '(b -> a -> b) -> b -> Record a -> b',
+    merge: 'Record a -> Record a -> Record a',
+    unsafeStringToInt: 'String -> Number',
+    match: 'String -> String -> String',
+    drop: 'Number -> String -> String',
+    length: 'a -> Number',
+    emptyArray: 'Array a',
+    push: 'a -> Array a -> Array a',
+    enqueue: 'a -> Array a -> Array a',
+    intToString: 'Number -> String',
+    intercalate: 'String -> Array String -> String',
+    slice: 'Number -> Array a -> Array a',
+    slice2: 'Number -> Number -> Array a -> Array a',
+    concat: 'Array a -> Array a -> Array a',
+    map: '(a -> b) -> Array a -> Array b',
+    filter: '(a -> Bool) -> Array a -> Array a',
+    foldr: '(b -> a -> b) -> b -> Array a -> b',
+    foldr1: '(a -> a -> a) -> Array a -> a',
+    foldl: '(b -> a -> b) -> b -> Array a -> b',
+    foldl1: '(a -> a -> a) -> Array a -> a',
+    sort: 'Array a -> Array a',
+    error: 'a -> b',
+    debug: 'a -> a',
+    jsonStringify: 'a -> String',
+    iterate: 'a -> (a -> Bool) -> (a -> a) -> a',
+    True: 'Bool',
+    False: 'Bool',
+};
 
 module.exports = builtins;

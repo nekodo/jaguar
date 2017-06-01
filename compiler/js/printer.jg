@@ -29,7 +29,7 @@ jsExprToString = \e -> case e of
     ++ paren (intercalate ',' (map jsExprToString xs))
   JSNew c xs -> 'new ' ++ jsExprToParenString c
     ++ paren (intercalate ',' (map jsExprToString xs))
-  JSFun ps bs -> 'function(' ++ intercalate ',' ps ++ '){'
+  JSFun ps bs -> 'function(' ++ intercalate ',' ps ++ '){\n'
     ++ (intercalate ';' (map jsStmtToString bs)) ++ '}'
   JSTernary b x y -> jsExprToParenString b ++ '?'
     ++ jsExprToParenString x ++ ':'

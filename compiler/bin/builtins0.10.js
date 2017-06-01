@@ -89,6 +89,15 @@ builtins.set = function(f) {
     }
 }
 
+builtins.mapRecord = function(f) {
+    return function(r) {
+        var out = {};
+        for (var x in r)
+            out[x] = f(r[x]);
+        return out;
+    }
+}
+
 builtins.unsafeStringToInt = function(s) {
     return Number(s);
 }
@@ -111,6 +120,10 @@ builtins.length = function(s) {
 }
 
 builtins.emptyArray = [];
+
+builtins.keys = function(r) {
+    return Object.keys(r);
+}
 
 builtins.push = function(x) {
 	return function(xs) {

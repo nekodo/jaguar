@@ -32,6 +32,8 @@ contains2 = \x xs i -> case (i < length xs) of
 
 contains = \x xs -> contains2 x xs 0
 
+exists f xs = foldl (\r x -> f x || r) False xs
+
 join = \xs s -> case (length xs) of
   0 -> ''
   n -> foldl1 (\a b -> a ++ s ++ b) xs
@@ -41,6 +43,10 @@ zipWithIndex2 = \n xs -> case (length xs) of
   x -> enqueue (Pair n (get 0 xs)) (zipWithIndex2 (n + 1) (slice 1 xs))
 
 zipWithIndex = zipWithIndex2 0
+
+zip xs ys = case ((length xs == 0) || (length ys == 0)) of
+  True -> emptyArray
+  False -> enqueue (Pair (head xs) (head ys)) (zip (tail xs) (tail ys))
 
 concatMap = \f a -> foldl concat emptyArray (map f a)
 
@@ -62,3 +68,9 @@ mergeSet = \xs ys -> case (length xs) of
       False -> case (head xs == head ys) of
         True -> enqueue(head xs) (mergeSet (tail xs) (tail ys))
         False -> enqueue (head ys) (mergeSet xs (tail ys))
+
+uniq xs = case (length xs < 2) of
+  True -> xs
+  False -> case (get 0 xs == get 1 xs) of
+    False -> enqueue (head xs) (uniq (tail xs))
+    True -> uniq (tail xs)

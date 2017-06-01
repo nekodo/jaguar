@@ -31,14 +31,22 @@ applySubs subs t = case t of
 
 applySubsEnv subs env = mapRecord (applySubs subs) env
 
-composeSubs sa sb = merge (mapRecord (applySubs sa) sb) sa
+composeSubs sa sb = let
+  compose subs n t = let
+    t2 = applySubs subs t
+    in case (has n subs) of
+      False -> set n t2 (mapRecord (substitute n t2) subs)
+      True -> let
+        msubs = unify (get n subs) t2
+        in composeSubs subs msubs
+  in foldRecord compose sa sb
 
 unify a b = let
   bind n t = case t of
     TVar _ m -> case (n == m) of
       True -> empty
       False -> set n t empty
-    _ -> case (contains n (freeVars t)) of
+    _ -> case (contains n (freeTVars t)) of
       True -> error 'occurs check failed'
       False -> set n t empty
   err a b = error
@@ -61,16 +69,55 @@ unify a b = let
         in composeSubs fsubs xsubs
       _ -> err a b
 
-freeVars t = case t of
+freeTVars t = case t of
   TVar _ v -> arr1 v
   TBot _ -> emptyArray
   TUnknown _ -> emptyArray
   TConst _ c -> emptyArray
-  TForall _ v t -> filter (\n -> n /= v) (freeVars t)
-  TApp _ f a -> mergeSet (freeVars f) (freeVars a)
+  TForall _ v t -> filter (\n -> n /= v) (freeTVars t)
+  TApp _ f a -> mergeSet (freeTVars f) (freeTVars a)
 
-inferType env ctx e = let
-  infer env ctx e = case e of
+infer env ctx e = let
+  inferCase env cps p = case cps of
+    Pair ctx (Pair te ps) -> case p of
+      Pair pat e -> case (inferPat env ctx te pat) of
+        Pair (ICtx subs i) bs -> let
+          te2 = applySubs subs te
+          bs2 = mapRecord (applySubs subs) bs
+          in case (infer (merge env bs2) (ICtx subs i) e) of
+            Pair ctx2 e2 -> Pair ctx2 (Pair te2 (push (Pair pat e2) ps))
+  inferPat env ctx te pat = case pat of
+    PVar _ v -> case (newTVar ctx) of
+      Pair (ICtx subs i) tv -> let
+        usubs = unify te tv
+        subs2 = composeSubs usubs subs
+        in Pair (ICtx subs2 i) (set v (applySubs subs2 tv) empty)
+    PConst _ (CNum n) -> case ctx of
+      ICtx subs i -> let
+        usubs = unify te (TConst emptyAnn 'Number')
+        subs2 = composeSubs usubs subs
+        in Pair (ICtx subs2 i) empty
+    PConst _ (CStr s) -> case ctx of
+      ICtx subs i -> let
+        usubs = unify te (TConst emptyAnn 'String')
+        subs2 = composeSubs usubs subs
+        in Pair (ICtx subs2 i) empty
+    PData _ n ps -> case (has n env) of
+      False -> error ('unknown data type ' ++ n)
+      True -> case (instantiate ctx (get n env)) of
+        Pair ctx2 t -> case (unrollDataConType t) of
+          Pair tps dt -> case (length ps == length tps) of
+            False -> error 'number of pattern params does not match the number of constructor params'
+            True -> case (foldl (inferSubPat env) (Pair ctx2 empty) (zip ps tps)) of
+              Pair (ICtx subs i) bs -> let
+                usubs = unify te (applySubs subs dt)
+                subs2 = composeSubs usubs subs
+                in Pair (ICtx subs2 i) (mapRecord (applySubs subs2) bs)
+  inferSubPat env cbs pt = case cbs of
+    Pair ctx bs -> case pt of
+      Pair pat t -> case (inferPat env ctx t pat) of
+        Pair ctx2 bs2 -> Pair ctx2 (merge bs bs2)
+  in case e of
     Const _ (CNum n) -> Pair ctx (setType (TConst emptyAnn 'Number') e)
     Const _ (CStr s) -> Pair ctx (setType (TConst emptyAnn 'String') e)
     Var _ v -> case (has v env) of
@@ -91,20 +138,75 @@ inferType env ctx e = let
             subs3 = composeSubs usubs subs2
             t = applySubs subs3 tv
             in Pair (ICtx subs3 i2) (setType t (App ann f2 a2))
+    Case ann e ps -> case (infer env ctx e) of
+      Pair ctx2 e2 -> case (foldl (inferCase env) (Pair ctx2 (Pair (getType e2) emptyArray)) ps) of
+        Pair (ICtx subs i) (Pair te ps2) -> let
+          t = getType (snd (head ps2))
+          subs2 = foldl composeSubs subs (map (\p -> unify t (getType (snd p))) ps2)
+          in Pair (ICtx subs2 i) (setType (applySubs subs2 t) (Case ann (setType te e2) ps2))
+    Let ann ds e -> case (inferDefs env ctx ds) of
+      Pair ctx2 ds2 -> let
+        env2 = foldl (\env d -> case d of Pair n e -> set n (getType e) env) env ds2
+        in case (infer env2 ctx2 e) of
+          Pair ctx3 e2 -> Pair ctx3 (setType (getType e2) (Let ann ds2 e2))
     _ -> error 'type inference not supported for this AST node'
-  in case (infer env ctx e) of
-    Pair (ICtx subs i) e2 -> applySubsE subs e2
+
+inferType env ctx e = case (infer env ctx e) of
+  Pair (ICtx subs i) e2 -> applySubsE subs e2
+
+inferSccDefs env ctx ds = let
+  generateTVar ce d = case ce of
+    Pair ctx env -> case d of
+      Pair n _ -> case (newTVar ctx) of
+        Pair ctx2 tv -> Pair ctx2 (set n tv env)
+  inferDef env cds d = case cds of
+    Pair ctx ds -> case d of
+      Pair n e -> case (infer env ctx e) of
+        Pair ctx2 e2 -> Pair ctx2 (push (Pair n e2) ds)
+  unifyDef env d = case d of
+    Pair n e -> unify (getType e) (get n env)
+  generalizeDef env d = case d of
+    Pair n e -> Pair n (setType (generalize env (getType e)) e)
+  in case (foldl generateTVar (Pair ctx env) ds) of
+    Pair ctx2 env2 -> case (foldl (inferDef env2) (Pair ctx2 emptyArray) ds) of
+      Pair (ICtx subs i) ds2 -> let
+        dsSubs = map (unifyDef env2) ds2
+        subs2 = foldl composeSubs subs dsSubs
+        ds3 = map (applySubsDef subs2) ds2
+        ds4 = map (generalizeDef env2) ds3
+        in Pair (ICtx subs2 i) ds4
+        
+inferDefs env ctx ds = let
+  ns = map fst ds
+  g = foldl (\g d -> case d of Pair n e -> set n (filter (\v -> contains v ns) (freeVars e)) g) empty ds
+  infer cr cc = case cr of
+    Pair ctx rs -> case (inferSccDefs (foldl (\env r -> set (fst r) (getType (snd r)) env) env rs) ctx (filter (\d -> contains (fst d) cc) ds)) of
+      Pair ctx2 ds -> Pair ctx2 (concat rs ds)
+  in foldl infer (Pair ctx emptyArray) (scc g)
+
+generalize env t = let
+  vs = filter (\v -> not (has v env)) (freeTVars t)
+  in foldr (\t v -> TForall emptyAnn v t) t vs
+
+// a -> (b -> (c -> Foo a b c))
+unrollDataConType t = case t of
+  TApp _ (TApp _ (TConst _ '->') a) b -> case (unrollDataConType b) of
+    Pair ps t -> Pair (enqueue a ps) t
+  _ -> Pair emptyArray t
+
+applySubsDef subs d = case d of
+  Pair n e -> Pair n (applySubsE subs e)
 
 applySubsE subs e = let
-    applySubsPat p = error 'not implemented'
-    applySubsDef d = error 'not implemented'
+    applySubsCase p = case p of
+      Pair pat e -> Pair pat (applySubsE subs e)
   in case e of
     Var (Ann t) v -> Var (Ann (applySubs subs t)) v
     Const (Ann t) c -> Const (Ann (applySubs subs t)) c
     App (Ann t) f a -> App (Ann (applySubs subs t)) (applySubsE subs f) (applySubsE subs a)
     Lam (Ann t) p b -> Lam (Ann (applySubs subs t)) p (applySubsE subs b)
-    Case (Ann t) e ps -> Case (Ann (applySubs subs t)) (applySubsE subs e) (map applySubsPat ps)
-    Let (Ann t) ds e -> Let (Ann (applySubs subs t)) (map applySubsDef ds) (applySubsE subs e)
+    Case (Ann t) e ps -> Case (Ann (applySubs subs t)) (applySubsE subs e) (map applySubsCase ps)
+    Let (Ann t) ds e -> Let (Ann (applySubs subs t)) (map (applySubsDef subs) ds) (applySubsE subs e)
 
 setType t e = case e of
   Var (Ann x) v -> Var (Ann t) v
@@ -122,12 +224,102 @@ getType e = case e of
   Case (Ann t) e ps -> t
   Let (Ann t) ds e -> t
 
+scc g = let
+  dfs g visited v = let
+    visit r e = concat (dfs g (concat r visited) e) r
+    in foldr visit (arr1 v) (filter (\v -> not (contains v visited)) (get v g))
+  fullDfs g = let
+    visit result v _ = case (contains v result) of
+      True -> result
+      False -> concat result (dfs g result v)
+    in foldRecord visit emptyArray g
+  invertedG = let
+    invertEdge v ig e = case (has e ig) of
+      True -> set e (push v (get e ig)) ig
+      False -> set e (arr1 v) ig
+    invert ig v es = let
+      ig2 = case (has v ig) of
+        True -> ig
+        False -> set v emptyArray ig
+      in foldl (invertEdge v) ig2 es
+    in foldRecord invert empty g
+  assembleCc gs v = case gs of
+    Pair ig ccs -> case (exists (contains v) ccs) of
+      True -> Pair ig ccs
+      False -> let
+        cc = dfs ig emptyArray v
+        ig2 = foldl (\g v -> del v (mapRecord (filter (\w -> w /= v)) g)) ig cc
+        in Pair ig2 (push cc ccs)
+  topSort ccs = let
+    g2g = let
+      f r icc = case icc of
+        Pair i cc -> foldl (\r c -> set c (intToString i) r) r cc
+      in foldl f empty (zipWithIndex ccs)
+    addGraph r v es = let
+      rv = get v g2g
+      res = uniq (sort (filter (\re -> re /= rv) (map (\e -> get e g2g) es)))
+      in case (has rv r) of
+        False -> set rv res r
+        True -> set rv (mergeSet res (get rv r)) r
+    cg = foldRecord addGraph empty g
+    in map (\i -> get i ccs) (fullDfs cg)
+  in  topSort (snd (foldr assembleCc (Pair invertedG emptyArray) (fullDfs g)))
+
+freeVars e = let
+  freeVarsInPat p = case p of
+    Pair pat e ->
+      mergeSet
+        (filter (\v -> not (contains v (namesInPat pat))) (freeVarsInExpr e))
+        (freeVarsInPData pat)
+  freeVarsInPData p = case p of
+    PData _ n ps -> foldl mergeSet (arr1 n) (map freeVarsInPData ps)
+    _ -> emptyArray
+  namesInPat p = case p of
+    PVar _ v -> arr1 v
+    PConst _ c -> emptyArray
+    PData _ n ps -> foldl mergeSet emptyArray (map namesInPat ps)
+  in case e of
+    Var _ v -> arr1 v
+    Const _ c -> emptyArray
+    App _ f x -> mergeSet (freeVars f) (freeVars x)
+    Lam _ p b -> filter (\v -> v /= p) (freeVars b)
+    Case _ e ps -> foldl mergeSet (freeVars e) (map freeVarsInPat ps)
+    Let _ ds e -> filter (\v -> not (contains v (map fst ds))) (foldl mergeSet (freeVars e) (map (\d -> freeVars (snd d)) ds))
+
+inferTypeModule ms m = let
+  addImports env i = case i of
+    ImportAll _ f -> merge env (get f ms)
+    ImportOpen _ f ns -> foldl (\env n -> set n (get n (get f ms)) env) env ns
+    _ -> error 'import type not supported in type inference'
+  addTypes env dt = foldl (\env c -> case c of Pair n t -> set n t env) env (concatMap conTypes dt)
+  in case m of
+    Module ann is ts ds -> let
+      env = foldl addImports builtinTypes is
+      env2 = foldl addTypes env ts
+      _ = debug env2
+      ds2 = snd (inferDefs env2 newCtx ds)
+      in Module ann is ts ds2
+
+conTypes d = case d of
+  Data _ n vs cs -> map (conType n vs) cs
+
+conType dn tvs c = case c of
+  DataCon _ n ts -> Pair n (TForall emptyAnn tvs (foldl f1 (foldl (\r v -> TApp emptyAnn r (TVar emptyAnn v)) (TConst emptyAnn dn) tvs) ts))
+
+getTypedExports m = case m of
+  Module _ _ ts ds -> let
+    et = concatMap conTypes ts
+    ed = map (\d -> Pair (fst d) (getType (snd d))) ds
+    in foldl (\es e -> set (fst e) (snd e) es) empty (concat et ed)
+
 builtinTypes = let
   num = TConst emptyAnn 'Number'
   str = TConst emptyAnn 'String'
   bool = TConst emptyAnn 'Bool'
   rec a = TApp emptyAnn (TConst emptyAnn 'Record') a
   prec n = rec (v n)
+  arr a = TApp emptyAnn (TConst emptyAnn 'Array') a
+  parr n = arr (v n)
   fa n t = TForall emptyAnn n t
   v n = TVar emptyAnn n
   f2 a b c = f1 a (f1 b c)
@@ -147,4 +339,16 @@ builtinTypes = let
                           (set 'get' (fa 'a' (f2 str (prec 'a') (v 'a')))
                             (set 'del' (fa 'a' (f2 str (prec 'a') (prec 'a')))
                               (set 'set' (fa 'a' (f3 str (v 'a') (prec 'a') (prec 'a')))
-                                (empty))))))))))))))
+                                (set 'keys' (fa 'a' (f1 (prec 'a') (arr str)))
+                                  (set 'has' (fa 'a' (f2 str (prec 'a') bool))
+                                    (set 'mapRecord' (fa 'a' (fa 'b' (f2 (f1 (v 'a') (v 'b')) (prec 'a') (prec 'b'))))
+                                      (set 'foldRecord' (fa 'a' (fa 'b' (f3 (f3 (v 'b') str (v 'a')) (v 'b') (prec 'a') (v 'b'))))
+                                        (set 'merge' (fa 'a' (f2 (prec 'a') (prec 'a') (prec 'a')))
+                                          (set 'unsafeStringToInt' (f1 str num)
+                                            (set 'match' (f2 str str str)
+                                              (set 'drop' (f2 num str str)
+                                                (set 'length' (fa 'a' (f1 (v 'a') num))
+                                                  (set 'emptyArray' (fa 'a' (parr 'a'))
+                                                    (set 'push' (fa 'a' (f2 (v 'a') (parr 'a') (parr 'a')))
+                                                      (set 'enqueue' (fa 'a' (f2 (v 'a') (parr 'a') (parr 'a')))
+                                                        (empty))))))))))))))))))))))))))

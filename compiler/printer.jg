@@ -62,7 +62,7 @@ printExprTyped typed e =
             'in'
             (enqueue
               'let'
-              (indent (concatMap printDef typed ds))))
+              (indent (concatMap (printDef typed) ds))))
           (indent (printExpr e))
     printT e = let
       t = case e of
