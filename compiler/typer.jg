@@ -47,7 +47,10 @@ unify a b = let
       True -> empty
       False -> set n t empty
     _ -> case (contains n (freeTVars t)) of
-      True -> error 'occurs check failed'
+      True -> let
+        _ = debug (printType a)
+        _ = debug (printType b)
+        in error 'occurs check failed'
       False -> set n t empty
   err a b = error
     ('cannot unify ' ++ printType a ++ ' with ' ++ printType b)
@@ -60,7 +63,7 @@ unify a b = let
       TVar _ v -> bind v a
       _ -> err a b
     TUnknown _ -> err a b
-    TBot _ -> err a b
+    TBot -> err a b
     TApp _ fa xa -> case b of
       TVar _ v -> bind v a
       TApp _ fb xb -> let
@@ -71,7 +74,7 @@ unify a b = let
 
 freeTVars t = case t of
   TVar _ v -> arr1 v
-  TBot _ -> emptyArray
+  TBot -> emptyArray
   TUnknown _ -> emptyArray
   TConst _ c -> emptyArray
   TForall _ v t -> filter (\n -> n /= v) (freeTVars t)
@@ -161,31 +164,54 @@ inferSccDefs env ctx ds = let
         Pair ctx2 tv -> Pair ctx2 (set n tv env)
   inferDef env cds d = case cds of
     Pair ctx ds -> case d of
-      Pair n e -> case (infer env ctx e) of
-        Pair ctx2 e2 -> Pair ctx2 (push (Pair n e2) ds)
+      Pair n e -> let
+        _ = debug ('inferring for binding ' ++ n)
+        in case (infer env ctx e) of
+          Pair ctx2 e2 -> Pair ctx2 (push (Pair n e2) ds)
   unifyDef env d = case d of
     Pair n e -> unify (getType e) (get n env)
-  generalizeDef env d = case d of
-    Pair n e -> Pair n (setType (generalize env (getType e)) e)
+  generalizeDef env subs d = case d of
+    Pair n e -> Pair n (setType (generalize env subs (getType e)) e)
   in case (foldl generateTVar (Pair ctx env) ds) of
     Pair ctx2 env2 -> case (foldl (inferDef env2) (Pair ctx2 emptyArray) ds) of
       Pair (ICtx subs i) ds2 -> let
         dsSubs = map (unifyDef env2) ds2
         subs2 = foldl composeSubs subs dsSubs
         ds3 = map (applySubsDef subs2) ds2
-        ds4 = map (generalizeDef env2) ds3
+        //_ = debug (mapRecord printType subs2)
+        ds4 = map (generalizeDef env2 subs2) ds3
+        _ = debug ('inferred ' ++ jsonStringify (map (\d -> case d of Pair n e -> Pair n (printType (getType e))) ds4))
         in Pair (ICtx subs2 i) ds4
         
 inferDefs env ctx ds = let
   ns = map fst ds
-  g = foldl (\g d -> case d of Pair n e -> set n (filter (\v -> contains v ns) (freeVars e)) g) empty ds
+  g = foldl (\g d -> case d of Pair n e -> set n (filter (\v -> contains v ns && (v /= n)) (freeVars e)) g) empty ds
+  ccs = scc g
+  //_ = debug g
+  //_ = debug ccs
   infer cr cc = case cr of
     Pair ctx rs -> case (inferSccDefs (foldl (\env r -> set (fst r) (getType (snd r)) env) env rs) ctx (filter (\d -> contains (fst d) cc) ds)) of
       Pair ctx2 ds -> Pair ctx2 (concat rs ds)
-  in foldl infer (Pair ctx emptyArray) (scc g)
+  in foldl infer (Pair ctx emptyArray) ccs
 
-generalize env t = let
-  vs = filter (\v -> not (has v env)) (freeTVars t)
+checkSubs subs = let
+  rhs = foldRecord (\rs _ t -> concat rs (freeTVars t)) emptyArray subs
+  check _ v _ = case (contains v rhs) of
+    True -> error ('tvar ' ++ v ++ ' appears both at LHS and RHS of subs')
+    False -> True
+  in foldRecord check True subs
+
+generalize env subs t = let
+  freeTVarsInEnv = foldRecord (\vs _ t -> concat vs (freeTVars t)) emptyArray env
+  tvarsSubstitutingForEnvTVars = let
+    f rs v t = case (contains v freeTVarsInEnv) of
+      False -> rs
+      True -> concat rs (freeTVars t)
+    in foldRecord f emptyArray subs
+  //_ = debug freeTVarsInEnv
+  //_ = debug tvarsSubstitutingForEnvTVars
+  nonFree = concat freeTVarsInEnv tvarsSubstitutingForEnvTVars
+  vs = filter (\v -> not (contains v nonFree)) (freeTVars t)
   in foldr (\t v -> TForall emptyAnn v t) t vs
 
 // a -> (b -> (c -> Foo a b c))
@@ -225,13 +251,21 @@ getType e = case e of
   Let (Ann t) ds e -> t
 
 scc g = let
-  dfs g visited v = let
-    visit r e = concat (dfs g (concat r visited) e) r
-    in foldr visit (arr1 v) (filter (\v -> not (contains v visited)) (get v g))
-  fullDfs g = let
+  dfs pre g visited v = let
+    visit r e = case pre of
+      _ -> concat (dfs pre g (concat r visited) e) r
+      //True -> concat r (dfs pre g (concat r visited) e)
+    es = filter (\v -> not (contains v visited)) (get v g)
+    r = foldr visit emptyArray es
+    in case pre of
+      True -> enqueue v r
+      False -> push v r
+  fullDfs pre g = let
     visit result v _ = case (contains v result) of
       True -> result
-      False -> concat result (dfs g result v)
+      False -> case pre of
+        False -> concat result (dfs pre g result v)
+        True -> concat (dfs pre g result v) result
     in foldRecord visit emptyArray g
   invertedG = let
     invertEdge v ig e = case (has e ig) of
@@ -247,7 +281,7 @@ scc g = let
     Pair ig ccs -> case (exists (contains v) ccs) of
       True -> Pair ig ccs
       False -> let
-        cc = dfs ig emptyArray v
+        cc = dfs False ig emptyArray v
         ig2 = foldl (\g v -> del v (mapRecord (filter (\w -> w /= v)) g)) ig cc
         in Pair ig2 (push cc ccs)
   topSort ccs = let
@@ -262,14 +296,19 @@ scc g = let
         False -> set rv res r
         True -> set rv (mergeSet res (get rv r)) r
     cg = foldRecord addGraph empty g
-    in map (\i -> get i ccs) (fullDfs cg)
-  in  topSort (snd (foldr assembleCc (Pair invertedG emptyArray) (fullDfs g)))
+    ord = fullDfs True cg
+    //_ = debug ccs
+    //_ = debug cg
+    //_ = debug g2g
+    //_ = debug ord
+    in reverse (map (\i -> get i ccs) ord)
+  in  topSort (snd (foldr assembleCc (Pair invertedG emptyArray) (fullDfs False g)))
 
 freeVars e = let
   freeVarsInPat p = case p of
     Pair pat e ->
       mergeSet
-        (filter (\v -> not (contains v (namesInPat pat))) (freeVarsInExpr e))
+        (filter (\v -> not (contains v (namesInPat pat))) (freeVars e))
         (freeVarsInPData pat)
   freeVarsInPData p = case p of
     PData _ n ps -> foldl mergeSet (arr1 n) (map freeVarsInPData ps)
@@ -291,12 +330,12 @@ inferTypeModule ms m = let
     ImportAll _ f -> merge env (get f ms)
     ImportOpen _ f ns -> foldl (\env n -> set n (get n (get f ms)) env) env ns
     _ -> error 'import type not supported in type inference'
-  addTypes env dt = foldl (\env c -> case c of Pair n t -> set n t env) env (concatMap conTypes dt)
+  addTypes env dt = foldl (\env c -> case c of Pair n t -> set n t env) env (conTypes dt)
   in case m of
     Module ann is ts ds -> let
-      env = foldl addImports builtinTypes is
+      env = foldl addImports (get './builtins.js' ms) is
       env2 = foldl addTypes env ts
-      _ = debug env2
+      //_ = debug (mapRecord printType env2)
       ds2 = snd (inferDefs env2 newCtx ds)
       in Module ann is ts ds2
 
@@ -304,7 +343,9 @@ conTypes d = case d of
   Data _ n vs cs -> map (conType n vs) cs
 
 conType dn tvs c = case c of
-  DataCon _ n ts -> Pair n (TForall emptyAnn tvs (foldl f1 (foldl (\r v -> TApp emptyAnn r (TVar emptyAnn v)) (TConst emptyAnn dn) tvs) ts))
+  DataCon _ n ts -> Pair n (forall tvs (foldr (\b a -> f1 a b) (foldl (\r v -> TApp emptyAnn r (TVar emptyAnn v)) (TConst emptyAnn dn) tvs) ts))
+
+forall tvs t = foldl (\t tv -> TForall emptyAnn tv t) t tvs
 
 getTypedExports m = case m of
   Module _ _ ts ds -> let

@@ -1,7 +1,7 @@
 import * from '//compiler/prelude.jg'
 
 data Ann = Ann Type
-emptyAnn = Ann TUnknown
+emptyAnn = Ann (TUnknown (Ann TBot))
 
 data Expr =
   Var Ann String
@@ -33,7 +33,7 @@ data Type =
   TConst Ann String
   | TVar Ann String
   | TApp Ann Type Type
-  | TBot Ann
+  | TBot
   | TForall Ann String Type
   | TUnknown Ann
 

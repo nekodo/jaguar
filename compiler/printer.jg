@@ -19,7 +19,7 @@ printType t =
   in case t of
     TConst _ t -> t
     TVar _ v -> v
-    TBot _ -> '~bottom~'
+    TBot -> '~bottom~'
     TUnknown _ -> '?'
     TApp _ (TApp _ (TConst _ '->') a) b ->
       printTypeInFun a ++ ' -> ' ++ printType b

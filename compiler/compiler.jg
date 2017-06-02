@@ -4,37 +4,36 @@ import * from '//compiler/ast.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileExpr, compileModule} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {inferType, builtinTypes, newCtx, scc, inferTypeModule, getTypedExports} from '//compiler/typer.jg'
+import {inferType, builtinTypes, newCtx, scc, inferTypeModule, getTypedExports, generalize} from '//compiler/typer.jg'
 
 transpileExpr s = case (parseExpr s) of
   Success e ps -> compileExpr e
   e -> error e
 
-transpileModule importSymbols s = case (parseModule s) of
+compile s = case (parseModule s) of
   Success m (ParserState ts p li ri) -> case (p == length ts) of
-    True -> compileModule importSymbols m
+    True -> m
     False -> error ('failed to parse all tokens, stopped at ' ++ jsonStringify (get p ts)) 
   e -> error e
 
-findImports s =
+transpileModule = compileModule
+
+findImports m =
   let
     importFileName i = case i of
       ImportAll _ f -> f
       ImportOpen _ f ns -> f
       ImportClosed _ f n -> f
-  in case (parseModule s) of
-    Success (Module _ is ds vs) ps -> push ('./builtins.js') (map importFileName is)
-    e -> error e
+  in case m of
+    Module _ is ds vs -> push ('./builtins.js') (map importFileName is)
 
-findExports s = case (parseModule s) of
-  Success m ps -> getTypedExports m
-  e -> error e
+findExports = getTypedExports
 
 parseT s = case (parseType s) of
   Success t ps -> t
   e -> error e
 
-parseExports = mapRecord parseT
+parseExports = mapRecord (\s -> generalize empty empty (parseT s))
 
 parseE s = case (parseExpr s) of
   Success e (ParserState ts p li ri) -> case (p == length ts) of

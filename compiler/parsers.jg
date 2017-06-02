@@ -4,15 +4,15 @@ data ParseResult a s =
   Success a s
   | Error String
 
-and = \a b s -> case (a s) of
-  Success a s -> case (b s) of
-    Success b s -> Success (Pair a b) s
-    e -> e
-  e -> e
+and pa pb s = case (pa s) of
+  Success a s2 -> case (pb s2) of
+    Success b s3 -> Success (Pair a b) s3
+    Error e -> Error e
+  Error e -> Error e
 
 apply = \f p s -> case (p s) of
   Success r s -> Success (f r) s
-  e -> e
+  Error e -> Error e
 
 precedes = \a b -> apply snd (and a b)
 
@@ -39,7 +39,7 @@ many = \p s -> case (manyIterate p s) of
 
 many1 = \a s -> case (a s) of
   Success r s -> apply (enqueue r) (many a) s
-  e -> e
+  Error e -> Error e
 
 sepBy1 = \p s -> apply
   (\p -> case p of Pair r rs -> enqueue r rs)

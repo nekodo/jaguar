@@ -24,13 +24,46 @@ not = \b -> case b of
   True -> False
   False -> True
 
-contains2 = \x xs i -> case (i < length xs) of
-  True -> case (get i xs == x) of
-    True -> True
-    False -> contains2 x xs (i + 1)
-  False -> False
+//contains2 = \x xs i -> case (i < length xs) of
+//  True -> case (getIx i xs == x) of
+//    True -> True
+//    False -> contains2 x xs (i + 1)
+//  False -> False
 
-contains = \x xs -> contains2 x xs 0
+//contains = \x xs -> contains2 x xs 0
+
+// (a -> Either a b) -> a -> b
+loop f start = let
+  // Pair a (Maybe b) -> Bool
+  shouldStop x = case x of
+    Pair _ (Nothing) -> False
+    _ -> True
+  // Pair a (Maybe b) -> Pair a (Maybe c)
+  // f :: a -> Either a c
+  next xr = case xr of
+    Pair x _ -> case (f x) of
+      Left x2 -> Pair x2 Nothing
+      Right r -> Pair x (Just r)
+  sp = Pair start Nothing
+  result = iterate sp shouldStop next
+  in case (snd result) of
+    Just r -> r    
+
+contains x xs = let
+  f i = case (i < length xs) of
+    False -> Right False
+    True -> case (x == getIx i xs) of
+      True -> Right True
+      False -> Left (i + 1)
+  in loop f 0
+
+containsChar x xs = let 
+  f i = case (i < length xs) of
+    False -> False
+    True -> case (getChar i xs == x) of
+      True -> True
+      False -> f (i + 1)
+  in f 0
 
 exists f xs = foldl (\r x -> f x || r) False xs
 
@@ -40,7 +73,7 @@ join = \xs s -> case (length xs) of
 
 zipWithIndex2 = \n xs -> case (length xs) of
   0 -> emptyArray
-  x -> enqueue (Pair n (get 0 xs)) (zipWithIndex2 (n + 1) (slice 1 xs))
+  x -> enqueue (Pair n (head xs)) (zipWithIndex2 (n + 1) (tail xs))
 
 zipWithIndex = zipWithIndex2 0
 
@@ -50,9 +83,9 @@ zip xs ys = case ((length xs == 0) || (length ys == 0)) of
 
 concatMap = \f a -> foldl concat emptyArray (map f a)
 
-head = get 0
+head = getIx 0
 tail = slice 1
-last l = get (length l - 1) l
+last l = getIx (length l - 1) l
 init l = slice2 0 (length l - 1) l
 
 arr1 = \x -> push x emptyArray
@@ -71,6 +104,8 @@ mergeSet = \xs ys -> case (length xs) of
 
 uniq xs = case (length xs < 2) of
   True -> xs
-  False -> case (get 0 xs == get 1 xs) of
+  False -> case (getIx 0 xs == getIx 1 xs) of
     False -> enqueue (head xs) (uniq (tail xs))
     True -> uniq (tail xs)
+
+reverse = foldl (\xs x -> enqueue x xs) emptyArray

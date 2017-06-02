@@ -66,7 +66,7 @@ defToJs = \p -> case p of
 requireExpr = \f -> JSCall (JSRef '_require') (arr1 (JSString f))
 
 buildImports = \f ns ->
-  map (\n -> JSVar n (JSIndex (requireExpr f) (JSString n))) ns
+  map (\n -> let n2 = opName n in JSVar n2 (JSIndex (requireExpr f) (JSString n2))) ns
 
 importToJs = \importSymbols freeVars i -> case i of
   ImportClosed _ f n -> case (contains n freeVars) of
@@ -111,9 +111,7 @@ opName = \op -> case op of
   nonOp -> nonOp
 
 freeVarsInModule = \m -> case m of
-  Module _ is ds vs -> map
-    opName
-    (foldl mergeSet emptyArray (map (\p -> freeVarsInExpr (snd p)) vs))
+  Module _ is ds vs -> foldl mergeSet emptyArray (map (\p -> freeVarsInExpr (snd p)) vs)
 
 freeVarsInExpr = \e -> case e of
   Var _ v -> arr1 v

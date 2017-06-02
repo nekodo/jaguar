@@ -41,8 +41,8 @@ function compileSingle(compiler, fileName, dirname, srcs) {
     actualFile = fileName.substring(2);
   }
   const contents = fs.readFileSync(actualFile, 'utf8');
-  let compiled = compiler.compile(contents);
-  const imports = compiler.findImports(compiled);
+  const exports = compiler.findExports(contents);
+  const imports = compiler.findImports(contents);
   const importSymbols = {};
   imports.forEach(i => {
     if (i != './builtins.js' && !srcs.has(actualFile)) {
@@ -50,22 +50,9 @@ function compileSingle(compiler, fileName, dirname, srcs) {
     }
     importSymbols[i] = getExports(compiler, dirname, i, srcs);
   });
-  
-  if ([
-        'compiler/prelude.jg',
-        /*'compiler/ast.jg',
-        'compiler/parsers.jg',
-        'compiler/jaguarLexer.jg',
-        'compiler/jaguarParser.jg'*/,
-      ].indexOf(actualFile) >= 0) {
-    console.log('attempting to type', actualFile);
-    compiled = compiler.inferM(importSymbols)(compiled);
-  }
-  const exports = compiler.findExports(compiled);
-  
   return {
     fileName,
-    source: compiler.transpileModule(importSymbols)(compiled),
+    source: compiler.transpileModule(importSymbols)(contents),
     imports,
     exports
   };

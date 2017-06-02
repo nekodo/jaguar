@@ -8,7 +8,7 @@ data LexerState = LexerState
   Number // column
 
 data TokenType = WsTok | SymTok | NumTok | StrTok | OpTok | IdTok | ComTok
-data Token = Token TokenType String Int Int
+data Token = Token TokenType String Number Number
 
 mkTok = \t p i -> case i of
   LexerState _1 _2 l c -> apply (\r -> Token t r l c) p i
@@ -17,18 +17,22 @@ concatStr = apply (foldl (\cs c -> cs ++ c) '')
 
 runLexer = \p s -> p (LexerState s 0 0 0)
 
-parseChar = \p s -> case s of
-  LexerState s i l c -> case (p (get i s)) of
+parseChar p s = case s of
+  LexerState s i l c -> case (p (getChar i s)) of
     False -> Error 'parser failed'
-    True -> case (get i s) of
-      '\n' -> Success (get i s) (LexerState s (i + 1) (l + 1) 0)
-      x -> Success (get i s) (LexerState s (i + 1) l (c + 1))
+    True -> case (getChar i s) of
+      '\n' -> Success (getChar i s) (LexerState s (i + 1) (l + 1) 0)
+      x -> Success (getChar i s) (LexerState s (i + 1) l (c + 1))
 
 anyCharP = parseChar (\c -> True)
-charP = \cs -> parseChar (\c -> contains c cs)
-notCharP = \cs -> parseChar (\c -> not (contains c cs))
+charP = \cs -> parseChar (\c -> containsChar c cs)
+notCharP = \cs -> parseChar (\c -> not (containsChar c cs))
 
-stringCharP = or (apply (\c -> '\n') (and (charP '\\') (charP 'n'))) (or (precedes (charP '\\') anyCharP) (notCharP '\''))
+stringCharP = let 
+  newLineP = apply (\c -> '\n') (and (charP '\\') (charP 'n'))
+  escapeP = precedes (charP '\\') anyCharP
+  notEndOfStringP = notCharP '\''
+  in or newLineP (or escapeP notEndOfStringP)
 stringP = mkTok StrTok (concatStr (between (charP '\'') (many stringCharP) (charP '\'')))
 
 whitespaceP = mkTok WsTok (concatStr (many1 (charP ' \n')))
