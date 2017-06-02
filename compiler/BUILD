@@ -30,7 +30,14 @@ jaguar_compiler(
     visibility = ["//visibility:public"],
 )
 
+jaguar_js_library(
+    name = "stage3_lib",
+    main = "compiler.jg",
+    srcs = glob(["*.jg", "js/*.jg"]),
+    compiler = ":stage2",
+)
+
 exports_files(
-    srcs = ["prelude.jg"],
+    srcs = glob(["*.jg"]),
     visibility = ["//visibility:public"],
 )

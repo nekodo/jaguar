@@ -185,12 +185,20 @@ inferSccDefs env ctx ds = let
         dsSubs = map (unifyDef env2) ds2
         subs2 = foldl composeSubs subs dsSubs
         ds3 = map (applySubsDef subs2) ds2
-        //_ = debug (mapRecord printType subs2)
+        subs3 = dropNonEnvSubs env subs2
+        //_ = debug (mapRecord printType subs3)
         // NOTE: generalizing with env *without* the bindings being generalized.
-        ds4 = map (generalizeDef env subs2) ds3
+        ds4 = map (generalizeDef env subs3) ds3
         //_ = debug ('inferred ' ++ jsonStringify (map (\d -> case d of Pair n e -> Pair n (printType (getType e))) ds4))
-        in Pair (ICtx subs2 i) ds4
-        
+        in Pair (ICtx subs3 i) ds4
+
+dropNonEnvSubs env subs = let
+  ftv = freeTVarsInEnv env
+  drop subs v t = case (contains v ftv) of
+    False -> subs
+    True -> set v t subs
+  in foldRecord drop empty subs
+
 inferDefs env ctx ds = let
   ns = map fst ds
   g = foldl (\g d -> case d of Pair n e -> set n (filter (\v -> contains v ns && (v /= n)) (freeVars e)) g) empty ds
@@ -209,16 +217,18 @@ checkSubs subs = let
     False -> True
   in foldRecord check True subs
 
+freeTVarsInEnv env = foldRecord (\vs _ t -> concat vs (freeTVars t)) emptyArray env
+
 generalize env subs t = let
-  freeTVarsInEnv = foldRecord (\vs _ t -> concat vs (freeTVars t)) emptyArray env
+  envTVars = freeTVarsInEnv env
   tvarsSubstitutingForEnvTVars = let
-    f rs v t = case (contains v freeTVarsInEnv) of
+    f rs v t = case (contains v envTVars) of
       False -> rs
       True -> concat rs (freeTVars t)
     in foldRecord f emptyArray subs
   //_ = debug freeTVarsInEnv
   //_ = debug tvarsSubstitutingForEnvTVars
-  nonFree = concat freeTVarsInEnv tvarsSubstitutingForEnvTVars
+  nonFree = concat envTVars tvarsSubstitutingForEnvTVars
   vs = filter (\v -> not (contains v nonFree)) (freeTVars t)
   in foldr (\t v -> TForall emptyAnn v t) t vs
 

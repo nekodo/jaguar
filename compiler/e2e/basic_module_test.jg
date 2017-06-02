@@ -1,4 +1,5 @@
 import * from '//compiler/prelude.jg'
+import * from '//compiler/jaguarParser.jg'
 
 // Simple operator.
 addition = 6 + 5

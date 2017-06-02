@@ -35,3 +35,15 @@ parseT s = case (parseType s) of
 
 parseExports = mapRecord (\s -> generalize empty empty (parseT s))
 inferM = inferTypeModule
+
+instrument m = let
+  instrumentDef d = case d of
+    Pair n (Lam a p e) -> Pair n (instrumentExpr n (Lam a p e))
+    _ -> d
+  instrumentExpr n e = case e of
+    Lam a p e -> Lam a p (instrumentExpr n e)
+    _ -> let
+      we = Lam emptyAnn '$unused$' e
+      in App emptyAnn (App emptyAnn (Var emptyAnn 'perfTime') (Const emptyAnn (CStr n))) we
+  in case m of
+    Module ann is ds vs -> Module ann is ds (map instrumentDef vs)

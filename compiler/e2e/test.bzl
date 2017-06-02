@@ -67,7 +67,13 @@ def compiler_diff_test(name, expected, actual):
   jaguar_js_library(
       name = "%s_actual_stage1" % name,
       main = actual,
-      srcs = ["//compiler:prelude.jg"],
+      srcs = [
+        "//compiler:prelude.jg",
+        "//compiler:ast.jg",
+        "//compiler:parsers.jg",
+        "//compiler:jaguarLexer.jg",
+        "//compiler:jaguarParser.jg",
+      ],
       compiler = "//compiler:stage1",
   )
   
@@ -80,7 +86,13 @@ def compiler_diff_test(name, expected, actual):
   jaguar_js_library(
       name = "%s_actual_stage2" % name,
       main = actual,
-      srcs = ["//compiler:prelude.jg"],
+      srcs = [
+        "//compiler:prelude.jg",
+        "//compiler:ast.jg",
+        "//compiler:parsers.jg",
+        "//compiler:jaguarLexer.jg",
+        "//compiler:jaguarParser.jg",
+      ],
       compiler = "//compiler:stage2",
   )
   

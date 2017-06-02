@@ -278,72 +278,6 @@ builtins.True = true;
 
 builtins.False = false;
 
-function period(start, end) {
-  var nanos = end[1] - start[1];
-  var secs = end[0] - start[0];
-  if (nanos < 0) {
-    nanos += 1000000000;
-    secs -= 1;
-  }
-  return [secs, nanos];
-}
-
-function compare(a, b) {
-  if (a[0] == b[0]) return a[1] - b[1];
-  return a[0] - b[0];
-}
-
-var timingInfo = {};
-var inProgress = function() {};
-builtins.perfTime = function(label) {
-  return function(f) {
-    if (!timingInfo[label]) {
-      timingInfo[label] = [];
-    }
-    var times = timingInfo[label];
-    timingInfo[label] = inProgress;
-    var result = null;
-    var start = process.hrtime();
-    result = f();
-    var end = process.hrtime();
-    if (times != inProgress) {
-      times.push({start: start, end: end});
-      timingInfo[label] = times;
-    }
-    return result;
-  }
-}
-process.on('exit', function() {
-  console.log('Computing timing stats...');
-  var counts = [];
-  for (var label in timingInfo) {
-    var totalSecs = 0;
-    var totalNanos = 0;
-    var times = timingInfo[label].sort(function(a,b) { return compare(a.start,b.start)});
-    var currentEnd = [0, 0];
-    times.forEach(function(m) {
-      if (compare(currentEnd, m.end) < 0) {
-        currentEnd = m.end;
-        var p = period(m.start, m.end);
-        totalSecs += p[0];
-        totalNanos += p[1];
-      }
-    });
-    totalSecs += Math.floor(totalNanos / 1000000000);
-    totalNanos %= 1000000000;
-    counts.push({
-      label: label,
-      count: times.length,
-      secs: totalSecs,
-      nanos: totalNanos
-    });
-  }
-  counts.sort(function(a, b) {return a.secs - b.secs;});
-  counts.forEach(function(c) {
-    console.log(`${c.label}: called ${c.count} times for a total runtime of ${c.secs}s ${c.nanos}ns`)
-  })
-});
-
 builtins.$TYPE = {
     '+': 'Number -> Number -> Number',
     '-': 'Number -> Number -> Number',
@@ -391,7 +325,6 @@ builtins.$TYPE = {
     iterate: 'a -> (a -> Bool) -> (a -> a) -> a',
     True: 'Bool',
     False: 'Bool',
-    perfTime: 'String -> (a -> b) -> b',
 };
 
 module.exports = builtins;
