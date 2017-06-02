@@ -22,7 +22,6 @@ ponyName = getName (Pony 'pink' 'Fluttershy')
 
 // Nested pattern matches.
 nestedMatch = case (Pair (Kitten 'Fluffbun') 7) of
-  9 -> 1
   Pair k 8 -> 2
   Pair (Pony c n) 7 -> 3
   Pair (Kitten n) 8 -> 4

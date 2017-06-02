@@ -1,5 +1,7 @@
 "use strict";
 
+Error.stackTraceLimit = Infinity;
+
 const fs = require('fs');
 const vm = require('vm');
 const path = require("path");
@@ -51,16 +53,9 @@ function compileSingle(compiler, fileName, dirname, srcs) {
     importSymbols[i] = getExports(compiler, dirname, i, srcs);
   });
   
-  if ([
-        'compiler/prelude.jg',
-        /*'compiler/ast.jg',
-        'compiler/parsers.jg',
-        'compiler/jaguarLexer.jg',
-        'compiler/jaguarParser.jg'*/,
-      ].indexOf(actualFile) >= 0) {
-    console.log('attempting to type', actualFile);
-    compiled = compiler.inferM(importSymbols)(compiled);
-  }
+  console.log('attempting to type', actualFile);
+  compiled = compiler.inferM(importSymbols)(compiled);
+
   const exports = compiler.findExports(compiled);
   
   return {

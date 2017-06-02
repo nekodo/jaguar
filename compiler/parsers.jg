@@ -41,9 +41,9 @@ many1 = \a s -> case (a s) of
   Success r s -> apply (enqueue r) (many a) s
   Error e -> Error e
 
-sepBy1 = \p s -> apply
-  (\p -> case p of Pair r rs -> enqueue r rs)
-  (and p (many (precedes s p)))
+sepBy1 p sp = apply
+  (\rrs -> case rrs of Pair r rs -> enqueue r rs)
+  (and p (many (precedes sp p)))
 
 opt = \a s -> case (a s) of
   Success r s -> Success (Just r) s

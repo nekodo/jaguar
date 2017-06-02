@@ -263,12 +263,12 @@ builtins.jsonStringify = function(s) {
 }
 
 builtins.iterate = start => isFinished => fun => {
-  var i = 0;
-	var x = start;
+  let i = 0;
+	let x = start;
   while (!isFinished(x)) {
   	x = fun(x);
     if (i++ > 1000000) {
-    	throw 'infinite loop protection' + i;
+    	throw Error('infinite loop protection ' + i);
     }
   }
   return x;
@@ -282,8 +282,8 @@ builtins.$TYPE = {
     '+': 'Number -> Number -> Number',
     '-': 'Number -> Number -> Number',
     '*': 'Number -> Number -> Number',
-    '<': 'Number -> Number -> Bool',
-    '>': 'Number -> Number -> Bool',
+    '<': 'a -> a -> Bool',
+    '>': 'a -> a -> Bool',
     '==': 'a -> a -> Bool',
     '/=': 'a -> a -> Bool',
     '&&': 'Bool -> Bool -> Bool',
@@ -298,7 +298,7 @@ builtins.$TYPE = {
     del: 'String -> Record a -> Record a',
     set: 'String -> a -> Record a -> Record a',
     mapRecord: '(a -> b) -> Record a -> Record b',
-    foldRecord: '(b -> a -> b) -> b -> Record a -> b',
+    foldRecord: '(b -> String -> a -> b) -> b -> Record a -> b',
     merge: 'Record a -> Record a -> Record a',
     unsafeStringToInt: 'String -> Number',
     match: 'String -> String -> String',

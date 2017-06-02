@@ -79,10 +79,12 @@ dataConFieldIds = \ts ->
   map (\p -> '$' ++ intToString (fst p)) (zipWithIndex ts)
 
 dataConToJs = \dc -> case dc of
-  DataCon _ n ts -> arr3
-    (JSVar ('$' + n) (JSFun (dataConFieldIds ts) (push (JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString '$tag')) (JSString n))) (map (\f -> JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString f)) (JSRef f))) (dataConFieldIds ts)))))
-    (JSVar n (foldr (\b f -> JSFun (arr1 f) (arr1 (JSReturn b))) (JSNew (JSRef ('$' + n)) (map JSRef (dataConFieldIds ts))) (dataConFieldIds ts)))
-    (JSAssign (JSIndex (JSRef n) (JSString '$tag')) (JSString n))
+  DataCon _ n ts -> let
+    conName = '$' ++ n
+    in arr3
+      (JSVar conName (JSFun (dataConFieldIds ts) (push (JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString '$tag')) (JSString n))) (map (\f -> JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString f)) (JSRef f))) (dataConFieldIds ts)))))
+      (JSVar n (foldr (\b f -> JSFun (arr1 f) (arr1 (JSReturn b))) (JSNew (JSRef conName) (map JSRef (dataConFieldIds ts))) (dataConFieldIds ts)))
+      (JSAssign (JSIndex (JSRef n) (JSString '$tag')) (JSString n))
 
 dataToJs = \d -> case d of
   Data _ n ps cs -> concatMap dataConToJs cs

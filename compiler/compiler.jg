@@ -4,7 +4,7 @@ import * from '//compiler/ast.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileExpr, compileModule} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {inferType, builtinTypes, newCtx, scc, inferTypeModule, getTypedExports, generalize} from '//compiler/typer.jg'
+import {inferType, newCtx, scc, inferTypeModule, getTypedExports, generalize} from '//compiler/typer.jg'
 
 transpileExpr s = case (parseExpr s) of
   Success e ps -> compileExpr e
@@ -13,7 +13,7 @@ transpileExpr s = case (parseExpr s) of
 compile s = case (parseModule s) of
   Success m (ParserState ts p li ri) -> case (p == length ts) of
     True -> m
-    False -> error ('failed to parse all tokens, stopped at ' ++ jsonStringify (get p ts)) 
+    False -> error ('failed to parse all tokens, stopped at ' ++ jsonStringify (getIx p ts)) 
   e -> error e
 
 transpileModule = compileModule
@@ -34,15 +34,4 @@ parseT s = case (parseType s) of
   e -> error e
 
 parseExports = mapRecord (\s -> generalize empty empty (parseT s))
-
-parseE s = case (parseExpr s) of
-  Success e (ParserState ts p li ri) -> case (p == length ts) of
-    True -> e
-    False -> error ('failed to parse all tokens, stopped at ' ++ jsonStringify (get p ts))
-  e -> error e
-
-printT = printType
-printE = reallyPrintExpr
-inferT env e = inferType (merge builtinTypes env) newCtx e
-mscc = scc
 inferM = inferTypeModule

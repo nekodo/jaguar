@@ -48,8 +48,8 @@ unify a b = let
       False -> set n t empty
     _ -> case (contains n (freeTVars t)) of
       True -> let
-        _ = debug (printType a)
-        _ = debug (printType b)
+        _ = 13//debug (printType a)
+        //_ = debug (printType b)
         in error 'occurs check failed'
       False -> set n t empty
   err a b = error
@@ -93,17 +93,17 @@ infer env ctx e = let
     PVar _ v -> case (newTVar ctx) of
       Pair (ICtx subs i) tv -> let
         usubs = unify te tv
-        subs2 = composeSubs usubs subs
+        subs2 = composeSubs subs usubs
         in Pair (ICtx subs2 i) (set v (applySubs subs2 tv) empty)
     PConst _ (CNum n) -> case ctx of
       ICtx subs i -> let
         usubs = unify te (TConst emptyAnn 'Number')
-        subs2 = composeSubs usubs subs
+        subs2 = composeSubs subs usubs
         in Pair (ICtx subs2 i) empty
     PConst _ (CStr s) -> case ctx of
       ICtx subs i -> let
         usubs = unify te (TConst emptyAnn 'String')
-        subs2 = composeSubs usubs subs
+        subs2 = composeSubs subs usubs
         in Pair (ICtx subs2 i) empty
     PData _ n ps -> case (has n env) of
       False -> error ('unknown data type ' ++ n)
@@ -114,7 +114,7 @@ infer env ctx e = let
             True -> case (foldl (inferSubPat env) (Pair ctx2 empty) (zip ps tps)) of
               Pair (ICtx subs i) bs -> let
                 usubs = unify te (applySubs subs dt)
-                subs2 = composeSubs usubs subs
+                subs2 = composeSubs subs usubs
                 in Pair (ICtx subs2 i) (mapRecord (applySubs subs2) bs)
   inferSubPat env cbs pt = case cbs of
     Pair ctx bs -> case pt of
@@ -137,8 +137,12 @@ infer env ctx e = let
       Pair ctx2 tv -> case (infer env ctx2 f) of
         Pair (ICtx subs i) f2 -> case (infer (applySubsEnv subs env) (ICtx subs i) a) of
           Pair (ICtx subs2 i2) a2 -> let
-            usubs = unify (applySubs subs2 (getType f2)) (f1 (getType a2) tv)
-            subs3 = composeSubs usubs subs2
+            tf = applySubs subs2 (getType f2)
+            synth = f1 (getType a2) tv
+            //_ = debug (printType tf)
+            //_ = debug (printType synth)
+            usubs = unify tf synth
+            subs3 = composeSubs subs2 usubs
             t = applySubs subs3 tv
             in Pair (ICtx subs3 i2) (setType t (App ann f2 a2))
     Case ann e ps -> case (infer env ctx e) of
@@ -150,6 +154,7 @@ infer env ctx e = let
     Let ann ds e -> case (inferDefs env ctx ds) of
       Pair ctx2 ds2 -> let
         env2 = foldl (\env d -> case d of Pair n e -> set n (getType e) env) env ds2
+        //_ = debug (mapRecord printType env2)
         in case (infer env2 ctx2 e) of
           Pair ctx3 e2 -> Pair ctx3 (setType (getType e2) (Let ann ds2 e2))
     _ -> error 'type inference not supported for this AST node'
@@ -164,9 +169,11 @@ inferSccDefs env ctx ds = let
         Pair ctx2 tv -> Pair ctx2 (set n tv env)
   inferDef env cds d = case cds of
     Pair ctx ds -> case d of
-      Pair n e -> let
-        _ = debug ('inferring for binding ' ++ n)
-        in case (infer env ctx e) of
+      Pair n e ->
+        //_ = debug ('inferring for binding ' ++ n)
+        //_ = debug (mapRecord printType env)
+        //_ = debug (case ctx of ICtx subs _ -> mapRecord printType subs)
+        case (infer env ctx e) of
           Pair ctx2 e2 -> Pair ctx2 (push (Pair n e2) ds)
   unifyDef env d = case d of
     Pair n e -> unify (getType e) (get n env)
@@ -179,8 +186,9 @@ inferSccDefs env ctx ds = let
         subs2 = foldl composeSubs subs dsSubs
         ds3 = map (applySubsDef subs2) ds2
         //_ = debug (mapRecord printType subs2)
-        ds4 = map (generalizeDef env2 subs2) ds3
-        _ = debug ('inferred ' ++ jsonStringify (map (\d -> case d of Pair n e -> Pair n (printType (getType e))) ds4))
+        // NOTE: generalizing with env *without* the bindings being generalized.
+        ds4 = map (generalizeDef env subs2) ds3
+        //_ = debug ('inferred ' ++ jsonStringify (map (\d -> case d of Pair n e -> Pair n (printType (getType e))) ds4))
         in Pair (ICtx subs2 i) ds4
         
 inferDefs env ctx ds = let
@@ -251,22 +259,24 @@ getType e = case e of
   Let (Ann t) ds e -> t
 
 scc g = let
-  dfs pre g visited v = let
-    visit r e = case pre of
-      _ -> concat (dfs pre g (concat r visited) e) r
-      //True -> concat r (dfs pre g (concat r visited) e)
+  //_ = debug 'commencing SCC'
+  dfs i pre g visited v = let
+    //_ = debug i
+    visit r e = concat (dfs (i + 1) pre g (push v (concat r visited)) e) r
     es = filter (\v -> not (contains v visited)) (get v g)
     r = foldr visit emptyArray es
     in case pre of
       True -> enqueue v r
       False -> push v r
   fullDfs pre g = let
+    //_ = debug g
     visit result v _ = case (contains v result) of
       True -> result
       False -> case pre of
-        False -> concat result (dfs pre g result v)
-        True -> concat (dfs pre g result v) result
-    in foldRecord visit emptyArray g
+        False -> concat result (dfs 0 pre g result v)
+        True -> concat (dfs 0 pre g result v) result
+    result = foldRecord visit emptyArray g
+    in result
   invertedG = let
     invertEdge v ig e = case (has e ig) of
       True -> set e (push v (get e ig)) ig
@@ -277,11 +287,12 @@ scc g = let
         False -> set v emptyArray ig
       in foldl (invertEdge v) ig2 es
     in foldRecord invert empty g
+  //_ = debug 'computed the inverse of the graph'
   assembleCc gs v = case gs of
     Pair ig ccs -> case (exists (contains v) ccs) of
       True -> Pair ig ccs
       False -> let
-        cc = dfs False ig emptyArray v
+        cc = dfs 0 False ig emptyArray v
         ig2 = foldl (\g v -> del v (mapRecord (filter (\w -> w /= v)) g)) ig cc
         in Pair ig2 (push cc ccs)
   topSort ccs = let
@@ -301,8 +312,14 @@ scc g = let
     //_ = debug cg
     //_ = debug g2g
     //_ = debug ord
-    in reverse (map (\i -> get i ccs) ord)
-  in  topSort (snd (foldr assembleCc (Pair invertedG emptyArray) (fullDfs False g)))
+    in reverse (map (\i -> getIx (unsafeStringToInt i) ccs) ord)
+  firstDfs = fullDfs False g
+  //_ = debug 'computed the first DFS'
+  ccs = snd (foldr assembleCc (Pair invertedG emptyArray) firstDfs)
+  //_ = debug 'computed the SCC'
+  result = topSort ccs
+  //_ = debug 'computed the topological sort'
+  in result
 
 freeVars e = let
   freeVarsInPat p = case p of
@@ -352,44 +369,3 @@ getTypedExports m = case m of
     et = concatMap conTypes ts
     ed = map (\d -> Pair (fst d) (getType (snd d))) ds
     in foldl (\es e -> set (fst e) (snd e) es) empty (concat et ed)
-
-builtinTypes = let
-  num = TConst emptyAnn 'Number'
-  str = TConst emptyAnn 'String'
-  bool = TConst emptyAnn 'Bool'
-  rec a = TApp emptyAnn (TConst emptyAnn 'Record') a
-  prec n = rec (v n)
-  arr a = TApp emptyAnn (TConst emptyAnn 'Array') a
-  parr n = arr (v n)
-  fa n t = TForall emptyAnn n t
-  v n = TVar emptyAnn n
-  f2 a b c = f1 a (f1 b c)
-  f3 a b c d = f1 a (f2 b c d)
-  in 
-    set '+' (f2 num num num)
-      (set '-' (f2 num num num)
-        (set '*' (f2 num num num)
-          (set '<' (f2 num num bool)
-            (set '>' (f2 num num bool)
-              (set '==' (fa'a' (f2 (v 'a') (v 'a') bool))
-                (set '/=' (fa 'a' (f2 (v 'a') (v 'a') bool))
-                  (set '&&' (f2 bool bool bool)
-                    (set '||' (f2 bool bool bool)
-                      (set '++' (f2 str str str)
-                        (set 'empty' (fa 'a' (prec 'a'))
-                          (set 'get' (fa 'a' (f2 str (prec 'a') (v 'a')))
-                            (set 'del' (fa 'a' (f2 str (prec 'a') (prec 'a')))
-                              (set 'set' (fa 'a' (f3 str (v 'a') (prec 'a') (prec 'a')))
-                                (set 'keys' (fa 'a' (f1 (prec 'a') (arr str)))
-                                  (set 'has' (fa 'a' (f2 str (prec 'a') bool))
-                                    (set 'mapRecord' (fa 'a' (fa 'b' (f2 (f1 (v 'a') (v 'b')) (prec 'a') (prec 'b'))))
-                                      (set 'foldRecord' (fa 'a' (fa 'b' (f3 (f3 (v 'b') str (v 'a')) (v 'b') (prec 'a') (v 'b'))))
-                                        (set 'merge' (fa 'a' (f2 (prec 'a') (prec 'a') (prec 'a')))
-                                          (set 'unsafeStringToInt' (f1 str num)
-                                            (set 'match' (f2 str str str)
-                                              (set 'drop' (f2 num str str)
-                                                (set 'length' (fa 'a' (f1 (v 'a') num))
-                                                  (set 'emptyArray' (fa 'a' (parr 'a'))
-                                                    (set 'push' (fa 'a' (f2 (v 'a') (parr 'a') (parr 'a')))
-                                                      (set 'enqueue' (fa 'a' (f2 (v 'a') (parr 'a') (parr 'a')))
-                                                        (empty))))))))))))))))))))))))))

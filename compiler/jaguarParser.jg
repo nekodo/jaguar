@@ -7,9 +7,9 @@ data ParserState = ParserState
   (Array Token) // input (ts)
   Number // position (p)
   Number // current line indent (li)
-  (Array Number) // required line indent (ri)
+  Number // required line indent (ri)
 
-mkParserState = \ts -> ParserState ts 0 (case (get 0 ts) of Token t v l c -> c) (push 0 emptyArray)
+mkParserState = \ts -> ParserState ts 0 (case (getIx 0 ts) of Token t v l c -> c) 0
 
 filterWhitespaceAndComments = filter (\t -> case t of
   Token (WsTok) v l c -> False
@@ -18,33 +18,33 @@ filterWhitespaceAndComments = filter (\t -> case t of
 
 runParser = \p s -> case (tokenize s) of
   Success ts s -> p (mkParserState (filterWhitespaceAndComments ts))
-  e -> e
+  Error e -> Error e
 
 parseToken = \f s -> case s of
   // Check that we have not ran out of tokens.
   ParserState ts p li ri -> case (p < length ts) of
     False -> Error 'run out of tokens'
     // Check that the indentation is sufficient.
-    True -> case (get p ts) of
+    True -> case (getIx p ts) of
       Token t v l c -> case (c < ri) of
         True -> Error 'token not indented sufficiently'
         // Run the actual token parsing function.
-        False -> case (f (get p ts)) of
+        False -> case (f (getIx p ts)) of
           Nothing -> Error 'parser fun failed'
           // Success, now need to update the position and current line indent.
           Just r -> case ((p + 1) < length ts) of
             False -> Success r (ParserState ts (p + 1) li ri)
-            True -> case (get (p + 1) ts) of
+            True -> case (getIx (p + 1) ts) of
               Token t v l2 c -> case (l2 > l) of
                 False -> Success r (ParserState ts (p + 1) li ri)
                 True -> Success r (ParserState ts (p + 1) c ri)
 
-andIndent = \a b s -> case s of
-  ParserState ts p li ri -> case (a s) of
-    Success a (ParserState ts p2 li2 ri2) -> case (b (ParserState ts p2 li2 (li + 1))) of
+andIndent pa pb s = case s of
+  ParserState ts p li ri -> case (pa s) of
+    Success a (ParserState ts p2 li2 ri2) -> case (pb (ParserState ts p2 li2 (li + 1))) of
       Success b (ParserState ts p3 li3 ri3) -> Success (Pair a b) (ParserState ts p3 li3 ri)
-      e -> e
-    e -> e
+      Error e -> Error e
+    Error e -> Error e
 
 reserved = push 'let' (push 'in' (push 'from' (push 'import' (push 'case' (push 'of' (push 'data' emptyArray))))))
 
@@ -77,13 +77,13 @@ nonReservedP = parseToken (\t -> case t of
   x -> Nothing)
 
 upperCaseId = parseToken (\t -> case t of
-  Token (IdTok) v i c -> case (contains (get 0 v) upperCaseLetters) of
+  Token (IdTok) v i c -> case (containsChar (getChar 0 v) upperCaseLetters) of
     True -> Just v
     False -> Nothing
   t -> Nothing)
 
 notUpperCaseId = parseToken (\t -> case t of
-  Token (IdTok) v i c -> case (contains (get 0 v) upperCaseLetters) of
+  Token (IdTok) v i c -> case (containsChar (getChar 0 v) upperCaseLetters) of
     False -> case (contains v reserved) of
       False -> Just v
       True -> Nothing

@@ -20,7 +20,7 @@ jsExprToString = \e -> case e of
   JSRef '++' -> '$concat'
   JSRef v -> v
   JSIndex xs (JSString i) -> case (match '^[a-zA-Z_$][a-zA-Z0-9_$]*$' i) of
-    '' -> jsExprToParenString xs ++ '[' ++ jsExprToString i ++ ']'
+    '' -> jsExprToParenString xs ++ '[' ++ i ++ ']'
     i -> jsExprToParenString xs ++ '.' ++ i
   JSIndex xs i -> jsExprToParenString xs ++ '[' ++ jsExprToString i ++ ']'
   JSUnOp op e -> op ++ jsExprToParenString e
