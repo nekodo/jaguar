@@ -55,6 +55,7 @@ main argv = let
   outPath = getString args outPathArg
   mainName = '//' ++ getString args mainArg
   srcFiles = getPositional args
+  profile = getBool args profileArg
   
   // Load builtin exports from file.
   builtinsExports = loadJSExports builtinsPath
@@ -75,7 +76,9 @@ main argv = let
       m = get n compiled
       typed = inferTypeModule exports m
       e = getTypedExports typed
-      transpiled = compileModule exports typed
+      transpiled = case profile of
+        True -> compileModule exports (instrument typed)
+        False -> compileModule exports typed
       in Pair (set n e exports) (push (Pair n transpiled) result)
   jsms = snd (foldr toJs (Pair exports emptyArray) ordered)
   

@@ -9,7 +9,9 @@ def _js_library_impl(ctx):
   compiler = ctx.executable.compiler
   
   inputs = [main, compiler] + srcs + list(ctx.attr.compiler.default_runfiles.files)
-  args = ["--out=" + out.path, "--main=" + main.path] + [src.path for src in srcs]
+  args = (["--out=" + out.path, "--main=" + main.path] +
+          [src.path for src in srcs] +
+          ctx.attr.args)
 
   ctx.action(
       inputs=inputs,
@@ -33,6 +35,7 @@ jaguar_js_library = rule(
             cfg = "host",
             providers = [CompilerInfo],
         ),
+        "args": attr.string_list(),
     },
     outputs={
       "out": "%{name}.jg.js",
