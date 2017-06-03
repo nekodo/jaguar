@@ -21,7 +21,7 @@ findImports m =
       ImportOpen _ f ns -> f
       ImportClosed _ f n -> f
   in case m of
-    Module _ is ds vs -> map importFileName is
+    Module _ is ds cs ins vs -> map importFileName is
 
 parseT s = case (parseType s) of
   Success t ps -> t
@@ -39,7 +39,7 @@ instrument m = let
       we = Lam emptyAnn '$unused$' e
       in App emptyAnn (App emptyAnn (Var emptyAnn 'perfTime') (Const emptyAnn (CStr n))) we
   in case m of
-    Module ann is ds vs -> Module ann is ds (map instrumentDef vs)
+    Module ann is ds cs ins vs -> Module ann is ds cs ins (map instrumentDef vs)
 
 builtinsPathArg = ArgString 'builtins' Nothing
 outPathArg = ArgString 'out' Nothing

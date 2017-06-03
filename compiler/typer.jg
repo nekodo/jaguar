@@ -297,12 +297,12 @@ inferTypeModule ms m = let
     _ -> error 'import type not supported in type inference'
   addTypes env dt = foldl (\env c -> case c of Pair n t -> set n t env) env (conTypes dt)
   in case m of
-    Module ann is ts ds -> let
+    Module ann is ts cs ins ds -> let
       env = foldl addImports (get './builtins.js' ms) is
       env2 = foldl addTypes env ts
       //_ = debug (mapRecord printType env2)
       ds2 = snd (inferDefs env2 newCtx ds)
-      in Module ann is ts ds2
+      in Module ann is ts cs ins ds2
 
 conTypes d = case d of
   Data _ n vs cs -> map (conType n vs) cs
@@ -313,7 +313,7 @@ conType dn tvs c = case c of
 forall tvs t = foldl (\t tv -> TForall emptyAnn tv t) t tvs
 
 getTypedExports m = case m of
-  Module _ _ ts ds -> let
+  Module _ _ ts cs ins ds -> let
     et = concatMap conTypes ts
     ed = map (\d -> Pair (fst d) (getType (snd d))) ds
     in foldl (\es e -> set (fst e) (snd e) es) empty (concat et ed)

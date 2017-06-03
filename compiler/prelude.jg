@@ -4,6 +4,10 @@ maybe = \a b m -> case m of
   Just x -> a x
   Nothing -> b
 
+justOr d m = case m of
+  Just x -> x
+  Nothing -> d
+
 data Pair a b = Pair a b
 
 fst = \p -> case p of Pair a b -> a

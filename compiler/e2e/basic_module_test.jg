@@ -60,3 +60,11 @@ scc2 =
             (set '//compiler/jaguarLexer.jg' (arr2 '//compiler/prelude.jg' '//compiler/parsers.jg')
               (set '//compiler/jaguarParser.jg' (arr4 '//compiler/prelude.jg' '//compiler/ast.jg' '//compiler/parsers.jg' '//compiler/jaguarLexer.jg')
                 empty)))))))
+
+class Foo a where
+  boo :: a -> String
+  double :: a -> Pair a a
+
+instance Foo String where
+  boo s = s
+  double s = Pair s s

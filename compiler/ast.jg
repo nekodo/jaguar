@@ -24,10 +24,24 @@ data Module = Module
   Ann                        // annotations
   (Array Import)             // imports
   (Array Data)               // ADT definitions
+  (Array Class)              // type class definitions
+  (Array Instance)           // type class instances
   (Array (Pair String Expr)) // value definitions
 
 data Data = Data Ann String (Array String) (Array DataCon)
 data DataCon = DataCon Ann String (Array Type)
+
+data Class = Class
+  Ann
+  String     // name
+  String     // type var
+  (Array (Pair String Type))
+
+data Instance = Instance
+  Ann
+  String     // name
+  Type       // type for which we're defining the instance
+  (Array (Pair String Expr))
 
 data Type =
   TConst Ann String
@@ -45,4 +59,4 @@ data Import =
 dataConName = \dc -> case dc of DataCon _ n ts -> n
 dataConNames = \d -> case d of Data _ n ps cs -> map dataConName cs
 getExports = \m -> case m of
-    Module _ is ds vs -> concat (concatMap dataConNames ds) (map fst vs)
+    Module _ is ds _ _ vs -> concat (concatMap dataConNames ds) (map fst vs)

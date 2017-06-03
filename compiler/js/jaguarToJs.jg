@@ -92,7 +92,7 @@ dataToJs = \d -> case d of
 exportObject = \m -> JSObject (map (\n -> Pair n (JSRef n)) (getExports m))
 
 moduleToJs = \importSymbols m -> push (JSVar 'exports' (exportObject m)) (case m of
-  Module _ is ds vs ->
+  Module _ is ds _ _ vs ->
     concat
       (concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll emptyAnn './builtins.js') is))
       (concat
@@ -113,7 +113,7 @@ opName = \op -> case op of
   nonOp -> nonOp
 
 freeVarsInModule = \m -> case m of
-  Module _ is ds vs -> foldl mergeSet emptyArray (map (\p -> freeVarsInExpr (snd p)) vs)
+  Module _ is ds _ _ vs -> foldl mergeSet emptyArray (map (\p -> freeVarsInExpr (snd p)) vs)
 
 freeVarsInExpr = \e -> case e of
   Var _ v -> arr1 v

@@ -46,7 +46,11 @@ andIndent pa pb s = case s of
       Error e -> Error e
     Error e -> Error e
 
-reserved = push 'let' (push 'in' (push 'from' (push 'import' (push 'case' (push 'of' (push 'data' emptyArray))))))
+precedesIndent pa pb = apply
+  (\p -> case p of Pair _ r -> r)
+  (andIndent pa pb)
+
+reserved = push 'class' (push 'where' (push 'instance' (push 'let' (push 'in' (push 'from' (push 'import' (push 'case' (push 'of' (push 'data' emptyArray)))))))))
 
 symP = \s -> parseToken (\t -> case t of
   Token (SymTok) v i c -> case (v == s) of
@@ -187,6 +191,18 @@ tfunP = apply
 
 typeP = tfunP
 
+// ------------ type classes ---------------
+
+classP = apply
+  (\r -> case r of Pair (Pair name tv) maybeDefs -> Class emptyAnn name tv (justOr emptyArray maybeDefs))
+  (precedesIndent (reservedP 'class') (and (and upperCaseId notUpperCaseId) (opt (precedes (reservedP 'where') (many1 classMemberP)))))
+
+classMemberP = andIndent notUpperCaseId (precedes (operatorP '::') typeP)
+
+instanceP = apply
+  (\r -> case r of Pair (Pair name t) maybeDefs -> Instance emptyAnn name t (justOr emptyArray maybeDefs))
+  (precedesIndent (reservedP 'instance') (and (and upperCaseId simpleTypeP) (opt (precedes (reservedP 'where') (many1 defP)))))
+
 // --------------- module ------------------
 
 dataConP = apply
@@ -212,8 +228,14 @@ importAllP = apply
 importP = apply snd (andIndent (reservedP 'import') (or importClosedP (or importOpenP importAllP)))
 
 moduleP = apply
-  (\p -> case p of Pair is es -> case (splitEither es) of Pair dts dfs -> Module emptyAnn is dts dfs)
-  (and (many importP) (many1 (or (apply Left dataP) (apply Right defP))))
+  (\p -> case p of Pair is es -> case (splitFourWay es) of Pair (Pair dts dfs) (Pair cs ins) -> Module emptyAnn is dts cs ins dfs)
+  (and (many importP) (many1 topLevelP))
+
+splitFourWay e = case (splitEither e) of
+  Pair a b -> Pair (splitEither a) (splitEither b)
+
+eitherP a b = or (apply Left a) (apply Right b)
+topLevelP = eitherP (eitherP dataP defP) (eitherP classP instanceP)
   
 parseModule = runParser moduleP
 parseImports = runParser (many importP)
