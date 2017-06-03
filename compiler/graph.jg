@@ -1,0 +1,57 @@
+import * from '//compiler/prelude.jg'
+
+dfs g visited v = let
+  visit r e = case (contains e r) of
+    True -> r
+    False -> concat (dfs g (push v (concat r visited)) e) r
+  es = filter (\v -> not (contains v visited)) (get v g)
+  r = foldr visit emptyArray es
+  in enqueue v r
+
+fullDfs g = let
+  visit result v _ = case (contains v result) of
+    True -> result
+    False -> concat (dfs g result v) result
+  result = foldRecord visit emptyArray g
+  in result
+
+scc g = let
+  invertedG = let
+    invertEdge v ig e = case (has e ig) of
+      True -> set e (push v (get e ig)) ig
+      False -> set e (arr1 v) ig
+    invert ig v es = let
+      ig2 = case (has v ig) of
+        True -> ig
+        False -> set v emptyArray ig
+      in foldl (invertEdge v) ig2 es
+    in foldRecord invert empty g
+  assembleCc gs v = case gs of
+    Pair ig ccs -> case (exists (contains v) ccs) of
+      True -> Pair ig ccs
+      False -> let
+        cc = dfs ig emptyArray v
+        ig2 = foldl (\g v -> del v (mapRecord (filter (\w -> w /= v)) g)) ig cc
+        in Pair ig2 (push cc ccs)
+  firstDfs = fullDfs g
+  ccs = snd (foldl assembleCc (Pair invertedG emptyArray) firstDfs)
+  in ccs
+
+sccSorted g = let
+  ccs = scc g
+  topSort ccs = let
+    g2g = let
+      f r icc = case icc of
+        Pair i cc -> foldl (\r c -> set c (intToString i) r) r cc
+      in foldl f empty (zipWithIndex ccs)
+    addGraph r v es = let
+      rv = get v g2g
+      res = uniq (sort (filter (\re -> re /= rv) (map (\e -> get e g2g) es)))
+      in case (has rv r) of
+        False -> set rv res r
+        True -> set rv (mergeSet res (get rv r)) r
+    cg = foldRecord addGraph empty g
+    ord = fullDfs cg
+    in reverse (map (\i -> getIx (unsafeStringToInt i) ccs) ord)
+  result = topSort ccs
+  in result

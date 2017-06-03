@@ -91,6 +91,7 @@ init l = slice2 0 (length l - 1) l
 arr1 = \x -> push x emptyArray
 arr2 = \x y -> push y (arr1 x)
 arr3 = \x y z -> push z (arr2 x y)
+arr4 = \x y z xx -> push xx (arr3 x y z)
 
 mergeSet = \xs ys -> case (length xs) of
   0 -> ys

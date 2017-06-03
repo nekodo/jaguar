@@ -9,3 +9,14 @@ compileModule = \importSymbols m -> join
   (map jsStmtToString
     (map rewriteStmt (moduleToJs importSymbols m)))
   ';\n'
+
+combineModules mainName builtinsPath ms = let 
+  wrapModule nm = case nm of
+    Pair n m -> 'cache["' ++ n ++ '"] = (function() {' ++ m ++ '\nreturn exports;})();'
+  requireFun = 'var cache = {}\n' ++
+      'function _require(f) {\n' ++
+        '  return cache[f] || require(f == "./builtins.js" ? process.cwd() + "/" + "' ++ builtinsPath ++ '" : f);\n' ++
+          '}\n'
+  exportStmt = 'module.exports = cache["' ++ mainName ++ '"]\n'
+  runStmt = 'if (module.exports.main)module.exports.main(process.argv)'
+  in requireFun ++ intercalate '\n' (map wrapModule ms) ++ exportStmt ++ runStmt

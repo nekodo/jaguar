@@ -1,5 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/jaguarParser.jg'
+import {scc, sccSorted} from '//compiler/graph.jg'
 
 // Simple operator.
 addition = 6 + 5
@@ -47,3 +48,15 @@ fx = f 41
 // Syntax sugar for funs in lets.
 letF = let g y z = y + z + 1
        in g 10 2
+
+scc1 = sccSorted (set 'a' (arr1 'b') (set 'b' (arr1 'a') (set 'c' (arr1 'a') empty)))
+
+scc2 =
+  sort (scc
+    (set '//compiler/e2e/basic_module_test.jg' (arr2 '//compiler/prelude.jg' '//compiler/jaguarParser.jg')
+      (set '//compiler/prelude.jg' emptyArray
+        (set '//compiler/ast.jg' (arr1 '//compiler/prelude.jg')
+          (set '//compiler/parsers.jg'(arr1 '//compiler/prelude.jg')
+            (set '//compiler/jaguarLexer.jg' (arr2 '//compiler/prelude.jg' '//compiler/parsers.jg')
+              (set '//compiler/jaguarParser.jg' (arr4 '//compiler/prelude.jg' '//compiler/ast.jg' '//compiler/parsers.jg' '//compiler/jaguarLexer.jg')
+                empty)))))))

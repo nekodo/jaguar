@@ -1,3 +1,5 @@
+const fs = require('fs');
+
 var builtins = {};
 
 builtins.$add = function(a) {
@@ -344,7 +346,35 @@ process.on('exit', function() {
   })
 });
 
+builtins.writeFile = function(contents) {
+  return function(f) {
+    var out = fs.openSync(f, 'w');
+    fs.write(out, contents);
+  }
+}
+
+builtins.readFile = function(f) {
+    return fs.readFileSync(f, 'utf8');
+}
+
+builtins.processCwd = function(x) {
+  return process.cwd();
+}
+
+builtins.processArgv = function(x) {
+  return process.argv;
+}
+
+builtins.loadJSExports = function(f) {
+  return require(process.cwd() + '/' + f).$TYPE;
+}
+
 builtins.$TYPE = {
+    'writeFile': 'String -> String -> Bool',
+    'readFile': 'String -> String',
+    'processCwd': 'Bool -> String',
+    'processArgv': 'Bool -> Array String',
+    'loadJSExports': 'String -> Record String',
     '+': 'Number -> Number -> Number',
     '-': 'Number -> Number -> Number',
     '*': 'Number -> Number -> Number',

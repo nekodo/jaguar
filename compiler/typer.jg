@@ -1,6 +1,7 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {printType} from '//compiler/printer.jg'
+import {sccSorted} from '//compiler/graph.jg'
 
 data InferenceContext = ICtx (Record Type) Number
 
@@ -202,7 +203,7 @@ dropNonEnvSubs env subs = let
 inferDefs env ctx ds = let
   ns = map fst ds
   g = foldl (\g d -> case d of Pair n e -> set n (filter (\v -> contains v ns && (v /= n)) (freeVars e)) g) empty ds
-  ccs = scc g
+  ccs = sccSorted g
   //_ = debug g
   //_ = debug ccs
   infer cr cc = case cr of
@@ -267,69 +268,6 @@ getType e = case e of
   Lam (Ann t) p b -> t
   Case (Ann t) e ps -> t
   Let (Ann t) ds e -> t
-
-scc g = let
-  //_ = debug 'commencing SCC'
-  dfs i pre g visited v = let
-    //_ = debug i
-    visit r e = concat (dfs (i + 1) pre g (push v (concat r visited)) e) r
-    es = filter (\v -> not (contains v visited)) (get v g)
-    r = foldr visit emptyArray es
-    in case pre of
-      True -> enqueue v r
-      False -> push v r
-  fullDfs pre g = let
-    //_ = debug g
-    visit result v _ = case (contains v result) of
-      True -> result
-      False -> case pre of
-        False -> concat result (dfs 0 pre g result v)
-        True -> concat (dfs 0 pre g result v) result
-    result = foldRecord visit emptyArray g
-    in result
-  invertedG = let
-    invertEdge v ig e = case (has e ig) of
-      True -> set e (push v (get e ig)) ig
-      False -> set e (arr1 v) ig
-    invert ig v es = let
-      ig2 = case (has v ig) of
-        True -> ig
-        False -> set v emptyArray ig
-      in foldl (invertEdge v) ig2 es
-    in foldRecord invert empty g
-  //_ = debug 'computed the inverse of the graph'
-  assembleCc gs v = case gs of
-    Pair ig ccs -> case (exists (contains v) ccs) of
-      True -> Pair ig ccs
-      False -> let
-        cc = dfs 0 False ig emptyArray v
-        ig2 = foldl (\g v -> del v (mapRecord (filter (\w -> w /= v)) g)) ig cc
-        in Pair ig2 (push cc ccs)
-  topSort ccs = let
-    g2g = let
-      f r icc = case icc of
-        Pair i cc -> foldl (\r c -> set c (intToString i) r) r cc
-      in foldl f empty (zipWithIndex ccs)
-    addGraph r v es = let
-      rv = get v g2g
-      res = uniq (sort (filter (\re -> re /= rv) (map (\e -> get e g2g) es)))
-      in case (has rv r) of
-        False -> set rv res r
-        True -> set rv (mergeSet res (get rv r)) r
-    cg = foldRecord addGraph empty g
-    ord = fullDfs True cg
-    //_ = debug ccs
-    //_ = debug cg
-    //_ = debug g2g
-    //_ = debug ord
-    in reverse (map (\i -> getIx (unsafeStringToInt i) ccs) ord)
-  firstDfs = fullDfs False g
-  //_ = debug 'computed the first DFS'
-  ccs = snd (foldr assembleCc (Pair invertedG emptyArray) firstDfs)
-  //_ = debug 'computed the SCC'
-  result = topSort ccs
-  //_ = debug 'computed the topological sort'
-  in result
 
 freeVars e = let
   freeVarsInPat p = case p of

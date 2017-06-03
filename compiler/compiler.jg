@@ -2,9 +2,10 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/parsers.jg'
 import * from '//compiler/ast.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
-import {compileExpr, compileModule} from '//compiler/js/backend.jg'
+import {compileExpr, compileModule, combineModules} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {inferType, newCtx, scc, inferTypeModule, getTypedExports, generalize} from '//compiler/typer.jg'
+import {inferType, newCtx, inferTypeModule, getTypedExports, generalize} from '//compiler/typer.jg'
+import {sccSorted, dfs} from '//compiler/graph.jg'
 
 transpileExpr s = case (parseExpr s) of
   Success e ps -> compileExpr e
@@ -25,7 +26,7 @@ findImports m =
       ImportOpen _ f ns -> f
       ImportClosed _ f n -> f
   in case m of
-    Module _ is ds vs -> push ('./builtins.js') (map importFileName is)
+    Module _ is ds vs -> map importFileName is
 
 findExports = getTypedExports
 
@@ -47,3 +48,29 @@ instrument m = let
       in App emptyAnn (App emptyAnn (Var emptyAnn 'perfTime') (Const emptyAnn (CStr n))) we
   in case m of
     Module ann is ds vs -> Module ann is ds (map instrumentDef vs)
+
+depthFirstSearch g v = reverse (dfs g emptyArray v)
+
+main argv = let
+  builtinsPath = getIx 2 argv
+  outPath = getIx 3 argv
+  mainName = '//' ++ getIx 4 argv
+  srcFiles = slice 4 argv
+  builtinsExports = loadJSExports builtinsPath
+  srcs = foldl (\ss s -> set ('//' ++ s) (readFile s) ss) empty srcFiles
+  compiled = mapRecord compile srcs
+  imports = mapRecord findImports compiled
+  imports2 = debug imports
+  ordered = dfs imports2 emptyArray mainName
+  ordered2 = debug ordered
+  exports = set './builtins.js' (parseExports builtinsExports) empty
+  toJs er n = case er of
+    Pair exports result -> let
+      m = get n compiled
+      typed = inferTypeModule exports m
+      e = getTypedExports typed
+      transpiled = compileModule exports typed
+      in Pair (set n e exports) (push (Pair n transpiled) result)
+  jsms = snd (foldr toJs (Pair exports emptyArray) ordered2)
+  js = combineModules mainName builtinsPath jsms
+  in writeFile js outPath

@@ -7,5 +7,6 @@ const expected = require(process.cwd() + '/' + process.argv[3])
 
 for (const key in expected) {
   console.log(`- ${key}`);
-  assert.equal(actual[key], expected[key]);
+  //console.log(actual[key]);
+  assert.deepEqual(actual[key], expected[key]);
 }

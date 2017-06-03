@@ -73,6 +73,7 @@ def compiler_diff_test(name, expected, actual):
         "//compiler:parsers.jg",
         "//compiler:jaguarLexer.jg",
         "//compiler:jaguarParser.jg",
+        "//compiler:graph.jg",
       ],
       compiler = "//compiler:stage1",
   )
@@ -92,6 +93,7 @@ def compiler_diff_test(name, expected, actual):
         "//compiler:parsers.jg",
         "//compiler:jaguarLexer.jg",
         "//compiler:jaguarParser.jg",
+        "//compiler:graph.jg",
       ],
       compiler = "//compiler:stage2",
   )
