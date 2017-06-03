@@ -9,7 +9,7 @@ def _js_library_impl(ctx):
   compiler = ctx.executable.compiler
   
   inputs = [main, compiler] + srcs + list(ctx.attr.compiler.default_runfiles.files)
-  args = [out.path, main.path] + [src.path for src in srcs]
+  args = ["--out=" + out.path, "--main=" + main.path] + [src.path for src in srcs]
 
   ctx.action(
       inputs=inputs,
@@ -36,7 +36,6 @@ jaguar_js_library = rule(
     },
     outputs={
       "out": "%{name}.jg.js",
-      #"blah": "%{name}blah.js",
     },
 )
 
@@ -64,8 +63,7 @@ def _compiler_impl(ctx):
       JG_MAIN=%s
       BUILTINS=%s
       pwd
-      echo $NODE $JG_MAIN $BUILTINS $@
-      $NODE $JG_MAIN $BUILTINS $@
+      $NODE $JG_MAIN --builtins=$BUILTINS $@
       """ % (
           node.path,
           ctx.file.jaguar.path,
@@ -76,7 +74,7 @@ def _compiler_impl(ctx):
   
   return [DefaultInfo(runfiles=runfiles), CompilerInfo(builtins=ctx.file.builtins)]
 
-_jaguar_compiler = rule(
+jaguar_compiler = rule(
     implementation=_compiler_impl,
     attrs={
         "builtins": attr.label(allow_single_file=True),
@@ -91,12 +89,3 @@ _jaguar_compiler = rule(
     },
     executable = True,
 )
-
-def jaguar_compiler(name, jaguar, builtins, visibility=None):
-  
-  _jaguar_compiler(
-      name = name,
-      jaguar = jaguar,
-      builtins = builtins,
-      visibility = visibility,
-  )

@@ -68,6 +68,7 @@ def compiler_diff_test(name, expected, actual):
       name = "%s_actual_stage1" % name,
       main = actual,
       srcs = [
+        actual,
         "//compiler:prelude.jg",
         "//compiler:ast.jg",
         "//compiler:parsers.jg",
@@ -88,6 +89,7 @@ def compiler_diff_test(name, expected, actual):
       name = "%s_actual_stage2" % name,
       main = actual,
       srcs = [
+        actual,
         "//compiler:prelude.jg",
         "//compiler:ast.jg",
         "//compiler:parsers.jg",

@@ -1,0 +1,57 @@
+import * from '//compiler/prelude.jg'
+
+data Arg =
+  ArgBool String (Maybe Bool)
+  | ArgString String (Maybe String)
+
+data ParsedArgs = ParsedArgs (Array String) (Record String) (Array Arg)
+
+argName a = case a of
+  ArgBool n _ -> n
+  ArgString n _ -> n
+
+parseArgs defs argv = let
+  parse r arg = case r of
+    Pair positional args -> case ((getChar 0 arg == '-') && (getChar 1 arg == '-')) of
+      False -> Pair (push arg positional) args
+      True -> let
+        name = match '[^=]+' (drop 2 arg)
+        value = drop 1 (match '=.*' arg)
+        in case (contains name (map argName defs)) of
+          False -> error ('unrecognized argument ' ++ arg)
+          True -> Pair positional (set name value args)
+  in case (foldl parse (Pair emptyArray empty) argv) of
+    Pair pos args -> ParsedArgs pos args defs
+
+getPositional p = case p of
+  ParsedArgs p _ dfs-> p
+
+getString p def = case p of
+  ParsedArgs _ r dfs -> case (contains def dfs) of
+    False -> error 'unrecognized arg that was not present for parsing'
+    True -> case def of
+      ArgString n defaultVal -> case (has n r) of
+        False -> case defaultVal of
+          Just v -> v
+          Nothing -> error ('no value for required arg ' ++ n)
+        True -> get n r
+      _ -> error ('arg is not a string')
+
+getBool p def = case p of
+  ParsedArgs _ r dfs -> case (contains def dfs) of
+    False -> error 'unrecognized arg that was not present for parsing'
+    True -> case def of
+      ArgBool n defaultVal -> case (has n r) of
+        False -> case defaultVal of
+          Just v -> v
+          Nothing -> error ('no value for required arg ' ++ n)
+        True -> case (get n r) of
+          '' -> True
+          'True' -> True
+          'true' -> True
+          '1' -> True
+          'False' -> False
+          'false' -> False
+          '0' -> False
+          v -> error ('invalid value for a bool argument: ' ++ v)
+      _ -> error ('arg is not a bool')

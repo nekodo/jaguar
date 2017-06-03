@@ -1,11 +1,10 @@
 # Compiled compiler releases.
 
-load("//compiler:jaguar.bzl", "jaguar_compiler")
-load("//compiler/bin:old.bzl", "old_jaguar_compiler", "old_jaguar_compiler13")
+load("//compiler/bin:old.bzl", "old_jaguar_compiler", "old_jaguar_compiler13", "jaguar_compiler0_14", "jaguar_compiler0_15")
 
 alias(
     name = "latest",
-    actual = ":v0.14",
+    actual = ":v0.15",
     visibility = ["//visibility:public"],
 )
 
@@ -58,8 +57,14 @@ old_jaguar_compiler13(
     builtins =  "builtins0.13.js",
 )
 
-jaguar_compiler(
+jaguar_compiler0_14(
     name = "v0.14",
     jaguar = "c0.14.jg.js",
     builtins =  "builtins0.14.js",
+)
+
+jaguar_compiler0_15(
+    name = "v0.15",
+    jaguar = "c0.15.jg.js",
+    builtins =  "builtins0.15.js",
 )

@@ -24,14 +24,6 @@ not = \b -> case b of
   True -> False
   False -> True
 
-//contains2 = \x xs i -> case (i < length xs) of
-//  True -> case (getIx i xs == x) of
-//    True -> True
-//    False -> contains2 x xs (i + 1)
-//  False -> False
-
-//contains = \x xs -> contains2 x xs 0
-
 // (a -> Either a b) -> a -> b
 loop f start = let
   // Pair a (Maybe b) -> Bool
