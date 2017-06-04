@@ -4,7 +4,7 @@ import * from '//compiler/ast.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileExpr, compileModule, combineModules} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {inferType, newCtx, inferTypeModule, getTypedExports, generalize} from '//compiler/typer.jg'
+import {inferType, newCtx, inferTypeModule, getTypedExports, generalize, emptyEnv} from '//compiler/typer.jg'
 import {dfs} from '//compiler/graph.jg'
 import {ArgBool, ArgString, parseArgs, getPositional, getString, getBool} from '//compiler/args.jg'
 
@@ -27,7 +27,7 @@ parseT s = case (parseType s) of
   Success t ps -> t
   e -> error e
 
-parseExports = mapRecord (\s -> generalize empty empty (parseT s))
+parseExports = mapRecord (\s -> generalize emptyEnv empty (parseT s))
 
 instrument m = let
   instrumentDef d = case d of

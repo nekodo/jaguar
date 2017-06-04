@@ -20,6 +20,30 @@ getSubs ctx = case ctx of
 setSubs subs ctx = case ctx of
   ICtx _ i -> ICtx subs i
 
+// -------------- Environment -------------------------
+
+data InferenceEnvironment = IEnv (Record Type) (Array TypeBound)
+
+getBinding n env = case env of
+  IEnv bs _ -> get n bs
+
+hasBinding n env = case env of
+  IEnv bs _ -> has n bs
+
+addBinding n t env = case env of
+  IEnv bs ts -> IEnv (set n t bs) ts
+
+addBindings nbs env = case env of
+  IEnv bs ts -> IEnv (merge bs nbs) ts
+
+applySubsEnv subs env = case env of
+  IEnv bs ts -> IEnv (mapRecord (applySubs subs) bs) ts
+
+freeTVarsInEnv env = case env of
+  IEnv bs _ -> foldRecord (\vs _ t -> concat vs (freeTVars t)) emptyArray bs
+
+emptyEnv = IEnv empty emptyArray
+
 // ------------ Inference Engine ----------------------
 
 f1 a b = TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b
@@ -47,8 +71,6 @@ applySubs subs t = case t of
 
 applySubsBound subs b = case b of
   TCBound ann n t -> TCBound ann n (applySubs subs t)
-
-applySubsEnv subs env = mapRecord (applySubs subs) env
 
 composeSubs sa sb = let
   compose subs n t = let
@@ -110,7 +132,7 @@ infer env ctx e = let
           subs = getSubs ctx2
           te2 = applySubs subs te
           bs2 = mapRecord (applySubs subs) bs
-          in case (infer (merge env bs2) ctx2 e) of
+          in case (infer (addBindings bs2 env) ctx2 e) of
             Pair ctx2 e2 -> Pair ctx2 (Pair te2 (push (Pair pat e2) ps))
   inferPat env ctx te pat = case pat of
     PVar _ v -> case (newTVar ctx) of
@@ -126,9 +148,9 @@ infer env ctx e = let
       usubs = unify te (TConst emptyAnn 'String')
       subs2 = composeSubs (getSubs ctx) usubs
       in Pair (setSubs subs2 ctx) empty
-    PData _ n ps -> case (has n env) of
+    PData _ n ps -> case (hasBinding n env) of
       False -> error ('unknown data type ' ++ n)
-      True -> case (instantiate ctx (get n env)) of
+      True -> case (instantiate ctx (getBinding n env)) of
         Pair ctx2 t -> case (unrollDataConType t) of
           Pair tps dt -> case (length ps == length tps) of
             False -> error 'number of pattern params does not match the number of constructor params'
@@ -144,12 +166,12 @@ infer env ctx e = let
   in case e of
     Const _ (CNum n) -> Pair ctx (setType (TConst emptyAnn 'Number') e)
     Const _ (CStr s) -> Pair ctx (setType (TConst emptyAnn 'String') e)
-    Var _ v -> case (has v env) of
+    Var _ v -> case (hasBinding v env) of
       False -> error ('no var ' ++ v ++ ' in environment')
-      True -> case (instantiate ctx (get v env)) of
+      True -> case (instantiate ctx (getBinding v env)) of
         Pair ctx2 t -> Pair ctx2 (setType t e)
     Lam ann p a -> case (newTVar ctx) of
-      Pair ctx2 tv -> case (infer (set p tv env) ctx2 a) of
+      Pair ctx2 tv -> case (infer (addBinding p tv env) ctx2 a) of
         Pair ctx3 a2 ->
           Pair
             ctx3
@@ -175,7 +197,7 @@ infer env ctx e = let
           in Pair (setSubs subs ctx3) (setType (applySubs subs t) (Case ann (setType te e2) ps2))
     Let ann ds e -> case (inferDefs env ctx ds) of
       Pair ctx2 ds2 -> let
-        env2 = foldl (\env d -> case d of Pair n e -> set n (getType e) env) env ds2
+        env2 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env ds2
         //_ = debug (mapRecord printType env2)
         in case (infer env2 ctx2 e) of
           Pair ctx3 e2 -> Pair ctx3 (setType (getType e2) (Let ann ds2 e2))
@@ -188,7 +210,7 @@ inferSccDefs env ctx ds = let
   generateTVar ce d = case ce of
     Pair ctx env -> case d of
       Pair n _ -> case (newTVar ctx) of
-        Pair ctx2 tv -> Pair ctx2 (set n tv env)
+        Pair ctx2 tv -> Pair ctx2 (addBinding n tv env)
   inferDef env cds d = case cds of
     Pair ctx ds -> case d of
       Pair n e ->
@@ -198,7 +220,7 @@ inferSccDefs env ctx ds = let
         case (infer env ctx e) of
           Pair ctx2 e2 -> Pair ctx2 (push (Pair n e2) ds)
   unifyDef env d = case d of
-    Pair n e -> unify (getType e) (get n env)
+    Pair n e -> unify (getType e) (getBinding n env)
   generalizeDef env subs d = case d of
     Pair n e -> Pair n (setType (generalize env subs (getType e)) e)
   in case (foldl generateTVar (Pair ctx env) ds) of
@@ -229,7 +251,7 @@ inferDefs env ctx ds = let
   //_ = debug g
   //_ = debug ccs
   infer cr cc = case cr of
-    Pair ctx rs -> case (inferSccDefs (foldl (\env r -> set (fst r) (getType (snd r)) env) env rs) ctx (filter (\d -> contains (fst d) cc) ds)) of
+    Pair ctx rs -> case (inferSccDefs (foldl (\env r -> addBinding (fst r) (getType (snd r)) env) env rs) ctx (filter (\d -> contains (fst d) cc) ds)) of
       Pair ctx2 ds -> Pair ctx2 (concat rs ds)
   in foldl infer (Pair ctx emptyArray) ccs
 
@@ -239,8 +261,6 @@ checkSubs subs = let
     True -> error ('tvar ' ++ v ++ ' appears both at LHS and RHS of subs')
     False -> True
   in foldRecord check True subs
-
-freeTVarsInEnv env = foldRecord (\vs _ t -> concat vs (freeTVars t)) emptyArray env
 
 generalize env subs t = let
   envTVars = freeTVarsInEnv env
@@ -314,16 +334,17 @@ freeVars e = let
 
 inferTypeModule ms m = let
   addImports env i = case i of
-    ImportAll _ f -> merge env (get f ms)
-    ImportOpen _ f ns -> foldl (\env n -> set n (get n (get f ms)) env) env ns
+    ImportAll _ f -> addBindings (get f ms) env
+    ImportOpen _ f ns -> foldl (\env n -> addBinding n (get n (get f ms)) env) env ns
     _ -> error 'import type not supported in type inference'
-  addTypes env dt = foldl (\env c -> case c of Pair n t -> set n t env) env (conTypes dt)
+  addTypes env dt = foldl (\env c -> case c of Pair n t -> addBinding n t env) env (conTypes dt)
   in case m of
     Module ann is ts cs ins ds -> let
-      env = foldl addImports (get './builtins.js' ms) is
-      env2 = foldl addTypes env ts
+      env = IEnv (get './builtins.js' ms) emptyArray
+      env2 = foldl addImports env is
+      env3 = foldl addTypes env2 ts
       //_ = debug (mapRecord printType env2)
-      ds2 = snd (inferDefs env2 newCtx ds)
+      ds2 = snd (inferDefs env3 newCtx ds)
       in Module ann is ts cs ins ds2
 
 conTypes d = case d of
