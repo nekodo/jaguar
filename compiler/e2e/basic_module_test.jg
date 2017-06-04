@@ -62,9 +62,17 @@ scc2 =
                 empty)))))))
 
 class Foo a where
-  boo :: a -> String
+  yay :: a -> String
   double :: a -> Pair a a
 
+instance Foo Number where
+  yay n = intToString n
+  double n = Pair n 13
+
 instance Foo String where
-  boo s = s
-  double s = Pair s s
+  yay n = n
+  double n = Pair n 'foo'
+
+typeClass = let
+  x = yay 'pon'
+  in x ++ 'y'

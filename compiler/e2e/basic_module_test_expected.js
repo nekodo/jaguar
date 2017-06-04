@@ -15,6 +15,7 @@ const expected = {
     [ '//compiler/jaguarParser.jg' ],
     [ '//compiler/parsers.jg' ],
     [ '//compiler/prelude.jg' ] ],
+  typeClass: 'pony',
 };
 
 module.exports = expected;

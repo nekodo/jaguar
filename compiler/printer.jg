@@ -26,13 +26,14 @@ printType t =
     TApp _ a b ->
       printFirstTypeInApp a ++ ' ' ++ printSecondTypeInApp b
     TForall _ vs bs a -> let
-      printBound b = case b of
-        TCBound _ n t -> n ++ printParen t
       bounds = case (length bs) of
         0 -> ''
-        _ -> ' where ' ++ intercalate ', ' (map printBound bs)
+        _ -> ' with ' ++ intercalate ', ' (map printTypeBound bs)
       in 'forall ' ++ intercalate ', ' vs ++ bounds ++ '. ' ++ printType a
     _ -> error ('cannot print ' ++ jsonStringify t)
+
+printTypeBound b = case b of
+  TCBound _ n t -> n ++ ' ' ++ '(' ++ printType t ++ ')'
 
 printExprTyped typed e = 
   let

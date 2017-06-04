@@ -1107,7 +1107,7 @@ return (function(){
 var $pm = d;return ($pm.$tag==Pair.$tag)?((function(n,e){
 return (unify(getType(e)))((get(n))(env))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};var inferDef = function(env){
 return function(cds){
-return function(d){
+return function(d){/*console.log(d)*/
 return (function(){
 var $pm = cds;return ($pm.$tag==Pair.$tag)?((function(ctx,ds){
 return (function(){

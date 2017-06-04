@@ -52,6 +52,14 @@ contains x xs = let
       True -> Right True
       False -> Left (i + 1)
   in loop f 0
+  
+find predicate xs = let
+  f i = case (i < length xs) of
+    False -> Right Nothing
+    True -> case (predicate (getIx i xs)) of
+      True -> Right (Just (getIx i xs))
+      False -> Left (i + 1)
+  in loop f 0
 
 containsChar x xs = let 
   f i = case (i < length xs) of
