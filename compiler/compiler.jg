@@ -27,7 +27,9 @@ parseT s = case (parseType s) of
   Success t ps -> t
   e -> error e
 
-parseExports = mapRecord (\s -> generalize emptyEnv empty (parseT s))
+parseExports e = let
+  bs = mapRecord (\s -> generalize emptyEnv empty (parseT s)) e
+  in ModuleInterface bs emptyArray emptyArray
 
 instrument m = let
   instrumentDef d = case d of

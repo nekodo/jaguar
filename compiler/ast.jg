@@ -28,6 +28,11 @@ data Module = Module
   (Array Instance)           // type class instances
   (Array (Pair String Expr)) // value definitions
 
+data ModuleInterface = ModuleInterface
+  (Record Type)      // exported bindings, includes ADT constructors
+  (Array Class)                   // exported classes
+  (Array (Pair String TypeBound)) // exported class instances
+
 data Data = Data Ann String (Array String) (Array DataCon)
 data DataCon = DataCon Ann String (Array Type)
 

@@ -73,7 +73,9 @@ importToJs = \importSymbols freeVars i -> case i of
     True -> arr1 (JSVar n (requireExpr f))
     False -> emptyArray
   ImportOpen _ f ns -> buildImports f (filter (\n -> contains n freeVars) ns)
-  ImportAll _ f -> buildImports f (filter (\n -> contains n freeVars) (keys (get f importSymbols)))
+  ImportAll _ f -> let
+    bs = case (get f importSymbols) of ModuleInterface bs _ _ -> bs
+    buildImports f (filter (\n -> contains n freeVars) (keys bs))
 
 dataConFieldIds = \ts ->
   map (\p -> '$' ++ intToString (fst p)) (zipWithIndex ts)
