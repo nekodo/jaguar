@@ -6,15 +6,15 @@ printType t =
     printParen t = '(' ++ printType t ++ ')'
     printTypeInFun t = case t of
       TApp _ (TApp _ (TConst _ '->') c) d -> printParen t
-      TForall _ vs a -> printParen t
+      TForall _ vs _ a -> printParen t
       _ -> printType t
     printFirstTypeInApp t = case t of
       TApp _ (TApp _ (TConst _ '->') a) b -> printParen t
-      TForall _ vs a -> printParen t
+      TForall _ vs _ a -> printParen t
       _ -> printType t
     printSecondTypeInApp t = case t of
       TApp _ a b -> printParen t
-      TForall _ vs a -> printParen t
+      TForall _ vs _ a -> printParen t
       _ -> printType t
   in case t of
     TConst _ t -> t
@@ -25,7 +25,13 @@ printType t =
       printTypeInFun a ++ ' -> ' ++ printType b
     TApp _ a b ->
       printFirstTypeInApp a ++ ' ' ++ printSecondTypeInApp b
-    TForall _ vs a -> 'forall ' ++ intercalate ', ' vs ++ '. ' ++ printType a
+    TForall _ vs bs a -> let
+      printBound b = case b of
+        TCBound _ n t -> n ++ printParen t
+      bounds = case (length bs) of
+        0 -> ''
+        _ -> ' where ' ++ concatMap printBound bs
+      in 'forall ' ++ intercalate ', ' vs ++ bounds ++ '. ' ++ printType a
     _ -> error ('cannot print ' ++ jsonStringify t)
 
 printExprTyped typed e = 

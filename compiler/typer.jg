@@ -19,19 +19,24 @@ instantiate ctx t = let
     Pair ctx subs -> case (newTVar ctx) of
       Pair ctx2 tv -> Pair ctx2 (set v tv subs)
   in case t of
-    TForall _ vs t -> case (foldl mkvar (Pair ctx empty) vs) of
+    TForall _ vs bs t -> case (foldl mkvar (Pair ctx empty) vs) of
       Pair ctx2 subs -> Pair ctx2 (applySubs subs t)
     _ -> Pair ctx t
 
 substitute n s t = applySubs (set n s empty) t
 
 applySubs subs t = case t of
-  TForall ann vs t -> TForall ann vs (applySubs (foldl (\s v -> del v s) subs vs) t)
+  TForall ann vs bs t -> let
+    subs2 = foldl (\s v -> del v s) subs vs
+    TForall ann vs (map (applySubsBound subs2) bs) (applySubs subs2 t)
   TVar _ v -> case (has v subs) of
     False -> t
     True -> get v subs
   TApp ann f a -> TApp ann (applySubs subs f) (applySubs subs a)
   _ -> t
+
+applySubsBound subs b = case b of
+  TCBound ann n t -> TCBound ann n (applySubs subs t)
 
 applySubsEnv subs env = mapRecord (applySubs subs) env
 
@@ -81,7 +86,10 @@ freeTVars t = case t of
   TBot -> emptyArray
   TUnknown _ -> emptyArray
   TConst _ c -> emptyArray
-  TForall _ vs t -> filter (\n -> not (contains n vs)) (freeTVars t)
+  TForall _ vs bs t -> let
+    freeTVarInBound ftv b = case b of
+      TCBound _ _ t -> mergeSet ftv (freeTVars t)
+    in filter (\n -> not (contains n vs)) (foldl freeTVarInBound (freeTVars t) bs)
   TApp _ f a -> mergeSet (freeTVars f) (freeTVars a)
 
 infer env ctx e = let
@@ -234,7 +242,7 @@ generalize env subs t = let
   //_ = debug tvarsSubstitutingForEnvTVars
   nonFree = concat envTVars tvarsSubstitutingForEnvTVars
   vs = filter (\v -> not (contains v nonFree)) (freeTVars t)
-  in TForall emptyAnn vs t
+  in TForall emptyAnn vs emptyArray t
 
 // a -> (b -> (c -> Foo a b c))
 unrollDataConType t = case t of
@@ -313,7 +321,7 @@ conTypes d = case d of
 conType dn tvs c = case c of
   DataCon _ n ts -> Pair n (forall tvs (foldr (\b a -> f1 a b) (foldl (\r v -> TApp emptyAnn r (TVar emptyAnn v)) (TConst emptyAnn dn) tvs) ts))
 
-forall tvs t = TForall emptyAnn tvs t
+forall tvs t = TForall emptyAnn tvs emptyArray t
 
 getTypedExports m = case m of
   Module _ _ ts cs ins ds -> let

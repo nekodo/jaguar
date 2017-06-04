@@ -43,12 +43,18 @@ data Instance = Instance
   Type       // type for which we're defining the instance
   (Array (Pair String Expr))
 
+data TypeBound =
+  TCBound  // type class bound
+    Ann    // annotation
+    String // name of the type class
+    Type   // param
+
 data Type =
   TConst Ann String
   | TVar Ann String
   | TApp Ann Type Type
-  | TBot
-  | TForall Ann (Array String) Type
+  | TBots
+  | TForall Ann (Array String) (Array TypeBound) Type
   | TUnknown Ann
 
 data Import =
