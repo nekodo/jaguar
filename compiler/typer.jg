@@ -333,7 +333,11 @@ freeVars e = let
     Let _ ds e -> filter (\v -> not (contains v (map fst ds))) (foldl mergeSet (freeVars e) (map (\d -> freeVars (snd d)) ds))
 
 inferTypeModule ms m = let
-  addImports env i = case (get f ms) of
+  getFile i = case i of
+    ImportAll _ f -> f
+    ImportOpen _ f _ -> f
+    ImportClosed _ f _ -> f
+  addImports env i = case (get (getFile i) ms) of
     ModuleInterface bs cs is -> case i of
       ImportAll _ f -> addBindings bs env
       ImportOpen _ f ns -> foldl (\env n -> addBinding n (get n bs) env) env ns
@@ -341,8 +345,8 @@ inferTypeModule ms m = let
   addTypes env dt = foldl (\env c -> case c of Pair n t -> addBinding n t env) env (conTypes dt)
   in case m of
     Module ann is ts cs ins ds -> let
-      env = IEnv (get './builtins.js' ms) emptyArray
-      env2 = foldl addImports env is
+      env = emptyEnv
+      env2 = foldl addImports env (enqueue (ImportAll emptyAnn './builtins.js') is)
       env3 = foldl addTypes env2 ts
       //_ = debug (mapRecord printType env2)
       ds2 = snd (inferDefs env3 newCtx ds)
