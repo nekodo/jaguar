@@ -7,7 +7,6 @@
         but we should still strive to keep this stuff relatively quiet.
     -   We can start with tests written in JS but the long term goal is
         to have them in JG.
--   type inference
 -   improve JS backend
 -   cross-module optimization as an option
 
@@ -20,4 +19,38 @@
     -   let expressions xD
     -   syntax sugar for function defs
 -   0.11 (TBD)
-    -   
+-   type inference - done!
+-   I should start writing these relases notes again xD
+-   we're at 0.15 now
+
+# Ideas
+
+## Record syntax for ADTs
+
+### Motivation
+
+Adding a new filed to an ADT is a pain as I need to go through all the existing
+pattern matches and update them. Furthermore, with larger data types it becomes
+a pain to pack and unpack them all the time.
+
+data Foo = FooA | FooB String Number
+data Foo =
+  FooA
+  | FooB
+    name :: String
+    size :: Number
+
+case f of
+  FooB[name] -> name
+  FooB[name = v] -> v
+  FooB[name, size = s] -> bar name s
+  FooB[name = 'Kuro', size] -> size
+  FooB 'Kuro' size -> size
+
+name f
+size f
+
+f[name = 'Kuro', size = 7]
+FooB[name = 'Kuro', size = 7]
+
+

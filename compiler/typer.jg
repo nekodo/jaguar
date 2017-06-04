@@ -14,16 +14,19 @@ newTVar ctx = case ctx of
 
 newCtx = ICtx empty 1
 
-instantiate ctx t = case t of
-  TForall _ v t -> case (newTVar ctx) of
-    Pair ctx2 tv -> case (instantiate ctx2 t) of
-      Pair ctx3 t2 -> Pair ctx3 (substitute v tv t2)
-  _ -> Pair ctx t
+instantiate ctx t = let
+  mkvar cs v = case cs of
+    Pair ctx subs -> case (newTVar ctx) of
+      Pair ctx2 tv -> Pair ctx2 (set v tv subs)
+  in case t of
+    TForall _ vs t -> case (foldl mkvar (Pair ctx empty) vs) of
+      Pair ctx2 subs -> Pair ctx2 (applySubs subs t)
+    _ -> Pair ctx t
 
 substitute n s t = applySubs (set n s empty) t
 
 applySubs subs t = case t of
-  TForall ann v t -> TForall ann v (applySubs (del v subs) t)
+  TForall ann vs t -> TForall ann vs (applySubs (foldl (\s v -> del v s) subs vs) t)
   TVar _ v -> case (has v subs) of
     False -> t
     True -> get v subs
@@ -78,7 +81,7 @@ freeTVars t = case t of
   TBot -> emptyArray
   TUnknown _ -> emptyArray
   TConst _ c -> emptyArray
-  TForall _ v t -> filter (\n -> n /= v) (freeTVars t)
+  TForall _ vs t -> filter (\n -> not (contains n vs)) (freeTVars t)
   TApp _ f a -> mergeSet (freeTVars f) (freeTVars a)
 
 infer env ctx e = let
@@ -231,7 +234,7 @@ generalize env subs t = let
   //_ = debug tvarsSubstitutingForEnvTVars
   nonFree = concat envTVars tvarsSubstitutingForEnvTVars
   vs = filter (\v -> not (contains v nonFree)) (freeTVars t)
-  in foldr (\t v -> TForall emptyAnn v t) t vs
+  in TForall emptyAnn vs t
 
 // a -> (b -> (c -> Foo a b c))
 unrollDataConType t = case t of
@@ -310,7 +313,7 @@ conTypes d = case d of
 conType dn tvs c = case c of
   DataCon _ n ts -> Pair n (forall tvs (foldr (\b a -> f1 a b) (foldl (\r v -> TApp emptyAnn r (TVar emptyAnn v)) (TConst emptyAnn dn) tvs) ts))
 
-forall tvs t = foldl (\t tv -> TForall emptyAnn tv t) t tvs
+forall tvs t = TForall emptyAnn tvs t
 
 getTypedExports m = case m of
   Module _ _ ts cs ins ds -> let

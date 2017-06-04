@@ -48,7 +48,7 @@ data Type =
   | TVar Ann String
   | TApp Ann Type Type
   | TBot
-  | TForall Ann String Type
+  | TForall Ann (Array String) Type
   | TUnknown Ann
 
 data Import =
