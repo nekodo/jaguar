@@ -28,7 +28,7 @@ substitute n s t = applySubs (set n s empty) t
 applySubs subs t = case t of
   TForall ann vs bs t -> let
     subs2 = foldl (\s v -> del v s) subs vs
-    TForall ann vs (map (applySubsBound subs2) bs) (applySubs subs2 t)
+    in TForall ann vs (map (applySubsBound subs2) bs) (applySubs subs2 t)
   TVar _ v -> case (has v subs) of
     False -> t
     True -> get v subs

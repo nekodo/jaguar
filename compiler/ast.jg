@@ -53,7 +53,7 @@ data Type =
   TConst Ann String
   | TVar Ann String
   | TApp Ann Type Type
-  | TBots
+  | TBot
   | TForall Ann (Array String) (Array TypeBound) Type
   | TUnknown Ann
 

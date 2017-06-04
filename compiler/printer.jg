@@ -30,7 +30,7 @@ printType t =
         TCBound _ n t -> n ++ printParen t
       bounds = case (length bs) of
         0 -> ''
-        _ -> ' where ' ++ concatMap printBound bs
+        _ -> ' where ' ++ intercalate ', ' (map printBound bs)
       in 'forall ' ++ intercalate ', ' vs ++ bounds ++ '. ' ++ printType a
     _ -> error ('cannot print ' ++ jsonStringify t)
 
