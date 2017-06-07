@@ -37,6 +37,7 @@ assemblePatternMatch = \alt p -> case p of
         alt
 
 processPattern = \pm p -> case p of
+  PVar _ '_' -> Pair (JSBool True) (Pair emptyArray emptyArray)
   PVar _ v -> Pair (JSBool True) (Pair (arr1 v) (arr1 pm))
   PConst _ (CNum n) -> Pair
     (JSBinOp '==' (JSNum n) pm)
