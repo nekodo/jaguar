@@ -59,14 +59,13 @@ def _compiler_impl(ctx):
   
   ctx.file_action(
       output=ctx.outputs.executable,
-      # Add --use_strict --harmony!
       content="""
       #!/bin/bash
       
       NODE=%s
       JG_MAIN=%s
       BUILTINS=%s
-      $NODE $JG_MAIN --builtins=$BUILTINS $@
+      $NODE --use_strict --harmony $JG_MAIN --builtins=$BUILTINS $@
       """ % (
           node.path,
           ctx.file.jaguar.path,
