@@ -56,6 +56,26 @@ Going to try this one!
 
 And it seems to work!^^
 
-### Type class translation
+## Type class translation
 
-TODO
+### Idea 1
+Each instance compiles down to an object containing the functions. The functions
+are accessed on that object.
+
+When the instance is determined statically within the module we can just access
+the instance directly. When the bound is present on the binding though, we will
+need to rewrite the function to take an extra param - the instance object.
+When generating function calls to such a function we will need to supply these
+extra instance objects from the callers' scope.
+
+We can represent the dict with a data definition and we can perform the rewrite
+ahead of time. E.g.:
+  class Foo a where bar :: a -> Bool
+  instance Foo Number where bar x = x == 0
+  baz = bar 77
+  boz y = bar y
+translates into:
+data $Class$Foo a = $Class$Foo (a -> Bool)
+$Foo$Number = $Class$Foo (\x -> x == 0)
+baz = (case $Foo$Number of $Class$Foo bar -> bar) 77
+boz = \$instance$Foo -> \y -> (case $instance$Foo of $Class$Foo bar -> bar) y

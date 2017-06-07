@@ -16,6 +16,9 @@ const expected = {
     [ '//compiler/parsers.jg' ],
     [ '//compiler/prelude.jg' ] ],
   typeClass: 'pony',
+  tryit: 'pony',
+  tryit2: 'ponyfoo',
+  tryit3: 42,
 };
 
 module.exports = expected;

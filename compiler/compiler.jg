@@ -7,6 +7,7 @@ import {printType, reallyPrintExpr} from '//compiler/printer.jg'
 import {inferType, newCtx, inferTypeModule, getTypedExports, generalize, emptyEnv} from '//compiler/typer.jg'
 import {dfs} from '//compiler/graph.jg'
 import {ArgBool, ArgString, parseArgs, getPositional, getString, getBool} from '//compiler/args.jg'
+import {declassModule} from '//compiler/declasser.jg'
 
 compile s = case (parseModule s) of
   Success m (ParserState ts p li ri) -> case (p == length ts) of
@@ -71,16 +72,18 @@ main argv = let
   // compilation. Also means we'll ignore any extra files that are not needed.
   ordered = dfs imports emptyArray mainName
   
-  // Type each module, get its exports and transpile it to JS.
+  // Type each modul, get its exports and transpile it to JS.
   exports = set './builtins.js' (parseExports builtinsExports) empty
   toJs er n = case er of
     Pair exports result -> let
       m = get n compiled
       typed = inferTypeModule exports m
       e = getTypedExports typed
+      //_ = debug (case e of ModuleInterface bs _ _ -> mapRecord printType bs)
+      declassed = declassModule exports typed
       transpiled = case profile of
-        True -> compileModule exports (instrument typed)
-        False -> compileModule exports typed
+        True -> compileModule exports (instrument declassed)
+        False -> compileModule exports declassed
       in Pair (set n e exports) (push (Pair n transpiled) result)
   jsms = snd (foldr toJs (Pair exports emptyArray) ordered)
   

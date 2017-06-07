@@ -76,3 +76,11 @@ instance Foo String where
 typeClass = let
   x = yay 'pon'
   in x ++ 'y'
+
+tryitF = yay
+tryit2F x = x ++ tryitF 'foo'
+tryit3F y = tryitF y
+
+tryit = tryitF 'pony'
+tryit2 = tryit2F 'pony'
+tryit3 = tryit3F 42

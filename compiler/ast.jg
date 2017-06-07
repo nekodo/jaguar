@@ -24,14 +24,14 @@ data Module = Module
   Ann                        // annotations
   (Array Import)             // imports
   (Array Data)               // ADT definitions
-  (Array Class)              // type class definitions
-  (Array Instance)           // type class instances
+  (Array Class)              // type clas definitions
+  (Array Instance)           // type clas instances
   (Array (Pair String Expr)) // value definitions
 
 data ModuleInterface = ModuleInterface
   (Record Type)      // exported bindings, includes ADT constructors
-  (Array Class)                   // exported classes
-  (Array (Pair String TypeBound)) // exported class instances
+  (Array Class)      // exported classes
+  (Array TypeBound)  // exported clas instances
 
 data Data = Data Ann String (Array String) (Array DataCon)
 data DataCon = DataCon Ann String (Array Type)
@@ -45,13 +45,13 @@ data Class = Class
 data Instance = Instance
   Ann
   String     // name
-  Type       // type for which we're defining the instance
+  Type       // type for which we're defining the instanc
   (Array (Pair String Expr))
 
 data TypeBound =
-  TCBound  // type class bound
+  TCBound  // type clas bound
     Ann    // annotation
-    String // name of the type class
+    String // name of the type clas
     Type   // param
 
 data Type =
@@ -70,4 +70,48 @@ data Import =
 dataConName = \dc -> case dc of DataCon _ n ts -> n
 dataConNames = \d -> case d of Data _ n ps cs -> map dataConName cs
 getExports = \m -> case m of
-    Module _ is ds _ _ vs -> concat (concatMap dataConNames ds) (map fst vs)
+  Module _ is ds _ _ vs -> concat (concatMap dataConNames ds) (map fst vs)
+  
+setType t e = case e of
+  Var (Ann x) v -> Var (Ann t) v
+  Const (Ann x) c -> Const (Ann t) c
+  App (Ann x) f a -> App (Ann t) f a
+  Lam (Ann x) p b -> Lam (Ann t) p b
+  Case (Ann x) e ps -> Case (Ann t) e ps
+  Let (Ann x) ds e -> Let (Ann t) ds e
+
+getType e = case e of
+  Var (Ann t) v -> t
+  Const (Ann t) c -> t
+  App (Ann t) f a -> t
+  Lam (Ann t) p b -> t
+  Case (Ann t) e ps -> t
+  Let (Ann t) ds e -> t
+
+breakableDownAndUp down up a e = let
+  go = breakableDownAndUp down up
+  gos a = foldl (\ar p -> case (go (fst ar) (snd p)) of Pair a2 e -> Pair a2 (push (Pair (fst p) e) (snd ar))) (Pair a emptyArray)
+  in case (down a e) of
+    Right ae -> ae
+    Left (Pair a2 e2) -> let
+      ae = case e2 of
+        Lam ann p e -> case (go a2 e) of
+          Pair a e -> Pair a (Lam ann p e)
+        App ann f x -> case (go a2 f) of
+          Pair a f -> case (go a x) of
+            Pair a x -> Pair a (App ann f x)
+        Case ann e ps -> case (go a2 e) of
+          Pair a e -> case (gos a ps) of
+            Pair a ps -> Pair a (Case ann e ps)
+        Let ann bs e -> case (gos a2 bs) of
+          Pair a bs -> case (go a e) of
+            Pair a e -> Pair a (Let ann bs e)
+        _ -> Pair a2 e2
+      in case ae of
+        Pair a e -> up a e
+
+downAndUp down up = breakableDownAndUp (\a e -> Left (down a e)) up
+
+up = downAndUp Pair
+down f = downAndUp f Pair
+breakableDown f = breakableDownAndUp f Pair

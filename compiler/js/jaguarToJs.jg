@@ -93,13 +93,13 @@ dataToJs = \d -> case d of
 
 exportObject = \m -> JSObject (map (\n -> Pair n (JSRef n)) (getExports m))
 
-moduleToJs = \importSymbols m -> push (JSVar 'exports' (exportObject m)) (case m of
-  Module _ is ds _ _ vs ->
-    concat
-      (concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll emptyAnn './builtins.js') is))
-      (concat
-        (concatMap dataToJs ds)
-        (map defToJs vs)))
+moduleToJs importSymbols m = case m of
+  Module _ is ds cs ins vs -> let
+    imports = concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll emptyAnn './builtins.js') is)
+    dataDefs = concatMap dataToJs ds
+    defs = map defToJs vs
+    exportDef = JSVar 'exports' (exportObject m)
+    in push exportDef (concat imports (concat dataDefs defs))
 
 opName = \op -> case op of
   '+' -> '$add'

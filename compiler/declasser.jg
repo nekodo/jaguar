@@ -1,0 +1,167 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import {classToBindings, conTypes, unify, applySubs, applySubsBound, instanceToTypeBound, satisfiesBound} from '//compiler/typer.jg'
+import {printType, printTypeBound} from '//compiler/printer.jg'
+
+declassModule ms m = case m of
+  Module ann is dt cs ins ds -> let 
+    //_ = debug '============== declassing ==================='
+    classesAsData = map rewriteClassToData cs
+    classFuns = concatMap rewriteClassToFun cs
+    instancesAsDefs = map (\p -> case p of Pair n i -> rewriteInstance n i) (zipWithIndex ins)
+    availableInstances = map (\p -> case p of Pair ix i -> Pair (instanceName ix i) (instanceToTypeBound i)) (zipWithIndex ins)
+    dataFuns = concatMap conTypes dt
+    env = foldl (\env b -> case b of Pair v e -> set v (getType e) env) (importsToTypeEnv ms is) (concat classFuns (concat instancesAsDefs ds))
+    env2 = merge env (toRecord dataFuns)
+    ds2 = map (\d -> Pair (fst d) (rewriteExpr availableInstances env2 (snd d))) ds
+    in Module ann is (concat dt classesAsData) cs ins (concat classFuns (concat instancesAsDefs ds2))
+
+// data type with a field for each function
+// todo - define stable ordering? probably just sort
+rewriteClassToData c = case c of
+  Class _ n v _  -> let
+    name = className n
+    ps = map snd (sort (classToBindings c))
+    in Data emptyAnn name (arr1 v) (arr1 (DataCon emptyAnn name ps))
+
+rewriteClassToFun c = let
+  name = className2 c
+  rewrite b = case b of
+    Pair n t -> Pair n (setType t (Lam emptyAnn 'x' (Case emptyAnn (Var emptyAnn 'x') (arr1 (Pair (PData emptyAnn name (arr1 (PVar emptyAnn n))) (Var emptyAnn n))))))
+  in map rewrite (classToBindings c)
+
+// instantiate the data type with the lambdas in the correct positions
+rewriteInstance ix i = case i of
+  Instance _ n _ bs -> let
+    name = instanceName ix i
+    as = map snd (sort bs)
+    in Pair name (foldl (App emptyAnn) (Var emptyAnn (className n)) as)
+
+data State = S (Array (Record Type)) (Array (Pair String TypeBound)) Number
+getEnv s = case s of
+  S env _ _ -> env
+setEnv env s = case s of
+  S _ is n -> S env is n
+
+// 1. if type has a bound then wrap it in lambdas to pass the correct instances
+// 2. a reference to a var with a bound is replaced by a App of the instance
+//    dict to the var
+rewriteExpr is env e = let
+  //_ = debug ('--------- rewrite of ' ++ printType (getType e))
+  fromEnv n envs = let
+    env = head envs
+    in case (has n env) of
+      False -> error ('no ' ++ n ++ ' in env ' ++ jsonStringify (keys env))
+      True -> get n env
+  dropInstance v a = case a of
+    S env is n -> S env (filter (\p -> fst p /= v) is) n
+  addInstance b a = case a of
+    S env is n -> let
+      name = instanceNameFromBound n b
+      in Pair (S env (push (Pair name b) is) (n + 1)) name
+  findMatching b a = case a of
+    S _ is _ -> case (find (\p -> case p of Pair _ ib -> satisfiesBound ib b) is) of
+      Just (Pair n _) -> n
+      _ -> error 'failed to find satisfying instance'
+  requiredInstances tv td = case (addPrefix 'ins$' td) of
+    TForall _ _ bs t -> let
+      subs = unify tv t
+      in map (applySubsBound subs) bs
+    _ -> emptyArray
+  rewriteBounds a e = case (getType e) of
+    TForall _ _ bs t -> case (length bs > 0) of
+      False -> Pair a e
+      True -> foldr rewriteBound (Pair a (setType t e)) (zipWithIndex bs)
+    _ -> Pair a e
+  rewriteBound ae ib = case ib of
+    Pair ix b -> case ae of
+      Pair a e -> case (addInstance b a) of
+        Pair a name -> Pair a (Lam emptyAnn name e)
+  rewriteVar a e = case e of
+    Var _ v -> case (getType e) of
+      TForall _ _ _ _ -> Pair a e
+      tv -> let
+        t = fromEnv v (getEnv a)
+        //_ = debug (v ++ ' :: ' ++ printType tv ++ ' [' ++ printType t ++ ']')
+        is = requiredInstances tv t
+        mis = map (\b -> findMatching b a) is
+        //_2 = debug (mis)
+        e2 = foldl (\e v -> App emptyAnn e (Var emptyAnn v)) e mis
+        in Pair a e2
+    Lam _ p _ -> Pair (dropInstance p a) e
+    _ -> Pair a e
+  in snd (breakableDownAndUpWithEnv getEnv setEnv (\a e -> Left (rewriteBounds a e)) rewriteVar (S (arr1 env) is 0) e)
+
+addPrefix p t = case t of
+  TForall ann vs bs t -> let
+    subs = foldl (\subs v -> set v (TVar emptyAnn (p ++ v)) subs) empty vs
+    in applySubs subs (TForall ann (map (\v -> p ++ v) vs) bs t)
+  _ -> t
+
+breakableDownAndUpWithEnv getEnv setEnv down up a e = let
+  go a e = breakableDownAndUp processDown processUp a e
+  enterScope bs a = let
+    es = getEnv a
+    e = merge (head es) bs
+    in setEnv (enqueue e es) a
+  exitScope a = setEnv (tail (getEnv a)) a
+  processDown a e = case (down a e) of
+    Right ae -> Right ae
+    Left (Pair a e) -> case e of
+      Lam _ p b -> let
+        t = case (getType e) of
+          TApp _ (TApp _ (TConst _ '->') t) _ -> t
+          TForall _ _ _ (TApp _ (TApp _ (TConst _ '->') t) _) -> t
+          _ -> TUnknown emptyAnn
+        in Left (Pair (enterScope (set p t empty) a) e)
+      Let _ bs _ -> let
+        ts = foldl (\ts b -> case b of Pair n e -> set n (getType e) ts) empty bs
+        in Left (Pair (enterScope ts a) e)
+      Case ann e ps -> case (go a e) of
+        Pair a e -> case (foldl processPat (Pair a emptyArray) ps) of
+          Pair a ps -> Right (Pair a (Case ann e ps))
+      _ -> Left (Pair a e)
+  processPat ar pat = case ar of
+    Pair a r -> case pat of
+      Pair pat e -> let
+        bs = patBindings pat
+        in case (go (enterScope bs a) e) of
+          Pair a e -> Pair (exitScope a) (push (Pair pat e) r)
+  processUp a e = let
+    a2 = case e of
+      Lam _ _ _ -> exitScope a
+      Let _ _ _ -> exitScope a
+      _ -> a
+    in up a2 e
+  patBindings p = case p of
+    PConst _ _ -> empty
+    PVar (Ann t) v -> set v t empty
+    PData _ _ ps -> foldr (\env p -> merge (patBindings p) env) empty ps
+  in go a e
+
+importsToTypeEnv ms is = let
+  getFile i = case i of
+    ImportAll _ f -> f
+    ImportOpen _ f _ -> f
+    ImportClosed _ f _ -> f
+  addClass env c = foldl (\env b -> set (fst b) (snd b) env) env (classToBindings c)
+  addImports env i = case (get (getFile i) ms) of
+    ModuleInterface bs cs is -> let
+      env2 = case i of
+        ImportAll _ f -> merge env bs
+        ImportOpen _ f ns -> foldl (\env n -> set n (get n bs) env) env ns
+        _ -> error 'import type not supported in type inference'
+      env3 = foldl addClass env2 cs
+      in env3
+  in foldl addImports empty (enqueue (ImportAll emptyAnn './builtins.js') is)
+
+className n = '$class$' ++ n
+
+className2 c = case c of
+  Class _ n _ _ -> className n
+
+instanceName ix i = case i of
+  Instance _ n _ _ -> '$instance$' ++ n ++ '$' ++ intToString ix
+  
+instanceNameFromBound ix b = case b of
+  TCBound _ n _ -> 'local$instance$' ++ n ++ '$' ++ intToString ix

@@ -114,3 +114,5 @@ uniq xs = case (length xs < 2) of
     True -> uniq (tail xs)
 
 reverse = foldl (\xs x -> enqueue x xs) emptyArray
+
+toRecord = foldl (\r p -> case p of Pair k v -> set k v r) empty
