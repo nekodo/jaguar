@@ -67,16 +67,10 @@ defToJs = \p -> case p of
 requireExpr = \f -> JSCall (JSRef '_require') (arr1 (JSString f))
 
 buildImports = \f ns ->
-  map (\n -> let n2 = opName n in JSVar n2 (JSIndex (requireExpr f) (JSString n2))) ns
+  map (\n -> case n of Pair n a -> JSVar (opName a) (JSIndex (requireExpr f) (JSString (opName n)))) ns
 
-importToJs = \importSymbols freeVars i -> case i of
-  ImportClosed _ f n -> case (contains n freeVars) of
-    True -> arr1 (JSVar n (requireExpr f))
-    False -> emptyArray
-  ImportOpen _ f ns -> buildImports f (filter (\n -> contains n freeVars) ns)
-  ImportAll _ f -> let
-    bs = case (get f importSymbols) of ModuleInterface bs _ _ -> bs
-    in buildImports f (filter (\n -> contains n freeVars) (keys bs))
+importToJs = \importSymbols i -> case i of
+  ImportOpen _ f ns -> buildImports f ns
 
 dataConFieldIds = \ts ->
   map (\p -> '$' ++ intToString (fst p)) (zipWithIndex ts)
@@ -96,7 +90,7 @@ exportObject = \m -> JSObject (map (\n -> Pair n (JSRef n)) (getExports m))
 
 moduleToJs importSymbols m = case m of
   Module _ is ds cs ins vs -> let
-    imports = concatMap (importToJs importSymbols (freeVarsInModule m)) (enqueue (ImportAll emptyAnn './builtins.js') is)
+    imports = concatMap (importToJs importSymbols) is
     dataDefs = concatMap dataToJs ds
     defs = map defToJs vs
     exportDef = JSVar 'exports' (exportObject m)
@@ -114,29 +108,3 @@ opName = \op -> case op of
   '||' -> '$or'
   '++' -> '$concat'
   nonOp -> nonOp
-
-freeVarsInModule = \m -> case m of
-  Module _ is ds _ _ vs -> foldl mergeSet emptyArray (map (\p -> freeVarsInExpr (snd p)) vs)
-
-freeVarsInExpr = \e -> case e of
-  Var _ v -> arr1 v
-  Const _ c -> emptyArray
-  App _ f x -> mergeSet (freeVarsInExpr f) (freeVarsInExpr x)
-  Lam _ p b -> filter (\v -> v /= p) (freeVarsInExpr b)
-  Case _ e ps -> foldl mergeSet (freeVarsInExpr e) (map freeVarsInPat ps)
-  Let _ ds e -> filter (\v -> not (contains v (map fst ds))) (foldl mergeSet (freeVarsInExpr e) (map (\d -> freeVarsInExpr (snd d)) ds))
-
-freeVarsInPat = \p -> case p of
-  Pair pat e ->
-    mergeSet
-      (filter (\v -> not (contains v (namesInPat pat))) (freeVarsInExpr e))
-      (freeVarsInPData pat)
-
-freeVarsInPData = \p -> case p of
-  PData _ n ps -> foldl mergeSet (arr1 n) (map freeVarsInPData ps)
-  p -> emptyArray
-
-namesInPat = \p -> case p of
-  PVar _ v -> arr1 v
-  PConst _ c -> emptyArray
-  PData _ n ps -> foldl mergeSet emptyArray (map namesInPat ps)

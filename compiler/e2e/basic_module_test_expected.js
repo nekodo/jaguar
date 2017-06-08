@@ -19,6 +19,7 @@ const expected = {
   tryit: 'pony',
   tryit2: 'ponyfoo',
   tryit3: 42,
+  //fmapTest: 13,
 };
 
 module.exports = expected;

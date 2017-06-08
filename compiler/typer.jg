@@ -398,15 +398,11 @@ classToBindings c = case c of
 
 inferTypeModule ms m = let
   getFile i = case i of
-    ImportAll _ f -> f
     ImportOpen _ f _ -> f
-    ImportClosed _ f _ -> f
   addImports env i = case (get (getFile i) ms) of
     ModuleInterface bs cs is -> let
       env2 = case i of
-        ImportAll _ f -> addBindings bs env
-        ImportOpen _ f ns -> foldl (\env n -> addBinding n (get n bs) env) env ns
-        _ -> error 'import type not supported in type inference'
+        ImportOpen _ f ns -> foldl (\env n -> case n of Pair n a -> addBinding a (get n bs) env) env ns
       env3 = foldl addClass env2 cs
       env4 = foldl (\env i -> addInstance i env) env3 is
       in env4
@@ -421,7 +417,7 @@ inferTypeModule ms m = let
   in case m of
     Module ann is ts cs ins ds -> let
       env = emptyEnv
-      env2 = foldl addImports env (enqueue (ImportAll emptyAnn './builtins.js') is)
+      env2 = foldl addImports env is
       env3 = foldl addTypes env2 ts
       env4 = foldl addClass env3 cs
       env5 = foldl addIns env4 ins

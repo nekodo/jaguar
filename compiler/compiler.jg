@@ -8,6 +8,7 @@ import {inferType, newCtx, inferTypeModule, getTypedExports, generalize, emptyEn
 import {dfs} from '//compiler/graph.jg'
 import {ArgBool, ArgString, parseArgs, getPositional, getString, getBool} from '//compiler/args.jg'
 import {declassModule} from '//compiler/declasser.jg'
+import {normalizeImports} from '//compiler/importNormalizer.jg'
 
 compile s = case (parseModule s) of
   Success m (ParserState ts p li ri) -> case (p == length ts) of
@@ -77,7 +78,7 @@ main argv = let
   toJs er n = case er of
     Pair exports result -> let
       m = get n compiled
-      typed = inferTypeModule exports m
+      typed = inferTypeModule exports (normalizeImports exports m)
       e = getTypedExports typed
       //_ = debug (case e of ModuleInterface bs _ _ -> mapRecord printType bs)
       declassed = declassModule exports typed

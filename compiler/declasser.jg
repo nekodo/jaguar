@@ -34,8 +34,8 @@ rewriteClassToFun c = let
 rewriteInstance ix i = case i of
   Instance _ n _ bs -> let
     name = instanceName ix i
-    as = map snd (sort bs)
-    in Pair name (foldl (App emptyAnn) (Var emptyAnn (className n)) as)
+    args = map snd (sort bs)
+    in Pair name (foldl (App emptyAnn) (Var emptyAnn (className n)) args)
 
 data State = S (Array (Record Type)) (Array (Pair String TypeBound)) Number
 getEnv s = case s of
@@ -62,7 +62,7 @@ rewriteExpr is env e = let
   findMatching b a = case a of
     S _ is _ -> case (find (\p -> case p of Pair _ ib -> satisfiesBound ib b) is) of
       Just (Pair n _) -> n
-      _ -> error 'failed to find satisfying instance'
+      _ -> error 'declasser failed to find satisfying instance'
   requiredInstances tv td = case (addPrefix 'ins$' td) of
     TForall _ _ bs t -> let
       subs = unify tv t
@@ -149,7 +149,7 @@ importsToTypeEnv ms is = let
     ModuleInterface bs cs is -> let
       env2 = case i of
         ImportAll _ f -> merge env bs
-        ImportOpen _ f ns -> foldl (\env n -> set n (get n bs) env) env ns
+        ImportOpen _ f ns -> foldl (\env n -> case n of Pair n a -> set a (get n bs) env) env ns
         _ -> error 'import type not supported in type inference'
       env3 = foldl addClass env2 cs
       in env3
@@ -165,3 +165,6 @@ instanceName ix i = case i of
   
 instanceNameFromBound ix b = case b of
   TCBound _ n _ -> 'local$instance$' ++ n ++ '$' ++ intToString ix
+
+instanceNameFromImport imix inix b = case b of
+  TCBound _ n _ -> '$import' ++ imix ++ '$instance$' ++ n ++ '$' ++ intToString inix

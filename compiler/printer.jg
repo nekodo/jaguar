@@ -38,8 +38,8 @@ printTypeBound b = case b of
 printExprTyped typed e = 
   let
     printParen e = sameLine3 (arr1 '(') (printExpr e) (arr1 ')')
-    sameLine as bs =
-      concat (init as) (enqueue (last as ++ head bs) (tail bs))
+    sameLine xs ys =
+      concat (init xs) (enqueue (last xs ++ head ys) (tail ys))
     sameLine3 a b c = sameLine a (sameLine b c)
     printCasePat cp = case cp of
       Pair p e -> 

@@ -50,7 +50,7 @@ precedesIndent pa pb = apply
   (\p -> case p of Pair _ r -> r)
   (andIndent pa pb)
 
-reserved = push 'class' (push 'where' (push 'instance' (push 'let' (push 'in' (push 'from' (push 'import' (push 'case' (push 'of' (push 'data' emptyArray)))))))))
+reserved = push 'as' (push 'class' (push 'where' (push 'instance' (push 'let' (push 'in' (push 'from' (push 'import' (push 'case' (push 'of' (push 'data' emptyArray))))))))))
 
 symP = \s -> parseToken (\t -> case t of
   Token (SymTok) v i c -> case (v == s) of
@@ -115,7 +115,7 @@ constP = or cstrP cnumP
 simpleExprP = \s -> or varP (or constP (parenP exprP)) s
 
 appP = \s -> apply
-  (\p -> case p of Pair f as -> foldl (\f a -> App emptyAnn f a) f as)
+  (\p -> case p of Pair f xs -> foldl (\f x -> App emptyAnn f x) f xs)
   (andIndent (or varP (parenP exprP)) (many simpleExprP))
   s
 
@@ -217,9 +217,15 @@ importClosedP = apply
   (\p -> case p of Pair n f -> ImportClosed emptyAnn f n)
   (and nonReservedP (precedes (reservedP 'from') strP))
 
+importNoAliasP = apply
+  (\n -> Pair n n)
+  nonReservedP
+
+importAliasP = and nonReservedP (precedes (reservedP 'as') nonReservedP)
+
 importOpenP = apply
   (\p -> case p of Pair ns f -> ImportOpen emptyAnn f ns)
-  (and (between (symP '{') (sepBy1 nonReservedP (symP ',')) (symP '}')) (precedes (reservedP 'from') strP))
+  (and (between (symP '{') (sepBy1 (or importAliasP importNoAliasP) (symP ',')) (symP '}')) (precedes (reservedP 'from') strP))
 
 importAllP = apply
   (\p -> case p of Pair n f -> ImportAll emptyAnn f)

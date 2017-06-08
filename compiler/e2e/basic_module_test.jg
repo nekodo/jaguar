@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/jaguarParser.jg'
-import {scc, sccSorted} from '//compiler/graph.jg'
+import {scc, sccSorted as sortedScc} from '//compiler/graph.jg'
 
 // Simple operator.
 addition = 6 + 5
@@ -49,7 +49,7 @@ fx = f 41
 letF = let g y z = y + z + 1
        in g 10 2
 
-scc1 = sccSorted (set 'a' (arr1 'b') (set 'b' (arr1 'a') (set 'c' (arr1 'a') empty)))
+scc1 = sortedScc (set 'a' (arr1 'b') (set 'b' (arr1 'a') (set 'c' (arr1 'a') empty)))
 
 scc2 =
   sort (scc
@@ -84,3 +84,7 @@ tryit3F y = tryitF y
 tryit = tryitF 'pony'
 tryit2 = tryit2F 'pony'
 tryit3 = tryit3F 42
+
+//fmapTest = case (fmap (\x -> x +1) (Just 12)) of
+//  Just n -> n
+//  Nothing -> 0

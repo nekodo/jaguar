@@ -64,7 +64,7 @@ data Type =
 
 data Import =
   ImportClosed Ann String String
-  | ImportOpen Ann String (Array String)
+  | ImportOpen Ann String (Array (Pair String String))
   | ImportAll Ann String
 
 dataConName = \dc -> case dc of DataCon _ n ts -> n
