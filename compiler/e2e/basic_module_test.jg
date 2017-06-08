@@ -85,6 +85,6 @@ tryit = tryitF 'pony'
 tryit2 = tryit2F 'pony'
 tryit3 = tryit3F 42
 
-//fmapTest = case (fmap (\x -> x +1) (Just 12)) of
-//  Just n -> n
-//  Nothing -> 0
+fmapTest = case (fmap (\x -> x +1) (Just 12)) of
+  Just n -> n
+  Nothing -> 0

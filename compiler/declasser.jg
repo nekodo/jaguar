@@ -6,15 +6,36 @@ import {printType, printTypeBound} from '//compiler/printer.jg'
 declassModule ms m = case m of
   Module ann is dt cs ins ds -> let 
     //_ = debug '============== declassing ==================='
+    isi = foldl (rewriteImportedInstances ms) (Pair emptyArray emptyArray) (zipWithIndex is)
+    is2 = fst isi
+    importedInstances = snd isi
     classesAsData = map rewriteClassToData cs
     classFuns = concatMap rewriteClassToFun cs
     instancesAsDefs = map (\p -> case p of Pair n i -> rewriteInstance n i) (zipWithIndex ins)
-    availableInstances = map (\p -> case p of Pair ix i -> Pair (instanceName ix i) (instanceToTypeBound i)) (zipWithIndex ins)
+    availableInstances = 
+      concat
+        importedInstances
+        (map (\p -> case p of Pair ix i -> Pair (instanceName ix i) (instanceToTypeBound i)) (zipWithIndex ins))
     dataFuns = concatMap conTypes dt
     env = foldl (\env b -> case b of Pair v e -> set v (getType e) env) (importsToTypeEnv ms is) (concat classFuns (concat instancesAsDefs ds))
     env2 = merge env (toRecord dataFuns)
     ds2 = map (\d -> Pair (fst d) (rewriteExpr availableInstances env2 (snd d))) ds
-    in Module ann is (concat dt classesAsData) cs ins (concat classFuns (concat instancesAsDefs ds2))
+    in Module ann is2 (concat dt classesAsData) cs ins (concat classFuns (concat instancesAsDefs ds2))
+
+rewriteImportedInstances ms isi ixi = case isi of
+  Pair is ibs -> case ixi of
+    Pair imix (ImportOpen ann f ns) -> case (get f ms) of
+      ModuleInterface _ cs bs -> case (foldl (rewriteImportedBound imix) (Pair emptyArray emptyArray) (zipWithIndex bs)) of
+        Pair nas nbs -> let
+          cns = map (\n -> Pair n n) (concatMap (\c -> case c of Class _ _ _ bs -> map fst bs) cs)
+          in Pair (push (ImportOpen ann f (concat ns (concat nas cns))) is) (concat ibs nbs)
+
+rewriteImportedBound imix nbs ib = case nbs of
+  Pair ns bs -> case ib of
+    Pair inix b -> let
+      symbol = instanceName2 inix b
+      alias = instanceNameFromImport imix inix b
+      in Pair (push (Pair symbol alias) ns) (push (Pair alias b) bs)
 
 // data type with a field for each function
 // todo - define stable ordering? probably just sort
@@ -166,5 +187,8 @@ instanceName ix i = case i of
 instanceNameFromBound ix b = case b of
   TCBound _ n _ -> 'local$instance$' ++ n ++ '$' ++ intToString ix
 
+instanceName2 ix i = case i of
+  TCBound _ n _ -> '$instance$' ++ n ++ '$' ++ intToString ix
+
 instanceNameFromImport imix inix b = case b of
-  TCBound _ n _ -> '$import' ++ imix ++ '$instance$' ++ n ++ '$' ++ intToString inix
+  TCBound _ n _ -> '$import' ++ intToString imix ++ '$instance$' ++ n ++ '$' ++ intToString inix
