@@ -23,6 +23,11 @@ snd = \p -> case p of Pair a b -> b
 
 data Either a b = Left a | Right b
 
+instance Functor (Either a) where
+  fmap f e = case e of
+    Left l -> Left l
+    Right r -> Right (f r)
+
 either = \f g e -> case e of
   Left a -> f a
   Right b -> g b
@@ -124,3 +129,10 @@ uniq xs = case (length xs < 2) of
 reverse = foldl (\xs x -> enqueue x xs) emptyArray
 
 toRecord = foldl (\r p -> case p of Pair k v -> set k v r) empty
+
+strToArray s = let
+  f p = case p of
+    Pair i r -> case (i < length s) of
+      False -> Right r
+      True -> Left (Pair (i + 1) (push (getChar i s) r))
+  in loop f (Pair 0 emptyArray)

@@ -62,7 +62,7 @@ processPattern = \pm p -> case p of
   z -> error 'failure to match pattern during processing'
 
 defToJs = \p -> case p of
-  Pair n e -> JSVar n (jaguarExprToJsExpr e)
+  Pair n e -> JSVar (opName n) (jaguarExprToJsExpr e)
 
 requireExpr = \f -> JSCall (JSRef '_require') (arr1 (JSString f))
 
@@ -86,7 +86,7 @@ dataConToJs = \dc -> case dc of
 dataToJs = \d -> case d of
   Data _ n ps cs -> concatMap dataConToJs cs
 
-exportObject = \m -> JSObject (map (\n -> Pair n (JSRef n)) (getExports m))
+exportObject = \m -> JSObject (map (\n -> Pair (opName n) (JSRef (opName n))) (getExports m))
 
 moduleToJs importSymbols m = case m of
   Module _ is ds cs ins vs -> let
@@ -107,4 +107,18 @@ opName = \op -> case op of
   '&&' -> '$and'
   '||' -> '$or'
   '++' -> '$concat'
-  nonOp -> nonOp
+  nonOp -> foldl (\s c -> s ++ opChar c) '' (strToArray nonOp) 
+
+opChar c = case c of
+  '-' -> '$mns'
+  '+' -> '$pls'
+  '*' -> '$mul'
+  '/' -> '$div'
+  '=' -> '$eq'
+  ':' -> '$col'
+  '&' -> '$amp'
+  '|' -> '$pip'
+  '<' -> '$lt'
+  '>' -> '$gt'
+  '^' -> '$rof'
+  _ -> c

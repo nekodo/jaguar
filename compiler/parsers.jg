@@ -1,5 +1,8 @@
 import * from '//compiler/prelude.jg'
 
+// parsers have type: a -> ParseResult b c or App (App -> a) (App (App ParseResult b) c)
+// or type Parser i o x = i -> ParseResult x o
+
 data ParseResult a s =
   Success a s
   | Error String
