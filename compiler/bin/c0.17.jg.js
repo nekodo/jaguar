@@ -2300,7 +2300,7 @@ return function(p){
 return (function(){
 var $pm = p;return (($pm.$tag==PVar.$tag)&&("_"==$pm.$1))?((function(){
 return (Pair(JSBool(true)))((Pair(emptyArray))(emptyArray))})()):(($pm.$tag==PVar.$tag)?((function(v){
-return (Pair(JSBool(true)))((Pair(arr1(v)))(arr1(pm)))})($pm.$1)):((($pm.$tag==PConst.$tag)&&($pm.$1.$tag==CNum.$tag))?((function(n){
+return (Pair(JSBool(true)))((Pair(arr1(opName(v))))(arr1(pm)))})($pm.$1)):((($pm.$tag==PConst.$tag)&&($pm.$1.$tag==CNum.$tag))?((function(n){
 return (Pair(((JSBinOp("=="))(JSNum(n)))(pm)))((Pair(emptyArray))(emptyArray))})($pm.$1.$0)):((($pm.$tag==PConst.$tag)&&($pm.$1.$tag==CStr.$tag))?((function(s){
 return (Pair(((JSBinOp("=="))(JSString(s)))(pm)))((Pair(emptyArray))(emptyArray))})($pm.$1.$0)):((($pm.$tag==PData.$tag)&&("True"==$pm.$1))?((function(ps){
 return (Pair(pm))((Pair(emptyArray))(emptyArray))})($pm.$2)):((($pm.$tag==PData.$tag)&&("False"==$pm.$1))?((function(ps){
@@ -2352,7 +2352,7 @@ return (function(){
 var $pm = e;return (($pm.$tag==Var.$tag)&&("True"==$pm.$1))?((function(){
 return JSBool(true)})()):((($pm.$tag==Var.$tag)&&("False"==$pm.$1))?((function(){
 return JSBool(false)})()):(($pm.$tag==Var.$tag)?((function(v){
-return JSRef(v)})($pm.$1)):((($pm.$tag==Const.$tag)&&($pm.$1.$tag==CNum.$tag))?((function(n){
+return JSRef(opName(v))})($pm.$1)):((($pm.$tag==Const.$tag)&&($pm.$1.$tag==CNum.$tag))?((function(n){
 return JSNum(n)})($pm.$1.$0)):((($pm.$tag==Const.$tag)&&($pm.$1.$tag==CStr.$tag))?((function(s){
 return JSString(s)})($pm.$1.$0)):(($pm.$tag==App.$tag)?((function(f,a){
 return (JSCall(jaguarExprToJsExpr(f)))(arr1(jaguarExprToJsExpr(a)))})($pm.$1,$pm.$2)):(($pm.$tag==Lam.$tag)?((function(p,e){

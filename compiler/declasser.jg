@@ -45,11 +45,13 @@ rewriteClassToData c = case c of
     ps = map snd (sort (classToBindings c))
     in Data emptyAnn name (arr1 v) (arr1 (DataCon emptyAnn name ps))
 
-rewriteClassToFun c = let
-  name = className2 c
-  rewrite b = case b of
-    Pair n t -> Pair n (setType t (Lam emptyAnn 'x' (Case emptyAnn (Var emptyAnn 'x') (arr1 (Pair (PData emptyAnn name (arr1 (PVar emptyAnn n))) (Var emptyAnn n))))))
-  in map rewrite (classToBindings c)
+rewriteClassToFun c = case c of
+  Class _ _ _ bs -> let
+    name = className2 c
+    bsForPat = map (\b -> PVar emptyAnn (fst b)) (sort bs)
+    rewrite b = case b of
+      Pair n t -> Pair n (setType t (Lam emptyAnn 'x' (Case emptyAnn (Var emptyAnn 'x') (arr1 (Pair (PData emptyAnn name bsForPat) (Var emptyAnn n))))))
+    in map rewrite (classToBindings c)
 
 // instantiate the data type with the lambdas in the correct positions
 rewriteInstance ix i = case i of

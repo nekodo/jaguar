@@ -5,7 +5,7 @@ import * from '//compiler/js/ast.jg'
 jaguarExprToJsExpr = \e -> case e of
   Var _ 'True' -> JSBool True
   Var _ 'False' -> JSBool False
-  Var _ v -> JSRef v
+  Var _ v -> JSRef (opName v)
   Const _ (CNum n) -> JSNum n
   Const _ (CStr s) -> JSString s
   App _ f a -> JSCall (jaguarExprToJsExpr f) (arr1 (jaguarExprToJsExpr a))
@@ -38,7 +38,7 @@ assemblePatternMatch = \alt p -> case p of
 
 processPattern = \pm p -> case p of
   PVar _ '_' -> Pair (JSBool True) (Pair emptyArray emptyArray)
-  PVar _ v -> Pair (JSBool True) (Pair (arr1 v) (arr1 pm))
+  PVar _ v -> Pair (JSBool True) (Pair (arr1 (opName v)) (arr1 pm))
   PConst _ (CNum n) -> Pair
     (JSBinOp '==' (JSNum n) pm)
     (Pair emptyArray emptyArray)

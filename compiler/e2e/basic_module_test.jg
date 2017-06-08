@@ -88,3 +88,7 @@ tryit3 = tryit3F 42
 fmapTest = case (fmap (\x -> x +1) (Just 12)) of
   Just n -> n
   Nothing -> 0
+
+applicativeTest = case (pure (+) <*> Just 5 <*> Just 8) of
+  Just n -> n
+  Nothing -> 0

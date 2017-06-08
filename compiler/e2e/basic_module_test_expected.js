@@ -20,6 +20,7 @@ const expected = {
   tryit2: 'ponyfoo',
   tryit3: 42,
   fmapTest: 13,
+  applicativeTest: 13,
 };
 
 module.exports = expected;
