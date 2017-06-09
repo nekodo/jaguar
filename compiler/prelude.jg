@@ -5,6 +5,10 @@ class Applicative a where
   pure :: x -> a x
   (<*>) :: a (x -> y) -> a x -> a y
 
+class Alternative f where
+  zero :: f a
+  (<|>) :: f a -> f a -> f a
+
 data Maybe a = Just a | Nothing
 
 instance Functor Maybe where
@@ -19,6 +23,12 @@ instance Applicative Maybe where
     Just f -> case x of
       Nothing -> Nothing
       Just x -> Just (f x)
+
+instance Alternative Maybe where
+  zero = Nothing
+  (<|>) a b = case a of
+    Nothing -> b
+    _ -> a
 
 maybe = \a b m -> case m of
   Just x -> a x

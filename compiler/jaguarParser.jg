@@ -1,7 +1,7 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import * from '//compiler/parsers.jg'
-import * from '//compiler/jaguarLexer.jg'
+import {tokenize, Token, WsTok, SymTok, NumTok, StrTok, OpTok, IdTok, ComTok} from '//compiler/jaguarLexer.jg'
 
 data ParserState = ParserState
   (Array Token) // input (ts)

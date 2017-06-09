@@ -16,18 +16,19 @@ declassModule ms m = case m of
       concat
         importedInstances
         (map (\p -> case p of Pair ix i -> Pair (instanceName ix i) (instanceToTypeBound i)) (zipWithIndex ins))
-    dataFuns = concatMap conTypes dt
+    dt2 = concat dt classesAsData
+    dataFuns = concatMap conTypes dt2
     env = foldl (\env b -> case b of Pair v e -> set v (getType e) env) (importsToTypeEnv ms is) (concat classFuns (concat instancesAsDefs ds))
     env2 = merge env (toRecord dataFuns)
     ds2 = map (\d -> Pair (fst d) (rewriteExpr availableInstances env2 (snd d))) ds
-    in Module ann is2 (concat dt classesAsData) cs ins (concat classFuns (concat instancesAsDefs ds2))
+    in Module ann is2 dt2 cs ins (concat classFuns (concat instancesAsDefs ds2))
 
 rewriteImportedInstances ms isi ixi = case isi of
   Pair is ibs -> case ixi of
     Pair imix (ImportOpen ann f ns) -> case (get f ms) of
       ModuleInterface _ cs bs -> case (foldl (rewriteImportedBound imix) (Pair emptyArray emptyArray) (zipWithIndex bs)) of
         Pair nas nbs -> let
-          cns = map (\n -> Pair n n) (concatMap (\c -> case c of Class _ _ _ bs -> map fst bs) cs)
+          cns = map (\n -> Pair n n) (concatMap (\c -> case c of Class _ n _ bs -> enqueue (className n) (map fst bs)) cs)
           in Pair (push (ImportOpen ann f (concat ns (concat nas cns))) is) (concat ibs nbs)
 
 rewriteImportedBound imix nbs ib = case nbs of

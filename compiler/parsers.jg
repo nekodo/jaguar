@@ -7,6 +7,41 @@ data ParseResult a s =
   Success a s
   | Error String
 
+data Parser i a = Parser (i -> ParseResult a i)
+
+instance Functor (Parser i) where
+  fmap f pa = case pa of
+    Parser pa -> Parser (\i -> case (pa i) of
+      Error e -> Error e
+      Success a i -> Success (f a) i)
+
+instance Applicative (Parser i) where
+  pure x = Parser (Success x)
+  (<*>) pf pa = case pf of
+    Parser pf -> case pa of
+      Parser pa -> Parser (\i -> case (pf i) of
+        Error e -> Error e
+        Success f i -> case (pa i) of
+          Error e -> Error e
+          Success a i -> Success (f a) i)
+
+instance Alternative (Parser i) where
+  zero = Parser (\_ -> Error 'parser failure')
+  (<|>) pa pb = case pa of
+    Parser pa -> case pb of
+      Parser pb -> Parser (\i -> case (pa i) of
+        Error _ -> pb i
+        Success a i -> Success a i)
+
+(|>) a b = pure (\a b -> b) <*> a <*> b
+(<|) a b = pure (\a b -> a) <*> a <*> b
+
+fmany p = case p of
+  Parser p -> Parser (\i -> many p i)
+
+fsome p = case p of
+  Parser p -> Parser (\i -> many1 p i)
+
 and pa pb s = case (pa s) of
   Success a s2 -> case (pb s2) of
     Success b s3 -> Success (Pair a b) s3

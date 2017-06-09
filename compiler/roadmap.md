@@ -22,6 +22,8 @@
 -   type inference - done!
 -   I should start writing these relases notes again xD
 -   we're at 0.15 now
+-   type classes
+-   user-defined operators
 
 # Ideas
 
