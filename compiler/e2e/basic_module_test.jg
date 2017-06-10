@@ -92,3 +92,21 @@ fmapTest = case (fmap (\x -> x +1) (Just 12)) of
 applicativeTest = case (pure (+) <*> Just 5 <*> Just 8) of
   Just n -> n
   Nothing -> 0
+
+data TestMaybe a = TNothing | TJust a
+
+instance Functor TestMaybe where
+  fmap f m = case m of
+    TNothing -> TNothing
+    TJust x -> TJust (f x)
+
+instance Applicative TestMaybe where
+  pure = TJust
+  (<*>) f a = case f of
+    TNothing -> TNothing
+    TJust f -> fmap f a
+
+// Declasser can't currently handle this stuff.
+applicativeTest2 = case (pure (+) <*> TJust 5 <*> TJust 8) of
+  TJust n -> n
+  TNothing -> 0

@@ -427,7 +427,7 @@ inferTypeModule ms m = let
       ds3 = map checkForUnsatisfiedBounds ds2
       env6 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env5 ds3
       ins2 = map (inferInstance env6 (concat cs (concatMap (\i -> case (get (getFile i) ms) of ModuleInterface _ cs _ -> cs) is))) ins
-      in Module ann is ts cs ins ds3
+      in Module ann is ts cs ins2 ds3
 
 conTypes d = case d of
   Data _ n vs cs -> map (conType n vs) cs

@@ -9,14 +9,14 @@ data ParserState = ParserState
   Number // current line indent (li)
   Number // required line indent (ri)
 
-mkParserState = \ts -> ParserState ts 0 (case (getIx 0 ts) of Token t v l c -> c) 0
+mkParserState ts = ParserState ts 0 (case (getIx 0 ts) of Token t v l c -> c) 0
 
 filterWhitespaceAndComments = filter (\t -> case t of
   Token (WsTok) v l c -> False
   Token (ComTok) v l c -> False
   t -> True)
 
-runParser = \p s -> case (tokenize s) of
+runParser p s = case (tokenize s) of
   Success ts s -> p (mkParserState (filterWhitespaceAndComments ts))
   Error e -> Error e
 
