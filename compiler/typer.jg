@@ -128,7 +128,7 @@ unify a b = let
         False -> err a b
       TVar _ v -> bind v a
       _ -> err a b
-    TUnknown _ -> err a b
+    TUnknown -> err a b
     TBot -> err a b
     TApp _ fa xa -> case b of
       TVar _ v -> bind v a
@@ -142,7 +142,7 @@ unify a b = let
 freeTVars t = case t of
   TVar _ v -> arr1 v
   TBot -> emptyArray
-  TUnknown _ -> emptyArray
+  TUnknown -> emptyArray
   TConst _ c -> emptyArray
   TForall _ vs bs t -> 
     filter (\n -> not (contains n vs)) (foldl mergeSet (freeTVars t) (map freeTVarsInBound bs))
@@ -153,7 +153,7 @@ freeTVarsInBound b = case b of
 
 infer env ctx e = let
   setFinalType ctx t e = case (getType e) of
-    TUnknown _ -> Pair ctx (setType t e)
+    TUnknown -> Pair ctx (setType t e)
     te -> let
       subs = composeSubs (getSubs ctx) (unify t te)
       in Pair (setSubs subs ctx) e
@@ -167,12 +167,12 @@ infer env ctx e = let
           in case (infer (addBindings bs2 env) ctx2 e) of
             Pair ctx2 e2 -> Pair ctx2 (Pair te2 (push (Pair pat e2) ps))
   inferPat env ctx te pat = case pat of
-    PVar _ v -> case (newTVar ctx) of
+    PVar ann v -> case (newTVar ctx) of
       Pair ctx2 tv -> let
         usubs = unify te tv
         subs2 = composeSubs (getSubs ctx2) usubs
         tv2 = applySubs subs2 tv
-        in Pair (Pair (setSubs subs2 ctx2) (set v tv2 empty)) (PVar (Ann tv2) v)
+        in Pair (Pair (setSubs subs2 ctx2) (set v tv2 empty)) (PVar (setAnnType tv2 ann) v)
     PConst _ (CNum n) -> let
       usubs = unify te (TConst emptyAnn 'Number')
       subs2 = composeSubs (getSubs ctx) usubs
@@ -341,15 +341,8 @@ applySubsDef subs d = case d of
   Pair n e -> Pair n (applySubsE subs e)
 
 applySubsE subs e = let
-    applySubsCase p = case p of
-      Pair pat e -> Pair pat (applySubsE subs e)
-  in case e of
-    Var (Ann t) v -> Var (Ann (applySubs subs t)) v
-    Const (Ann t) c -> Const (Ann (applySubs subs t)) c
-    App (Ann t) f a -> App (Ann (applySubs subs t)) (applySubsE subs f) (applySubsE subs a)
-    Lam (Ann t) p b -> Lam (Ann (applySubs subs t)) p (applySubsE subs b)
-    Case (Ann t) e ps -> Case (Ann (applySubs subs t)) (applySubsE subs e) (map applySubsCase ps)
-    Let (Ann t) ds e -> Let (Ann (applySubs subs t)) (map (applySubsDef subs) ds) (applySubsE subs e)
+  f a e = Pair a (setType (applySubs subs (getType e)) e)
+  in snd (down f True e)
 
 freeVars e = let
   freeVarsInPat p = case p of
@@ -410,9 +403,11 @@ inferTypeModule ms m = let
   addClass env c = foldl (\env b -> addBinding (fst b) (snd b) env) env (classToBindings c)
   addIns env i = addInstance (instanceToTypeBound i) env
   checkForUnsatisfiedBounds d = case (getType (snd d)) of
-    TForall _ _ _ t -> case t of
+    TForall _ _ bs t -> case t of
       TApp _ (TApp _ (TConst _ '->') _) _ -> d
-      _ -> error ('unsatisfied bounds in def of ' ++ (fst d) ++ ' :: ' ++ printType (getType (snd d)))
+      _ -> case (length bs) of
+        0 -> d
+        _ -> error ('unsatisfied bounds in def of ' ++ (fst d) ++ ' :: ' ++ printType (getType (snd d)))
     _ -> d
   in case m of
     Module ann is ts cs ins ds -> let

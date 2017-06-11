@@ -20,9 +20,7 @@ instance Applicative Maybe where
   pure x = Just x
   (<*>) f x = case f of
     Nothing -> Nothing
-    Just f -> case x of
-      Nothing -> Nothing
-      Just x -> Just (f x)
+    Just f -> fmap f x
 
 instance Alternative Maybe where
   zero = Nothing

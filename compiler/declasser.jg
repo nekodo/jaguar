@@ -136,7 +136,7 @@ breakableDownAndUpWithEnv getEnv setEnv down up a e = let
         t = case (getType e) of
           TApp _ (TApp _ (TConst _ '->') t) _ -> t
           TForall _ _ _ (TApp _ (TApp _ (TConst _ '->') t) _) -> t
-          _ -> TUnknown emptyAnn
+          _ -> TUnknown
         in Left (Pair (enterScope (set p t empty) a) e)
       Let _ bs _ -> let
         ts = foldl (\ts b -> case b of Pair n e -> set n (getType e) ts) empty bs
@@ -159,7 +159,7 @@ breakableDownAndUpWithEnv getEnv setEnv down up a e = let
     in up a2 e
   patBindings p = case p of
     PConst _ _ -> empty
-    PVar (Ann t) v -> set v t empty
+    PVar ann v -> set v (getAnnType ann) empty
     PData _ _ ps -> foldr (\env p -> merge (patBindings p) env) empty ps
   in go a e
 

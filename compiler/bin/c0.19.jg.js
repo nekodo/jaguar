@@ -100,10 +100,7 @@ return function(x){
 return (function(){
 var $pm = f;return ($pm.$tag==Nothing.$tag)?((function(){
 return Nothing})()):(($pm.$tag==Just.$tag)?((function(f){
-return (function(){
-var $pm = x;return ($pm.$tag==Nothing.$tag)?((function(){
-return Nothing})()):(($pm.$tag==Just.$tag)?((function(x){
-return Just(f(x))})($pm.$0)):(error("pattern match fail")))})()})($pm.$0)):(error("pattern match fail")))})()}});
+return ((fmap($instance$Functor$0))(f))(x)})($pm.$0)):(error("pattern match fail")))})()}});
 var $instance$Alternative$2 = ($class$Alternative(Nothing))(function(a){
 return function(b){
 return (function(){
@@ -417,16 +414,22 @@ return ((set(rv))((mergeSet(res))((get(rv))(r))))(r)})()):(error("pattern match 
 return (getIx(unsafeStringToInt(i)))(ccs)}))(ord))})()};var result = topSort(ccs);return result})()};
 var exports = {dfs:dfs,fullDfs:fullDfs,scc:scc,sccSorted:sccSorted}
 return exports;})();
-cache["//compiler/ast.jg"] = (function() {var emptyArray = (_require("./builtins.js")).emptyArray;
+cache["//compiler/ast.jg"] = (function() {var $eq = (_require("./builtins.js")).$eq;
+var $neq = (_require("./builtins.js")).$neq;
+var emptyArray = (_require("./builtins.js")).emptyArray;
 var push = (_require("./builtins.js")).push;
 var concat = (_require("./builtins.js")).concat;
 var map = (_require("./builtins.js")).map;
+var filter = (_require("./builtins.js")).filter;
 var foldl = (_require("./builtins.js")).foldl;
+var Just = (_require("//compiler/prelude.jg")).Just;
+var Nothing = (_require("//compiler/prelude.jg")).Nothing;
 var Pair = (_require("//compiler/prelude.jg")).Pair;
 var Left = (_require("//compiler/prelude.jg")).Left;
 var Right = (_require("//compiler/prelude.jg")).Right;
 var snd = (_require("//compiler/prelude.jg")).snd;
 var concatMap = (_require("//compiler/prelude.jg")).concatMap;
+var find = (_require("//compiler/prelude.jg")).find;
 var fst = (_require("//compiler/prelude.jg")).fst;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
@@ -440,11 +443,11 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
-var $Ann = function($0){
-this.$0=$0;this.$tag="Ann"};
-var Ann = function($0){
-return new $Ann($0)};
-Ann.$tag = "Ann";
+var $AnnType = function($0){
+this.$0=$0;this.$tag="AnnType"};
+var AnnType = function($0){
+return new $AnnType($0)};
+AnnType.$tag = "AnnType";
 var $Var = function($0,$1){
 this.$0=$0;this.$1=$1;this.$tag="Var"};
 var Var = function($0){
@@ -600,10 +603,9 @@ return function($2){
 return function($3){
 return new $TForall($0,$1,$2,$3)}}}};
 TForall.$tag = "TForall";
-var $TUnknown = function($0){
-this.$0=$0;this.$tag="TUnknown"};
-var TUnknown = function($0){
-return new $TUnknown($0)};
+var $TUnknown = function(){
+this.$tag="TUnknown"};
+var TUnknown = new $TUnknown();
 TUnknown.$tag = "TUnknown";
 var $ImportClosed = function($0,$1,$2){
 this.$0=$0;this.$1=$1;this.$2=$2;this.$tag="ImportClosed"};
@@ -672,25 +674,42 @@ return Left((down(a))(e))}}))(up)}};
 var down = function(f){
 return (downAndUp(f))(Pair)};
 var up = downAndUp(Pair);
+var getAnn = function(name){
+return function(ann){
+return ((fmap($import1$instance$Functor$0))(snd))((find(function(p){
+return ($eq(fst(p)))(name)}))(ann))}};
+var getAnnType = function(ann){
+return (function(){
+var $pm = (getAnn("type"))(ann);return (($pm.$tag==Just.$tag)&&($pm.$0.$tag==AnnType.$tag))?((function(t){
+return t})($pm.$0.$0)):(($pm.$tag==Nothing.$tag)?((function(){
+return TUnknown})()):(error("pattern match fail")))})()};
 var getType = function(e){
 return (function(){
-var $pm = e;return (($pm.$tag==Var.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,v){
-return t})($pm.$0.$0,$pm.$1)):((($pm.$tag==Const.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,c){
-return t})($pm.$0.$0,$pm.$1)):((($pm.$tag==App.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,f,a){
-return t})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Lam.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,p,b){
-return t})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Case.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,e,ps){
-return t})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Let.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,ds,e){
-return t})($pm.$0.$0,$pm.$1,$pm.$2)):(error("pattern match fail")))))))})()};
+var $pm = e;return ($pm.$tag==Var.$tag)?((function(ann,v){
+return getAnnType(ann)})($pm.$0,$pm.$1)):(($pm.$tag==Const.$tag)?((function(ann,c){
+return getAnnType(ann)})($pm.$0,$pm.$1)):(($pm.$tag==App.$tag)?((function(ann,f,a){
+return getAnnType(ann)})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Lam.$tag)?((function(ann,p,b){
+return getAnnType(ann)})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Case.$tag)?((function(ann,e,ps){
+return getAnnType(ann)})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Let.$tag)?((function(ann,ds,e){
+return getAnnType(ann)})($pm.$0,$pm.$1,$pm.$2)):(error("pattern match fail")))))))})()};
+var setAnn = function(name){
+return function(val){
+return function(ann){
+return (push((Pair(name))(val)))((filter(function(p){
+return ($neq(fst(p)))(name)}))(ann))}}};
+var setAnnType = function(t){
+return function(ann){
+return ((setAnn("type"))(AnnType(t)))(ann)}};
 var setType = function(t){
 return function(e){
 return (function(){
-var $pm = e;return (($pm.$tag==Var.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(x,v){
-return (Var(Ann(t)))(v)})($pm.$0.$0,$pm.$1)):((($pm.$tag==Const.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(x,c){
-return (Const(Ann(t)))(c)})($pm.$0.$0,$pm.$1)):((($pm.$tag==App.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(x,f,a){
-return ((App(Ann(t)))(f))(a)})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Lam.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(x,p,b){
-return ((Lam(Ann(t)))(p))(b)})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Case.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(x,e,ps){
-return ((Case(Ann(t)))(e))(ps)})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Let.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(x,ds,e){
-return ((Let(Ann(t)))(ds))(e)})($pm.$0.$0,$pm.$1,$pm.$2)):(error("pattern match fail")))))))})()}};
+var $pm = e;return ($pm.$tag==Var.$tag)?((function(ann,v){
+return (Var((setAnnType(t))(ann)))(v)})($pm.$0,$pm.$1)):(($pm.$tag==Const.$tag)?((function(ann,c){
+return (Const((setAnnType(t))(ann)))(c)})($pm.$0,$pm.$1)):(($pm.$tag==App.$tag)?((function(ann,f,a){
+return ((App((setAnnType(t))(ann)))(f))(a)})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Lam.$tag)?((function(ann,p,b){
+return ((Lam((setAnnType(t))(ann)))(p))(b)})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Case.$tag)?((function(ann,e,ps){
+return ((Case((setAnnType(t))(ann)))(e))(ps)})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Let.$tag)?((function(ann,ds,e){
+return ((Let((setAnnType(t))(ann)))(ds))(e)})($pm.$0,$pm.$1,$pm.$2)):(error("pattern match fail")))))))})()}};
 var dataConName = function(dc){
 return (function(){
 var $pm = dc;return ($pm.$tag==DataCon.$tag)?((function(n,ts){
@@ -703,8 +722,8 @@ var getExports = function(m){
 return (function(){
 var $pm = m;return ($pm.$tag==Module.$tag)?((function(is,ds,vs){
 return (concat((concatMap(dataConNames))(ds)))((map(fst))(vs))})($pm.$1,$pm.$2,$pm.$5)):(error("pattern match fail"))})()};
-var emptyAnn = Ann(TUnknown(Ann(TBot)));
-var exports = {Ann:Ann,Var:Var,Const:Const,App:App,Lam:Lam,Case:Case,Let:Let,CNum:CNum,CStr:CStr,PVar:PVar,PConst:PConst,PData:PData,Module:Module,ModuleInterface:ModuleInterface,Data:Data,DataCon:DataCon,Class:Class,Instance:Instance,TCBound:TCBound,TConst:TConst,TVar:TVar,TApp:TApp,TBot:TBot,TForall:TForall,TUnknown:TUnknown,ImportClosed:ImportClosed,ImportOpen:ImportOpen,ImportAll:ImportAll,breakableDownAndUp:breakableDownAndUp,breakableDown:breakableDown,downAndUp:downAndUp,down:down,up:up,getType:getType,setType:setType,dataConName:dataConName,dataConNames:dataConNames,getExports:getExports,emptyAnn:emptyAnn}
+var emptyAnn = emptyArray;
+var exports = {AnnType:AnnType,Var:Var,Const:Const,App:App,Lam:Lam,Case:Case,Let:Let,CNum:CNum,CStr:CStr,PVar:PVar,PConst:PConst,PData:PData,Module:Module,ModuleInterface:ModuleInterface,Data:Data,DataCon:DataCon,Class:Class,Instance:Instance,TCBound:TCBound,TConst:TConst,TVar:TVar,TApp:TApp,TBot:TBot,TForall:TForall,TUnknown:TUnknown,ImportClosed:ImportClosed,ImportOpen:ImportOpen,ImportAll:ImportAll,breakableDownAndUp:breakableDownAndUp,breakableDown:breakableDown,downAndUp:downAndUp,down:down,up:up,getAnn:getAnn,getAnnType:getAnnType,getType:getType,setAnn:setAnn,setAnnType:setAnnType,setType:setType,dataConName:dataConName,dataConNames:dataConNames,getExports:getExports,emptyAnn:emptyAnn}
 return exports;})();
 cache["//compiler/printer.jg"] = (function() {var $concat = (_require("./builtins.js")).$concat;
 var length = (_require("./builtins.js")).length;
@@ -737,7 +756,6 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
-var Ann = (_require("//compiler/ast.jg")).Ann;
 var Var = (_require("//compiler/ast.jg")).Var;
 var Const = (_require("//compiler/ast.jg")).Const;
 var App = (_require("//compiler/ast.jg")).App;
@@ -756,6 +774,7 @@ var TApp = (_require("//compiler/ast.jg")).TApp;
 var TBot = (_require("//compiler/ast.jg")).TBot;
 var TForall = (_require("//compiler/ast.jg")).TForall;
 var TUnknown = (_require("//compiler/ast.jg")).TUnknown;
+var getType = (_require("//compiler/ast.jg")).getType;
 var printType = function(t){
 return (function(){
 var printParen = function(t){
@@ -804,14 +823,7 @@ return function(b){
 return function(c){
 return (sameLine(a))((sameLine(b))(c))}}};var printT = function(e){
 return (function(){
-var t = (function(){
-var $pm = e;return (($pm.$tag==Var.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,v){
-return t})($pm.$0.$0,$pm.$1)):((($pm.$tag==Const.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,c){
-return t})($pm.$0.$0,$pm.$1)):((($pm.$tag==App.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,f,a){
-return t})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Lam.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,p,b){
-return t})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Case.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,e,ps){
-return t})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Let.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,ds,e){
-return t})($pm.$0.$0,$pm.$1,$pm.$2)):(error("pattern match fail")))))))})();return printType(t)})()};var printPat = function(p){
+var t = getType(e);return printType(t)})()};var printPat = function(p){
 return (function(){
 var $pm = p;return ($pm.$tag==PVar.$tag)?((function(v){
 return v})($pm.$1)):((($pm.$tag==PConst.$tag)&&($pm.$1.$tag==CNum.$tag))?((function(n){
@@ -900,7 +912,6 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
-var Ann = (_require("//compiler/ast.jg")).Ann;
 var Var = (_require("//compiler/ast.jg")).Var;
 var Const = (_require("//compiler/ast.jg")).Const;
 var App = (_require("//compiler/ast.jg")).App;
@@ -926,7 +937,9 @@ var TBot = (_require("//compiler/ast.jg")).TBot;
 var TForall = (_require("//compiler/ast.jg")).TForall;
 var TUnknown = (_require("//compiler/ast.jg")).TUnknown;
 var ImportOpen = (_require("//compiler/ast.jg")).ImportOpen;
+var down = (_require("//compiler/ast.jg")).down;
 var getType = (_require("//compiler/ast.jg")).getType;
+var setAnnType = (_require("//compiler/ast.jg")).setAnnType;
 var setType = (_require("//compiler/ast.jg")).setType;
 var emptyAnn = (_require("//compiler/ast.jg")).emptyAnn;
 var printType = (_require("//compiler/printer.jg")).printType;
@@ -1219,25 +1232,17 @@ return (function(){
 var $pm = (contains(v))(ftv);return (!$pm)?((function(){
 return subs})()):($pm?((function(){
 return ((set(v))(t))(subs)})()):(error("pattern match fail")))})()}}};return ((foldRecord(drop))(empty))(subs)})()}};
+var applySubsE = function(subs){
+return function(e){
+return (function(){
+var f = function(a){
+return function(e){
+return (Pair(a))((setType((applySubs(subs))(getType(e))))(e))}};return snd(((down(f))(true))(e))})()}};
 var applySubsDef = function(subs){
 return function(d){
 return (function(){
 var $pm = d;return ($pm.$tag==Pair.$tag)?((function(n,e){
 return (Pair(n))((applySubsE(subs))(e))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};
-var applySubsE = function(subs){
-return function(e){
-return (function(){
-var applySubsCase = function(p){
-return (function(){
-var $pm = p;return ($pm.$tag==Pair.$tag)?((function(pat,e){
-return (Pair(pat))((applySubsE(subs))(e))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()};return (function(){
-var $pm = e;return (($pm.$tag==Var.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,v){
-return (Var(Ann((applySubs(subs))(t))))(v)})($pm.$0.$0,$pm.$1)):((($pm.$tag==Const.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,c){
-return (Const(Ann((applySubs(subs))(t))))(c)})($pm.$0.$0,$pm.$1)):((($pm.$tag==App.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,f,a){
-return ((App(Ann((applySubs(subs))(t))))((applySubsE(subs))(f)))((applySubsE(subs))(a))})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Lam.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,p,b){
-return ((Lam(Ann((applySubs(subs))(t))))(p))((applySubsE(subs))(b))})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Case.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,e,ps){
-return ((Case(Ann((applySubs(subs))(t))))((applySubsE(subs))(e)))((map(applySubsCase))(ps))})($pm.$0.$0,$pm.$1,$pm.$2)):((($pm.$tag==Let.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,ds,e){
-return ((Let(Ann((applySubs(subs))(t))))((map(applySubsDef(subs)))(ds)))((applySubsE(subs))(e))})($pm.$0.$0,$pm.$1,$pm.$2)):(error("pattern match fail")))))))})()})()}};
 var freeVars = function(e){
 return (function(){
 var namesInPat = function(p){
@@ -1273,11 +1278,11 @@ return function(ctx){
 return function(te){
 return function(pat){
 return (function(){
-var $pm = pat;return ($pm.$tag==PVar.$tag)?((function(v){
+var $pm = pat;return ($pm.$tag==PVar.$tag)?((function(ann,v){
 return (function(){
 var $pm = newTVar(ctx);return ($pm.$tag==Pair.$tag)?((function(ctx2,tv){
 return (function(){
-var usubs = (unify(te))(tv);var subs2 = (composeSubs(getSubs(ctx2)))(usubs);var tv2 = (applySubs(subs2))(tv);return (Pair((Pair((setSubs(subs2))(ctx2)))(((set(v))(tv2))(empty))))((PVar(Ann(tv2)))(v))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$1)):((($pm.$tag==PConst.$tag)&&($pm.$1.$tag==CNum.$tag))?((function(n){
+var usubs = (unify(te))(tv);var subs2 = (composeSubs(getSubs(ctx2)))(usubs);var tv2 = (applySubs(subs2))(tv);return (Pair((Pair((setSubs(subs2))(ctx2)))(((set(v))(tv2))(empty))))((PVar((setAnnType(tv2))(ann)))(v))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):((($pm.$tag==PConst.$tag)&&($pm.$1.$tag==CNum.$tag))?((function(n){
 return (function(){
 var usubs = (unify(te))((TConst(emptyAnn))("Number"));var subs2 = (composeSubs(getSubs(ctx)))(usubs);return (Pair((Pair((setSubs(subs2))(ctx)))(empty)))(pat)})()})($pm.$1.$0)):((($pm.$tag==PConst.$tag)&&($pm.$1.$tag==CStr.$tag))?((function(s){
 return (function(){
@@ -1471,11 +1476,14 @@ return function(m){
 return (function(){
 var checkForUnsatisfiedBounds = function(d){
 return (function(){
-var $pm = getType(snd(d));return ($pm.$tag==TForall.$tag)?((function(t){
+var $pm = getType(snd(d));return ($pm.$tag==TForall.$tag)?((function(bs,t){
 return (function(){
 var $pm = t;return (($pm.$tag==TApp.$tag)&&(($pm.$1.$tag==TApp.$tag)&&(($pm.$1.$1.$tag==TConst.$tag)&&("->"==$pm.$1.$1.$1))))?((function(){
 return d})()):((function(){
-return error(($concat(($concat(($concat("unsatisfied bounds in def of "))(fst(d))))(" :: ")))(printType(getType(snd(d)))))})())})()})($pm.$3)):((function(){
+return (function(){
+var $pm = length(bs);return (0==$pm)?((function(){
+return d})()):((function(){
+return error(($concat(($concat(($concat("unsatisfied bounds in def of "))(fst(d))))(" :: ")))(printType(getType(snd(d)))))})())})()})())})()})($pm.$2,$pm.$3)):((function(){
 return d})())})()};var addIns = function(env){
 return function(i){
 return (addInstance(instanceToTypeBound(i)))(env)}};var addTypes = function(env){
@@ -1538,7 +1546,7 @@ return (function(){
 var $pm = e;return ($pm.$tag==IEnv.$tag)?((function(bs,ts){
 return (function(){
 var _2 = debug((map(printTypeBound))(ts));var _ = debug((mapRecord(printType))(bs));return e})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()};
-var exports = {ICtx:ICtx,IEnv:IEnv,instanceToTypeBound:instanceToTypeBound,f1:f1,conType:conType,conTypes:conTypes,getTypedExports:getTypedExports,newTVar:newTVar,getSubs:getSubs,applySubs:applySubs,applySubsBound:applySubsBound,setSubs:setSubs,getBinding:getBinding,hasBinding:hasBinding,addBinding:addBinding,addBindings:addBindings,applySubsEnv:applySubsEnv,addBound:addBound,instantiate:instantiate,freeTVars:freeTVars,freeTVarsInBound:freeTVarsInBound,substitute:substitute,composeSubs:composeSubs,unify:unify,unrollDataConType:unrollDataConType,getBounds:getBounds,setBounds:setBounds,freeTVarsInEnv:freeTVarsInEnv,generalize:generalize,getInstances:getInstances,satisfies:satisfies,satisfiesBound:satisfiesBound,dropSatisfiedBounds:dropSatisfiedBounds,dropNonEnvSubs:dropNonEnvSubs,applySubsDef:applySubsDef,applySubsE:applySubsE,freeVars:freeVars,infer:infer,inferSccDefs:inferSccDefs,inferDefs:inferDefs,newCtx:newCtx,inferInstance:inferInstance,classToBindings:classToBindings,emptyEnv:emptyEnv,addInstance:addInstance,inferTypeModule:inferTypeModule,checkSubs:checkSubs,inferType:inferType,debugEnv:debugEnv}
+var exports = {ICtx:ICtx,IEnv:IEnv,instanceToTypeBound:instanceToTypeBound,f1:f1,conType:conType,conTypes:conTypes,getTypedExports:getTypedExports,newTVar:newTVar,getSubs:getSubs,applySubs:applySubs,applySubsBound:applySubsBound,setSubs:setSubs,getBinding:getBinding,hasBinding:hasBinding,addBinding:addBinding,addBindings:addBindings,applySubsEnv:applySubsEnv,addBound:addBound,instantiate:instantiate,freeTVars:freeTVars,freeTVarsInBound:freeTVarsInBound,substitute:substitute,composeSubs:composeSubs,unify:unify,unrollDataConType:unrollDataConType,getBounds:getBounds,setBounds:setBounds,freeTVarsInEnv:freeTVarsInEnv,generalize:generalize,getInstances:getInstances,satisfies:satisfies,satisfiesBound:satisfiesBound,dropSatisfiedBounds:dropSatisfiedBounds,dropNonEnvSubs:dropNonEnvSubs,applySubsE:applySubsE,applySubsDef:applySubsDef,freeVars:freeVars,infer:infer,inferSccDefs:inferSccDefs,inferDefs:inferDefs,newCtx:newCtx,inferInstance:inferInstance,classToBindings:classToBindings,emptyEnv:emptyEnv,addInstance:addInstance,inferTypeModule:inferTypeModule,checkSubs:checkSubs,inferType:inferType,debugEnv:debugEnv}
 return exports;})();
 cache["//compiler/importNormalizer.jg"] = (function() {var get = (_require("./builtins.js")).get;
 var keys = (_require("./builtins.js")).keys;
@@ -1654,7 +1662,6 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
-var Ann = (_require("//compiler/ast.jg")).Ann;
 var Var = (_require("//compiler/ast.jg")).Var;
 var App = (_require("//compiler/ast.jg")).App;
 var Lam = (_require("//compiler/ast.jg")).Lam;
@@ -1679,6 +1686,7 @@ var ImportClosed = (_require("//compiler/ast.jg")).ImportClosed;
 var ImportOpen = (_require("//compiler/ast.jg")).ImportOpen;
 var ImportAll = (_require("//compiler/ast.jg")).ImportAll;
 var breakableDownAndUp = (_require("//compiler/ast.jg")).breakableDownAndUp;
+var getAnnType = (_require("//compiler/ast.jg")).getAnnType;
 var getType = (_require("//compiler/ast.jg")).getType;
 var setType = (_require("//compiler/ast.jg")).setType;
 var emptyAnn = (_require("//compiler/ast.jg")).emptyAnn;
@@ -1728,8 +1736,8 @@ return exitScope(a)})()):((function(){
 return a})()))})();return (up(a2))(e)})()}};var patBindings = function(p){
 return (function(){
 var $pm = p;return ($pm.$tag==PConst.$tag)?((function(){
-return empty})()):((($pm.$tag==PVar.$tag)&&($pm.$0.$tag==Ann.$tag))?((function(t,v){
-return ((set(v))(t))(empty)})($pm.$0.$0,$pm.$1)):(($pm.$tag==PData.$tag)?((function(ps){
+return empty})()):(($pm.$tag==PVar.$tag)?((function(ann,v){
+return ((set(v))(getAnnType(ann)))(empty)})($pm.$0,$pm.$1)):(($pm.$tag==PData.$tag)?((function(ps){
 return ((foldr(function(env){
 return function(p){
 return (merge(patBindings(p)))(env)}}))(empty))(ps)})($pm.$2)):(error("pattern match fail"))))})()};var enterScope = function(bs){
@@ -1749,7 +1757,7 @@ var t = (function(){
 var $pm = getType(e);return (($pm.$tag==TApp.$tag)&&(($pm.$1.$tag==TApp.$tag)&&(($pm.$1.$1.$tag==TConst.$tag)&&("->"==$pm.$1.$1.$1))))?((function(t){
 return t})($pm.$1.$2)):((($pm.$tag==TForall.$tag)&&(($pm.$3.$tag==TApp.$tag)&&(($pm.$3.$1.$tag==TApp.$tag)&&(($pm.$3.$1.$1.$tag==TConst.$tag)&&("->"==$pm.$3.$1.$1.$1)))))?((function(t){
 return t})($pm.$3.$1.$2)):((function(){
-return TUnknown(emptyAnn)})()))})();return Left((Pair((enterScope(((set(p))(t))(empty)))(a)))(e))})()})($pm.$1,$pm.$2)):(($pm.$tag==Let.$tag)?((function(bs){
+return TUnknown})()))})();return Left((Pair((enterScope(((set(p))(t))(empty)))(a)))(e))})()})($pm.$1,$pm.$2)):(($pm.$tag==Let.$tag)?((function(bs){
 return (function(){
 var ts = ((foldl(function(ts){
 return function(b){
@@ -2520,11 +2528,10 @@ return (map(function(n){
 return (function(){
 var $pm = n;return ($pm.$tag==Pair.$tag)?((function(n,a){
 return (JSVar(opName(a)))((JSIndex(requireExpr(f)))(JSString(opName(n))))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}))(ns)}};
-var importToJs = function(importSymbols){
-return function(i){
+var importToJs = function(i){
 return (function(){
 var $pm = i;return ($pm.$tag==ImportOpen.$tag)?((function(f,ns){
-return (buildImports(f))(ns)})($pm.$1,$pm.$2)):(error("pattern match fail"))})()}};
+return (buildImports(f))(ns)})($pm.$1,$pm.$2)):(error("pattern match fail"))})()};
 var dataConFieldIds = function(ts){
 return (map(function(p){
 return ($concat("$"))(intToString(fst(p)))}))(zipWithIndex(ts))};
@@ -2548,7 +2555,7 @@ return function(m){
 return (function(){
 var $pm = m;return ($pm.$tag==Module.$tag)?((function(is,ds,cs,ins,vs){
 return (function(){
-var exportDef = (JSVar("exports"))(exportObject(m));var defs = (map(defToJs))(vs);var dataDefs = (concatMap(dataToJs))(ds);var imports = (concatMap(importToJs(importSymbols)))(is);return (push(exportDef))((concat(imports))((concat(dataDefs))(defs)))})()})($pm.$1,$pm.$2,$pm.$3,$pm.$4,$pm.$5)):(error("pattern match fail"))})()}};
+var exportDef = (JSVar("exports"))(exportObject(m));var defs = (map(defToJs))(vs);var dataDefs = (concatMap(dataToJs))(ds);var imports = (concatMap(importToJs))(is);return (push(exportDef))((concat(imports))((concat(dataDefs))(defs)))})()})($pm.$1,$pm.$2,$pm.$3,$pm.$4,$pm.$5)):(error("pattern match fail"))})()}};
 var exports = {opChar:opChar,opName:opName,processPattern:processPattern,jaguarExprToJsExpr:jaguarExprToJsExpr,assemblePatternMatch:assemblePatternMatch,defToJs:defToJs,requireExpr:requireExpr,buildImports:buildImports,importToJs:importToJs,dataConFieldIds:dataConFieldIds,dataConToJs:dataConToJs,dataToJs:dataToJs,exportObject:exportObject,moduleToJs:moduleToJs}
 return exports;})();
 cache["//compiler/js/backend.jg"] = (function() {var $concat = (_require("./builtins.js")).$concat;

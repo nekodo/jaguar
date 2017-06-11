@@ -1,27 +1,36 @@
 import * from '//compiler/prelude.jg'
 
-data Ann = Ann Type
-emptyAnn = Ann (TUnknown (Ann TBot))
+data Ann =
+  AnnType Type
+emptyAnn = emptyArray
+
+getAnn name ann = fmap snd (find (\p -> fst p == name) ann)
+setAnn name val ann = push (Pair name val) (filter (\p -> fst p /= name) ann)
+
+getAnnType ann = case (getAnn 'type' ann) of
+  Just (AnnType t) -> t
+  Nothing -> TUnknown
+setAnnType t ann = setAnn 'type' (AnnType t) ann
 
 data Expr =
-  Var Ann String
-  | Const Ann CVal
-  | App Ann Expr Expr
-  | Lam Ann String Expr
-  | Case Ann Expr (Array (Pair Pat Expr))
-  | Let Ann (Array (Pair String Expr)) Expr
+  Var (Array (Pair String Ann)) String
+  | Const (Array (Pair String Ann)) CVal
+  | App (Array (Pair String Ann)) Expr Expr
+  | Lam (Array (Pair String Ann)) String Expr
+  | Case (Array (Pair String Ann)) Expr (Array (Pair Pat Expr))
+  | Let (Array (Pair String Ann)) (Array (Pair String Expr)) Expr
 
 data CVal =
   CNum Number
   | CStr String
 
 data Pat =
-  PVar Ann String
-  | PConst Ann CVal
-  | PData Ann String (Array Pat)
+  PVar (Array (Pair String Ann)) String
+  | PConst (Array (Pair String Ann)) CVal
+  | PData (Array (Pair String Ann)) String (Array Pat)
 
 data Module = Module
-  Ann                        // annotations
+  (Array (Pair String Ann))                        // annotations
   (Array Import)             // imports
   (Array Data)               // ADT definitions
   (Array Class)              // type clas definitions
@@ -33,39 +42,39 @@ data ModuleInterface = ModuleInterface
   (Array Class)      // exported classes
   (Array TypeBound)  // exported clas instances
 
-data Data = Data Ann String (Array String) (Array DataCon)
-data DataCon = DataCon Ann String (Array Type)
+data Data = Data (Array (Pair String Ann)) String (Array String) (Array DataCon)
+data DataCon = DataCon (Array (Pair String Ann)) String (Array Type)
 
 data Class = Class
-  Ann
+  (Array (Pair String Ann))
   String     // name
   String     // type var
   (Array (Pair String Type))
 
 data Instance = Instance
-  Ann
+  (Array (Pair String Ann))
   String     // name
   Type       // type for which we're defining the instanc
   (Array (Pair String Expr))
 
 data TypeBound =
   TCBound  // type clas bound
-    Ann    // annotation
+    (Array (Pair String Ann))    // annotation
     String // name of the type clas
     Type   // param
 
 data Type =
-  TConst Ann String
-  | TVar Ann String
-  | TApp Ann Type Type
+  TConst (Array (Pair String Ann)) String
+  | TVar (Array (Pair String Ann)) String
+  | TApp (Array (Pair String Ann)) Type Type
   | TBot
-  | TForall Ann (Array String) (Array TypeBound) Type
-  | TUnknown Ann
+  | TForall (Array (Pair String Ann)) (Array String) (Array TypeBound) Type
+  | TUnknown
 
 data Import =
-  ImportClosed Ann String String
-  | ImportOpen Ann String (Array (Pair String String))
-  | ImportAll Ann String
+  ImportClosed (Array (Pair String Ann)) String String
+  | ImportOpen (Array (Pair String Ann)) String (Array (Pair String String))
+  | ImportAll (Array (Pair String Ann)) String
 
 dataConName = \dc -> case dc of DataCon _ n ts -> n
 dataConNames = \d -> case d of Data _ n ps cs -> map dataConName cs
@@ -73,20 +82,20 @@ getExports = \m -> case m of
   Module _ is ds _ _ vs -> concat (concatMap dataConNames ds) (map fst vs)
   
 setType t e = case e of
-  Var (Ann x) v -> Var (Ann t) v
-  Const (Ann x) c -> Const (Ann t) c
-  App (Ann x) f a -> App (Ann t) f a
-  Lam (Ann x) p b -> Lam (Ann t) p b
-  Case (Ann x) e ps -> Case (Ann t) e ps
-  Let (Ann x) ds e -> Let (Ann t) ds e
+  Var ann v -> Var (setAnnType t ann) v
+  Const ann c -> Const (setAnnType t ann) c
+  App ann f a -> App (setAnnType t ann) f a
+  Lam ann p b -> Lam (setAnnType t ann) p b
+  Case ann e ps -> Case (setAnnType t ann) e ps
+  Let ann ds e -> Let (setAnnType t ann) ds e
 
 getType e = case e of
-  Var (Ann t) v -> t
-  Const (Ann t) c -> t
-  App (Ann t) f a -> t
-  Lam (Ann t) p b -> t
-  Case (Ann t) e ps -> t
-  Let (Ann t) ds e -> t
+  Var ann v -> getAnnType ann
+  Const ann c -> getAnnType ann
+  App ann f a -> getAnnType ann
+  Lam ann p b -> getAnnType ann
+  Case ann e ps -> getAnnType ann
+  Let ann ds e -> getAnnType ann
 
 breakableDownAndUp down up a e = let
   go = breakableDownAndUp down up

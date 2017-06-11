@@ -69,7 +69,7 @@ requireExpr = \f -> JSCall (JSRef '_require') (arr1 (JSString f))
 buildImports = \f ns ->
   map (\n -> case n of Pair n a -> JSVar (opName a) (JSIndex (requireExpr f) (JSString (opName n)))) ns
 
-importToJs = \importSymbols i -> case i of
+importToJs i = case i of
   ImportOpen _ f ns -> buildImports f ns
 
 dataConFieldIds = \ts ->
@@ -90,7 +90,7 @@ exportObject = \m -> JSObject (map (\n -> Pair (opName n) (JSRef (opName n))) (g
 
 moduleToJs importSymbols m = case m of
   Module _ is ds cs ins vs -> let
-    imports = concatMap (importToJs importSymbols) is
+    imports = concatMap importToJs is
     dataDefs = concatMap dataToJs ds
     defs = map defToJs vs
     exportDef = JSVar 'exports' (exportObject m)

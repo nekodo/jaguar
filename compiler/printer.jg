@@ -20,7 +20,7 @@ printType t =
     TConst _ t -> t
     TVar _ v -> v
     TBot -> '~bottom~'
-    TUnknown _ -> '?'
+    TUnknown -> '?'
     TApp _ (TApp _ (TConst _ '->') a) b ->
       printTypeInFun a ++ ' -> ' ++ printType b
     TApp _ a b ->
@@ -72,13 +72,7 @@ printExprTyped typed e =
               (indent (concatMap (printDef typed) ds))))
           (indent (printExpr e))
     printT e = let
-      t = case e of
-        Var (Ann t) v -> t
-        Const (Ann t) c -> t
-        App (Ann t) f a -> t
-        Lam (Ann t) p b -> t
-        Case (Ann t) e ps -> t
-        Let (Ann t) ds e -> t
+      t = getType e
       in printType t
     printExpr e = case typed of
       False -> printE e
