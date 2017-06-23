@@ -53,9 +53,9 @@ lineCommentP = mkTok ComTok <*> (charP '/' |> charP '/' |> manyStr (notCharP '\n
 symbolP = mkTok SymTok <*> charP '()[]{},\\'
 
 identP = mkTok IdTok <*> (pure (++) <*> charP (letters ++ '_') <*> manyStr (charP (letters ++ digits ++ '_')))
-opIdentP = mkTok IdTok <*> (charP '(' |> someStr (charP '-+*/=:&|<>^') <| charP ')')
+opIdentP = mkTok IdTok <*> (charP '(' |> someStr (charP '-+*/=:&|<>^$') <| charP ')')
 
-opP = mkTok OpTok <*> someStr (charP '-+*/=:&|<>^')
+opP = mkTok OpTok <*> someStr (charP '-+*/=:&|<>^$')
 
 jaguarTokenP = fmany (stringP <|> whitespaceP <|> numP <|> lineCommentP <|> identP <|> opIdentP <|> opP <|> symbolP)
 

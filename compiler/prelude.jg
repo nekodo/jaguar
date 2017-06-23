@@ -1,3 +1,5 @@
+data Unit = Unit
+
 class Functor f where
   fmap :: (a -> b) -> f a -> f b
 
@@ -8,6 +10,12 @@ class Applicative a where
 class Alternative f where
   zero :: f a
   (<|>) :: f a -> f a -> f a
+
+class Monad m where
+  ret :: a -> m a
+  (>>=) :: m a -> (a -> m b) -> m b
+
+(>>) a b = a >>= \_ -> b
 
 data Maybe a = Just a | Nothing
 
@@ -27,6 +35,12 @@ instance Alternative Maybe where
   (<|>) a b = case a of
     Nothing -> b
     _ -> a
+
+instance Monad Maybe where
+  ret = pure
+  (>>=) a f = case a of
+    Nothing -> Nothing
+    Just a -> f a
 
 maybe = \a b m -> case m of
   Just x -> a x
@@ -156,3 +170,29 @@ strToArray s = let
       False -> Right r
       True -> Left (Pair (i + 1) (push (getChar i s) r))
   in loop f (Pair 0 emptyArray)
+
+foldM f r xs = foldl (\r x -> r >>= \r -> f r x) (ret r) xs
+
+mapM f xs = foldM (\xs x -> f x >>= \x -> ret (push x xs)) emptyArray xs
+forM xs f = mapM f xs
+
+data State s a = State (s -> Pair s a)
+
+instance Functor (State s) where
+  fmap f s = case s of State sf -> State (\s -> case (sf s) of Pair s a -> Pair s (f a))
+
+instance Applicative (State s) where
+  pure a = State (\s -> Pair s a)
+  (<*>) f a = case f of State sf -> case a of State sa -> State
+    (\s -> case (sf s) of Pair s f -> case (sa s) of Pair s a -> Pair s (f a))
+
+instance Monad (State s) where
+  ret = pure
+  (>>=) a f = case a of State sa -> State
+    (\s -> case (sa s) of Pair s a -> case (f a) of State sb -> sb s)
+
+gets = State (\s -> Pair s s)
+sets s = State (\_ -> Pair s Unit)
+
+runState s m = case m of State f -> f s
+evalState s m = snd (runState s m)

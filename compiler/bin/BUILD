@@ -4,7 +4,7 @@ load("//compiler/bin:old.bzl", "old_jaguar_compiler", "old_jaguar_compiler13", "
 
 alias(
     name = "latest",
-    actual = ":v0.19",
+    actual = ":v0.20",
     visibility = ["//visibility:public"],
 )
 
@@ -90,5 +90,11 @@ jaguar_compiler0_15(
 jaguar_compiler0_15(
     name = "v0.19",
     jaguar = "c0.19.jg.js",
+    builtins =  "builtins0.18.js",
+)
+
+jaguar_compiler0_15(
+    name = "v0.20",
+    jaguar = "c0.20.jg.js",
     builtins =  "builtins0.18.js",
 )

@@ -124,3 +124,20 @@ downAndUp down up = breakableDownAndUp (\a e -> Left (down a e)) up
 up = downAndUp Pair
 down f = downAndUp f Pair
 breakableDown f = breakableDownAndUp f Pair
+
+breakableDownAndUpM down up e = let
+  go = breakableDownAndUpM down up
+  gos = mapM (\d -> case d of Pair n e -> go e >>= \e -> ret (Pair n e))
+  in down e >>= \e -> case e of
+    Right e -> ret e
+    Left e -> case e of
+      Lam ann p e -> go e >>= \e -> up (Lam ann p e)
+      App ann f x -> go f >>= \f -> go x >>= \x -> up (App ann f x)
+      Case ann e ps -> go e >>= \e -> gos ps >>= \ps -> up (Case ann e ps)
+      Let ann bs e -> gos bs >>= \bs -> go e >>= \e -> up (Let ann bs e)
+      _ -> up e
+
+downAndUpM down up = breakableDownAndUpM (\e -> down e >>= \e -> ret (Left e)) up
+upM = downAndUpM ret
+downM f = downAndUpM f ret
+breakableDownM f = breakableDownAndUpM f ret

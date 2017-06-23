@@ -26,6 +26,10 @@ var foldl1 = (_require("./builtins.js")).foldl1;
 var iterate = (_require("./builtins.js")).iterate;
 var True = (_require("./builtins.js")).True;
 var False = (_require("./builtins.js")).False;
+var $Unit = function(){
+this.$tag="Unit"};
+var Unit = new $Unit();
+Unit.$tag = "Unit";
 var $Just = function($0){
 this.$0=$0;this.$tag="Just"};
 var Just = function($0){
@@ -51,6 +55,11 @@ this.$0=$0;this.$tag="Right"};
 var Right = function($0){
 return new $Right($0)};
 Right.$tag = "Right";
+var $State = function($0){
+this.$0=$0;this.$tag="State"};
+var State = function($0){
+return new $State($0)};
+State.$tag = "State";
 var $$class$Functor = function($0){
 this.$0=$0;this.$tag="$class$Functor"};
 var $class$Functor = function($0){
@@ -68,6 +77,12 @@ var $class$Alternative = function($0){
 return function($1){
 return new $$class$Alternative($0,$1)}};
 $class$Alternative.$tag = "$class$Alternative";
+var $$class$Monad = function($0,$1){
+this.$0=$0;this.$1=$1;this.$tag="$class$Monad"};
+var $class$Monad = function($0){
+return function($1){
+return new $$class$Monad($0,$1)}};
+$class$Monad.$tag = "$class$Monad";
 var fmap = function(x){
 return (function(){
 var $pm = x;return ($pm.$tag==$class$Functor.$tag)?((function(fmap){
@@ -88,6 +103,14 @@ var $lt$pip$gt = function(x){
 return (function(){
 var $pm = x;return ($pm.$tag==$class$Alternative.$tag)?((function(zero,$lt$pip$gt){
 return $lt$pip$gt})($pm.$0,$pm.$1)):(error("pattern match fail"))})()};
+var ret = function(x){
+return (function(){
+var $pm = x;return ($pm.$tag==$class$Monad.$tag)?((function(ret,$gt$gt$eq){
+return ret})($pm.$0,$pm.$1)):(error("pattern match fail"))})()};
+var $gt$gt$eq = function(x){
+return (function(){
+var $pm = x;return ($pm.$tag==$class$Monad.$tag)?((function(ret,$gt$gt$eq){
+return $gt$gt$eq})($pm.$0,$pm.$1)):(error("pattern match fail"))})()};
 var $instance$Functor$0 = $class$Functor(function(f){
 return function(m){
 return (function(){
@@ -107,16 +130,93 @@ return (function(){
 var $pm = a;return ($pm.$tag==Nothing.$tag)?((function(){
 return b})()):((function(){
 return a})())})()}});
-var $instance$Functor$3 = $class$Functor(function(f){
+var $instance$Monad$3 = ($class$Monad(pure($instance$Applicative$1)))(function(a){
+return function(f){
+return (function(){
+var $pm = a;return ($pm.$tag==Nothing.$tag)?((function(){
+return Nothing})()):(($pm.$tag==Just.$tag)?((function(a){
+return f(a)})($pm.$0)):(error("pattern match fail")))})()}});
+var $instance$Functor$4 = $class$Functor(function(f){
 return function(e){
 return (function(){
 var $pm = e;return ($pm.$tag==Left.$tag)?((function(l){
 return Left(l)})($pm.$0)):(($pm.$tag==Right.$tag)?((function(r){
 return Right(f(r))})($pm.$0)):(error("pattern match fail")))})()}});
+var $instance$Functor$5 = $class$Functor(function(f){
+return function(s){
+return (function(){
+var $pm = s;return ($pm.$tag==State.$tag)?((function(sf){
+return State(function(s){
+return (function(){
+var $pm = sf(s);return ($pm.$tag==Pair.$tag)?((function(s,a){
+return (Pair(s))(f(a))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})})($pm.$0)):(error("pattern match fail"))})()}});
+var $instance$Applicative$6 = ($class$Applicative(function(a){
+return State(function(s){
+return (Pair(s))(a)})}))(function(f){
+return function(a){
+return (function(){
+var $pm = f;return ($pm.$tag==State.$tag)?((function(sf){
+return (function(){
+var $pm = a;return ($pm.$tag==State.$tag)?((function(sa){
+return State(function(s){
+return (function(){
+var $pm = sf(s);return ($pm.$tag==Pair.$tag)?((function(s,f){
+return (function(){
+var $pm = sa(s);return ($pm.$tag==Pair.$tag)?((function(s,a){
+return (Pair(s))(f(a))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})})($pm.$0)):(error("pattern match fail"))})()})($pm.$0)):(error("pattern match fail"))})()}});
+var $instance$Monad$7 = ($class$Monad(pure($instance$Applicative$6)))(function(a){
+return function(f){
+return (function(){
+var $pm = a;return ($pm.$tag==State.$tag)?((function(sa){
+return State(function(s){
+return (function(){
+var $pm = sa(s);return ($pm.$tag==Pair.$tag)?((function(s,a){
+return (function(){
+var $pm = f(a);return ($pm.$tag==State.$tag)?((function(sb){
+return sb(s)})($pm.$0)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})})($pm.$0)):(error("pattern match fail"))})()}});
 var snd = function(p){
 return (function(){
 var $pm = p;return ($pm.$tag==Pair.$tag)?((function(a,b){
 return b})($pm.$0,$pm.$1)):(error("pattern match fail"))})()};
+var runState = function(s){
+return function(m){
+return (function(){
+var $pm = m;return ($pm.$tag==State.$tag)?((function(f){
+return f(s)})($pm.$0)):(error("pattern match fail"))})()}};
+var evalState = function(s){
+return function(m){
+return snd((runState(s))(m))}};
+var sets = function(s){
+return State(function(_){
+return (Pair(s))(Unit)})};
+var gets = State(function(s){
+return (Pair(s))(s)});
+var foldM = function(local$instance$Monad$1){
+return function(local$instance$Monad$0){
+return function(f){
+return function(r){
+return function(xs){
+return ((foldl(function(r){
+return function(x){
+return (($gt$gt$eq(local$instance$Monad$0))(r))(function(r){
+return (f(r))(x)})}}))((ret(local$instance$Monad$0))(r)))(xs)}}}}};
+var mapM = function(local$instance$Monad$3){
+return function(local$instance$Monad$2){
+return function(local$instance$Monad$1){
+return function(local$instance$Monad$0){
+return function(f){
+return function(xs){
+return ((((foldM(local$instance$Monad$0))(local$instance$Monad$0))(function(xs){
+return function(x){
+return (($gt$gt$eq(local$instance$Monad$0))(f(x)))(function(x){
+return (ret(local$instance$Monad$0))((push(x))(xs))})}}))(emptyArray))(xs)}}}}}};
+var forM = function(local$instance$Monad$3){
+return function(local$instance$Monad$2){
+return function(local$instance$Monad$1){
+return function(local$instance$Monad$0){
+return function(xs){
+return function(f){
+return (((((mapM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(f))(xs)}}}}}};
 var loop = function(f){
 return function(start){
 return (function(){
@@ -296,123 +396,12 @@ return (function(){
 var $pm = m;return ($pm.$tag==Just.$tag)?((function(x){
 return a(x)})($pm.$0)):(($pm.$tag==Nothing.$tag)?((function(){
 return b})()):(error("pattern match fail")))})()}}};
-var exports = {Just:Just,Nothing:Nothing,Pair:Pair,Left:Left,Right:Right,$class$Functor:$class$Functor,$class$Applicative:$class$Applicative,$class$Alternative:$class$Alternative,fmap:fmap,pure:pure,$lt$mul$gt:$lt$mul$gt,zero:zero,$lt$pip$gt:$lt$pip$gt,$instance$Functor$0:$instance$Functor$0,$instance$Applicative$1:$instance$Applicative$1,$instance$Alternative$2:$instance$Alternative$2,$instance$Functor$3:$instance$Functor$3,snd:snd,loop:loop,strToArray:strToArray,toRecord:toRecord,reverse:reverse,tail:tail,head:head,uniq:uniq,mergeSet:mergeSet,arr1:arr1,arr2:arr2,arr3:arr3,arr4:arr4,init:init,last:last,concatMap:concatMap,zip:zip,zipWithIndex2:zipWithIndex2,zipWithIndex:zipWithIndex,join:join,exists:exists,containsChar:containsChar,find:find,contains:contains,not:not,either:either,splitEither:splitEither,fst:fst,justOr:justOr,maybe:maybe}
-return exports;})();
-cache["//compiler/graph.jg"] = (function() {var $neq = (_require("./builtins.js")).$neq;
-var empty = (_require("./builtins.js")).empty;
-var get = (_require("./builtins.js")).get;
-var getIx = (_require("./builtins.js")).getIx;
-var has = (_require("./builtins.js")).has;
-var del = (_require("./builtins.js")).del;
-var set = (_require("./builtins.js")).set;
-var mapRecord = (_require("./builtins.js")).mapRecord;
-var foldRecord = (_require("./builtins.js")).foldRecord;
-var unsafeStringToInt = (_require("./builtins.js")).unsafeStringToInt;
-var emptyArray = (_require("./builtins.js")).emptyArray;
-var push = (_require("./builtins.js")).push;
-var enqueue = (_require("./builtins.js")).enqueue;
-var intToString = (_require("./builtins.js")).intToString;
-var concat = (_require("./builtins.js")).concat;
-var map = (_require("./builtins.js")).map;
-var filter = (_require("./builtins.js")).filter;
-var foldr = (_require("./builtins.js")).foldr;
-var foldl = (_require("./builtins.js")).foldl;
-var sort = (_require("./builtins.js")).sort;
-var True = (_require("./builtins.js")).True;
-var False = (_require("./builtins.js")).False;
-var Pair = (_require("//compiler/prelude.jg")).Pair;
-var snd = (_require("//compiler/prelude.jg")).snd;
-var reverse = (_require("//compiler/prelude.jg")).reverse;
-var uniq = (_require("//compiler/prelude.jg")).uniq;
-var mergeSet = (_require("//compiler/prelude.jg")).mergeSet;
-var arr1 = (_require("//compiler/prelude.jg")).arr1;
-var zipWithIndex = (_require("//compiler/prelude.jg")).zipWithIndex;
-var exists = (_require("//compiler/prelude.jg")).exists;
-var contains = (_require("//compiler/prelude.jg")).contains;
-var not = (_require("//compiler/prelude.jg")).not;
-var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
-var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
-var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
-var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
-var fmap = (_require("//compiler/prelude.jg")).fmap;
-var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
-var pure = (_require("//compiler/prelude.jg")).pure;
-var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
-var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
-var zero = (_require("//compiler/prelude.jg")).zero;
-var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
-var dfs = function(g){
-return function(visited){
-return function(v){
-return (function(){
-var visit = function(r){
-return function(e){
-return (function(){
-var $pm = (contains(e))(r);return $pm?((function(){
-return r})()):((!$pm)?((function(){
-return (concat(((dfs(g))((push(v))((concat(r))(visited))))(e)))(r)})()):(error("pattern match fail")))})()}};var es = (filter(function(v){
-return not((contains(v))(visited))}))((get(v))(g));var r = ((foldr(visit))(emptyArray))(es);return (enqueue(v))(r)})()}}};
-var fullDfs = function(g){
-return (function(){
-var visit = function(result){
-return function(v){
-return function(_){
-return (function(){
-var $pm = (contains(v))(result);return $pm?((function(){
-return result})()):((!$pm)?((function(){
-return (concat(((dfs(g))(result))(v)))(result)})()):(error("pattern match fail")))})()}}};var result = ((foldRecord(visit))(emptyArray))(g);return result})()};
-var scc = function(g){
-return (function(){
-var invertedG = (function(){
-var invertEdge = function(v){
-return function(ig){
-return function(e){
-return (function(){
-var $pm = (has(e))(ig);return $pm?((function(){
-return ((set(e))((push(v))((get(e))(ig))))(ig)})()):((!$pm)?((function(){
-return ((set(e))(arr1(v)))(ig)})()):(error("pattern match fail")))})()}}};var invert = function(ig){
-return function(v){
-return function(es){
-return (function(){
-var ig2 = (function(){
-var $pm = (has(v))(ig);return $pm?((function(){
-return ig})()):((!$pm)?((function(){
-return ((set(v))(emptyArray))(ig)})()):(error("pattern match fail")))})();return ((foldl(invertEdge(v)))(ig2))(es)})()}}};return ((foldRecord(invert))(empty))(g)})();var assembleCc = function(gs){
-return function(v){
-return (function(){
-var $pm = gs;return ($pm.$tag==Pair.$tag)?((function(ig,ccs){
-return (function(){
-var $pm = (exists(contains(v)))(ccs);return $pm?((function(){
-return (Pair(ig))(ccs)})()):((!$pm)?((function(){
-return (function(){
-var cc = ((dfs(ig))(emptyArray))(v);var ig2 = ((foldl(function(g){
-return function(v){
-return (del(v))((mapRecord(filter(function(w){
-return ($neq(w))(v)})))(g))}}))(ig))(cc);return (Pair(ig2))((push(cc))(ccs))})()})()):(error("pattern match fail")))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};var firstDfs = fullDfs(g);var ccs = snd(((foldl(assembleCc))((Pair(invertedG))(emptyArray)))(firstDfs));return ccs})()};
-var sccSorted = function(g){
-return (function(){
-var ccs = scc(g);var topSort = function(ccs){
-return (function(){
-var g2g = (function(){
-var f = function(r){
-return function(icc){
-return (function(){
-var $pm = icc;return ($pm.$tag==Pair.$tag)?((function(i,cc){
-return ((foldl(function(r){
-return function(c){
-return ((set(c))(intToString(i)))(r)}}))(r))(cc)})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};return ((foldl(f))(empty))(zipWithIndex(ccs))})();var addGraph = function(r){
-return function(v){
-return function(es){
-return (function(){
-var rv = (get(v))(g2g);var res = uniq(sort((filter(function(re){
-return ($neq(re))(rv)}))((map(function(e){
-return (get(e))(g2g)}))(es))));return (function(){
-var $pm = (has(rv))(r);return (!$pm)?((function(){
-return ((set(rv))(res))(r)})()):($pm?((function(){
-return ((set(rv))((mergeSet(res))((get(rv))(r))))(r)})()):(error("pattern match fail")))})()})()}}};var cg = ((foldRecord(addGraph))(empty))(g);var ord = fullDfs(cg);return reverse((map(function(i){
-return (getIx(unsafeStringToInt(i)))(ccs)}))(ord))})()};var result = topSort(ccs);return result})()};
-var exports = {dfs:dfs,fullDfs:fullDfs,scc:scc,sccSorted:sccSorted}
+var $gt$gt = function(local$instance$Monad$0){
+return function(a){
+return function(b){
+return (($gt$gt$eq(local$instance$Monad$0))(a))(function(_){
+return b})}}};
+var exports = {Unit:Unit,Just:Just,Nothing:Nothing,Pair:Pair,Left:Left,Right:Right,State:State,$class$Functor:$class$Functor,$class$Applicative:$class$Applicative,$class$Alternative:$class$Alternative,$class$Monad:$class$Monad,fmap:fmap,pure:pure,$lt$mul$gt:$lt$mul$gt,zero:zero,$lt$pip$gt:$lt$pip$gt,ret:ret,$gt$gt$eq:$gt$gt$eq,$instance$Functor$0:$instance$Functor$0,$instance$Applicative$1:$instance$Applicative$1,$instance$Alternative$2:$instance$Alternative$2,$instance$Monad$3:$instance$Monad$3,$instance$Functor$4:$instance$Functor$4,$instance$Functor$5:$instance$Functor$5,$instance$Applicative$6:$instance$Applicative$6,$instance$Monad$7:$instance$Monad$7,snd:snd,runState:runState,evalState:evalState,sets:sets,gets:gets,foldM:foldM,mapM:mapM,forM:forM,loop:loop,strToArray:strToArray,toRecord:toRecord,reverse:reverse,tail:tail,head:head,uniq:uniq,mergeSet:mergeSet,arr1:arr1,arr2:arr2,arr3:arr3,arr4:arr4,init:init,last:last,concatMap:concatMap,zip:zip,zipWithIndex2:zipWithIndex2,zipWithIndex:zipWithIndex,join:join,exists:exists,containsChar:containsChar,find:find,contains:contains,not:not,either:either,splitEither:splitEither,fst:fst,justOr:justOr,maybe:maybe,$gt$gt:$gt$gt}
 return exports;})();
 cache["//compiler/ast.jg"] = (function() {var $eq = (_require("./builtins.js")).$eq;
 var $neq = (_require("./builtins.js")).$neq;
@@ -428,13 +417,18 @@ var Pair = (_require("//compiler/prelude.jg")).Pair;
 var Left = (_require("//compiler/prelude.jg")).Left;
 var Right = (_require("//compiler/prelude.jg")).Right;
 var snd = (_require("//compiler/prelude.jg")).snd;
+var mapM = (_require("//compiler/prelude.jg")).mapM;
 var concatMap = (_require("//compiler/prelude.jg")).concatMap;
 var find = (_require("//compiler/prelude.jg")).find;
 var fst = (_require("//compiler/prelude.jg")).fst;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -443,6 +437,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var $AnnType = function($0){
 this.$0=$0;this.$tag="AnnType"};
 var AnnType = function($0){
@@ -627,6 +624,126 @@ var ImportAll = function($0){
 return function($1){
 return new $ImportAll($0,$1)}};
 ImportAll.$tag = "ImportAll";
+var breakableDownAndUpM = function(local$instance$Monad$14){
+return function(local$instance$Monad$13){
+return function(local$instance$Monad$12){
+return function(local$instance$Monad$11){
+return function(local$instance$Monad$10){
+return function(local$instance$Monad$9){
+return function(local$instance$Monad$8){
+return function(local$instance$Monad$7){
+return function(local$instance$Monad$6){
+return function(local$instance$Monad$5){
+return function(local$instance$Monad$4){
+return function(local$instance$Monad$3){
+return function(local$instance$Monad$2){
+return function(local$instance$Monad$1){
+return function(local$instance$Monad$0){
+return function(down){
+return function(up){
+return function(e){
+return (function(){
+var go = ((((((((((((((((breakableDownAndUpM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(down))(up);var gos = ((((mapM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(function(d){
+return (function(){
+var $pm = d;return ($pm.$tag==Pair.$tag)?((function(n,e){
+return (($gt$gt$eq(local$instance$Monad$0))(go(e)))(function(e){
+return (ret(local$instance$Monad$0))((Pair(n))(e))})})($pm.$0,$pm.$1)):(error("pattern match fail"))})()});return (($gt$gt$eq(local$instance$Monad$0))(down(e)))(function(e){
+return (function(){
+var $pm = e;return ($pm.$tag==Right.$tag)?((function(e){
+return (ret(local$instance$Monad$0))(e)})($pm.$0)):(($pm.$tag==Left.$tag)?((function(e){
+return (function(){
+var $pm = e;return ($pm.$tag==Lam.$tag)?((function(ann,p,e){
+return (($gt$gt$eq(local$instance$Monad$0))(go(e)))(function(e){
+return up(((Lam(ann))(p))(e))})})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==App.$tag)?((function(ann,f,x){
+return (($gt$gt$eq(local$instance$Monad$0))(go(f)))(function(f){
+return (($gt$gt$eq(local$instance$Monad$0))(go(x)))(function(x){
+return up(((App(ann))(f))(x))})})})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Case.$tag)?((function(ann,e,ps){
+return (($gt$gt$eq(local$instance$Monad$0))(go(e)))(function(e){
+return (($gt$gt$eq(local$instance$Monad$0))(gos(ps)))(function(ps){
+return up(((Case(ann))(e))(ps))})})})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Let.$tag)?((function(ann,bs,e){
+return (($gt$gt$eq(local$instance$Monad$0))(gos(bs)))(function(bs){
+return (($gt$gt$eq(local$instance$Monad$0))(go(e)))(function(e){
+return up(((Let(ann))(bs))(e))})})})($pm.$0,$pm.$1,$pm.$2)):((function(){
+return up(e)})()))))})()})($pm.$0)):(error("pattern match fail")))})()})})()}}}}}}}}}}}}}}}}}};
+var breakableDownM = function(local$instance$Monad$15){
+return function(local$instance$Monad$14){
+return function(local$instance$Monad$13){
+return function(local$instance$Monad$12){
+return function(local$instance$Monad$11){
+return function(local$instance$Monad$10){
+return function(local$instance$Monad$9){
+return function(local$instance$Monad$8){
+return function(local$instance$Monad$7){
+return function(local$instance$Monad$6){
+return function(local$instance$Monad$5){
+return function(local$instance$Monad$4){
+return function(local$instance$Monad$3){
+return function(local$instance$Monad$2){
+return function(local$instance$Monad$1){
+return function(local$instance$Monad$0){
+return function(f){
+return ((((((((((((((((breakableDownAndUpM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(f))(ret(local$instance$Monad$0))}}}}}}}}}}}}}}}}};
+var downAndUpM = function(local$instance$Monad$16){
+return function(local$instance$Monad$15){
+return function(local$instance$Monad$14){
+return function(local$instance$Monad$13){
+return function(local$instance$Monad$12){
+return function(local$instance$Monad$11){
+return function(local$instance$Monad$10){
+return function(local$instance$Monad$9){
+return function(local$instance$Monad$8){
+return function(local$instance$Monad$7){
+return function(local$instance$Monad$6){
+return function(local$instance$Monad$5){
+return function(local$instance$Monad$4){
+return function(local$instance$Monad$3){
+return function(local$instance$Monad$2){
+return function(local$instance$Monad$1){
+return function(local$instance$Monad$0){
+return function(down){
+return function(up){
+return ((((((((((((((((breakableDownAndUpM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(function(e){
+return (($gt$gt$eq(local$instance$Monad$0))(down(e)))(function(e){
+return (ret(local$instance$Monad$0))(Left(e))})}))(up)}}}}}}}}}}}}}}}}}}};
+var downM = function(local$instance$Monad$17){
+return function(local$instance$Monad$16){
+return function(local$instance$Monad$15){
+return function(local$instance$Monad$14){
+return function(local$instance$Monad$13){
+return function(local$instance$Monad$12){
+return function(local$instance$Monad$11){
+return function(local$instance$Monad$10){
+return function(local$instance$Monad$9){
+return function(local$instance$Monad$8){
+return function(local$instance$Monad$7){
+return function(local$instance$Monad$6){
+return function(local$instance$Monad$5){
+return function(local$instance$Monad$4){
+return function(local$instance$Monad$3){
+return function(local$instance$Monad$2){
+return function(local$instance$Monad$1){
+return function(local$instance$Monad$0){
+return function(f){
+return ((((((((((((((((((downAndUpM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(f))(ret(local$instance$Monad$0))}}}}}}}}}}}}}}}}}}};
+var upM = function(local$instance$Monad$17){
+return function(local$instance$Monad$16){
+return function(local$instance$Monad$15){
+return function(local$instance$Monad$14){
+return function(local$instance$Monad$13){
+return function(local$instance$Monad$12){
+return function(local$instance$Monad$11){
+return function(local$instance$Monad$10){
+return function(local$instance$Monad$9){
+return function(local$instance$Monad$8){
+return function(local$instance$Monad$7){
+return function(local$instance$Monad$6){
+return function(local$instance$Monad$5){
+return function(local$instance$Monad$4){
+return function(local$instance$Monad$3){
+return function(local$instance$Monad$2){
+return function(local$instance$Monad$1){
+return function(local$instance$Monad$0){
+return (((((((((((((((((downAndUpM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(ret(local$instance$Monad$0))}}}}}}}}}}}}}}}}}};
 var breakableDownAndUp = function(down){
 return function(up){
 return function(a){
@@ -723,7 +840,242 @@ return (function(){
 var $pm = m;return ($pm.$tag==Module.$tag)?((function(is,ds,vs){
 return (concat((concatMap(dataConNames))(ds)))((map(fst))(vs))})($pm.$1,$pm.$2,$pm.$5)):(error("pattern match fail"))})()};
 var emptyAnn = emptyArray;
-var exports = {AnnType:AnnType,Var:Var,Const:Const,App:App,Lam:Lam,Case:Case,Let:Let,CNum:CNum,CStr:CStr,PVar:PVar,PConst:PConst,PData:PData,Module:Module,ModuleInterface:ModuleInterface,Data:Data,DataCon:DataCon,Class:Class,Instance:Instance,TCBound:TCBound,TConst:TConst,TVar:TVar,TApp:TApp,TBot:TBot,TForall:TForall,TUnknown:TUnknown,ImportClosed:ImportClosed,ImportOpen:ImportOpen,ImportAll:ImportAll,breakableDownAndUp:breakableDownAndUp,breakableDown:breakableDown,downAndUp:downAndUp,down:down,up:up,getAnn:getAnn,getAnnType:getAnnType,getType:getType,setAnn:setAnn,setAnnType:setAnnType,setType:setType,dataConName:dataConName,dataConNames:dataConNames,getExports:getExports,emptyAnn:emptyAnn}
+var exports = {AnnType:AnnType,Var:Var,Const:Const,App:App,Lam:Lam,Case:Case,Let:Let,CNum:CNum,CStr:CStr,PVar:PVar,PConst:PConst,PData:PData,Module:Module,ModuleInterface:ModuleInterface,Data:Data,DataCon:DataCon,Class:Class,Instance:Instance,TCBound:TCBound,TConst:TConst,TVar:TVar,TApp:TApp,TBot:TBot,TForall:TForall,TUnknown:TUnknown,ImportClosed:ImportClosed,ImportOpen:ImportOpen,ImportAll:ImportAll,breakableDownAndUpM:breakableDownAndUpM,breakableDownM:breakableDownM,downAndUpM:downAndUpM,downM:downM,upM:upM,breakableDownAndUp:breakableDownAndUp,breakableDown:breakableDown,downAndUp:downAndUp,down:down,up:up,getAnn:getAnn,getAnnType:getAnnType,getType:getType,setAnn:setAnn,setAnnType:setAnnType,setType:setType,dataConName:dataConName,dataConNames:dataConNames,getExports:getExports,emptyAnn:emptyAnn}
+return exports;})();
+cache["//compiler/uniquifier.jg"] = (function() {var $add = (_require("./builtins.js")).$add;
+var $concat = (_require("./builtins.js")).$concat;
+var get = (_require("./builtins.js")).get;
+var has = (_require("./builtins.js")).has;
+var set = (_require("./builtins.js")).set;
+var merge = (_require("./builtins.js")).merge;
+var intToString = (_require("./builtins.js")).intToString;
+var map = (_require("./builtins.js")).map;
+var False = (_require("./builtins.js")).False;
+var Left = (_require("//compiler/prelude.jg")).Left;
+var Right = (_require("//compiler/prelude.jg")).Right;
+var snd = (_require("//compiler/prelude.jg")).snd;
+var evalState = (_require("//compiler/prelude.jg")).evalState;
+var sets = (_require("//compiler/prelude.jg")).sets;
+var gets = (_require("//compiler/prelude.jg")).gets;
+var mapM = (_require("//compiler/prelude.jg")).mapM;
+var toRecord = (_require("//compiler/prelude.jg")).toRecord;
+var zip = (_require("//compiler/prelude.jg")).zip;
+var fst = (_require("//compiler/prelude.jg")).fst;
+var $gt$gt = (_require("//compiler/prelude.jg")).$gt$gt;
+var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
+var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
+var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
+var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
+var fmap = (_require("//compiler/prelude.jg")).fmap;
+var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
+var pure = (_require("//compiler/prelude.jg")).pure;
+var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
+var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
+var zero = (_require("//compiler/prelude.jg")).zero;
+var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
+var Var = (_require("//compiler/ast.jg")).Var;
+var Lam = (_require("//compiler/ast.jg")).Lam;
+var Let = (_require("//compiler/ast.jg")).Let;
+var breakableDownM = (_require("//compiler/ast.jg")).breakableDownM;
+var rewriteExpr = function(local$instance$Monad$34){
+return function(local$instance$Monad$33){
+return function(local$instance$Monad$32){
+return function(local$instance$Monad$31){
+return function(local$instance$Monad$30){
+return function(local$instance$Monad$29){
+return function(local$instance$Monad$28){
+return function(local$instance$Monad$27){
+return function(local$instance$Monad$26){
+return function(local$instance$Monad$25){
+return function(local$instance$Monad$24){
+return function(local$instance$Monad$23){
+return function(local$instance$Monad$22){
+return function(local$instance$Monad$21){
+return function(local$instance$Monad$20){
+return function(local$instance$Monad$19){
+return function(local$instance$Monad$18){
+return function(local$instance$Monad$17){
+return function(local$instance$Monad$16){
+return function(local$instance$Monad$15){
+return function(local$instance$Monad$14){
+return function(local$instance$Monad$13){
+return function(local$instance$Monad$12){
+return function(local$instance$Monad$11){
+return function(local$instance$Monad$10){
+return function(local$instance$Monad$9){
+return function(local$instance$Monad$8){
+return function(local$instance$Monad$7){
+return function(local$instance$Monad$6){
+return function(local$instance$Monad$5){
+return function(local$instance$Monad$4){
+return function(local$instance$Monad$3){
+return function(local$instance$Monad$2){
+return function(local$instance$Monad$1){
+return function(local$instance$Monad$0){
+return function(env){
+return function(e){
+return (function(){
+var rename = function(local$instance$Monad$35){
+return function(n){
+return (function(){
+var $pm = (has(n))(env);return (!$pm)?((function(){
+return (ret(local$instance$Monad$0))(n)})()):(error("pattern match fail"))})()}};var f = function(e){
+return (function(){
+var $pm = e;return ($pm.$tag==Lam.$tag)?((function(ann,p,e){
+return (($gt$gt$eq(local$instance$Monad$0))((rename(local$instance$Monad$0))(p)))(function(n){
+return (($gt$gt$eq(local$instance$Monad$0))(((((((((((((((((((((((((((((((((((((rewriteExpr(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(((set(p))(n))(env)))(e)))(function(e){
+return (ret(local$instance$Monad$0))(Right(((Lam(ann))(n))(e)))})})})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Let.$tag)?((function(ann,bs,e){
+return (function(){
+var ns = (map(fst))(bs);var ns2 = function(local$instance$Monad$40){
+return function(local$instance$Monad$39){
+return function(local$instance$Monad$38){
+return function(local$instance$Monad$37){
+return function(local$instance$Monad$36){
+return (((((mapM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(rename(local$instance$Monad$0)))(ns)}}}}};return (($gt$gt$eq(local$instance$Monad$0))(((((ns2(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0)))(function(ns){
+return (function(){
+var env2 = (merge(env))(toRecord((zip((map(fst))(bs)))(ns)));var e2 = ((((((((((((((((((((((((((((((((((((rewriteExpr(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(env2))(e);var bs2 = (((((mapM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))((((((((((((((((((((((((((((((((((((rewriteExpr(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(env2)))((map(snd))(bs));return (($gt$gt$eq(local$instance$Monad$0))(bs2))(function(bs){
+return (($gt$gt$eq(local$instance$Monad$0))(e2))(function(e){
+return (ret(local$instance$Monad$0))(Right(((Let(ann))((zip(ns))(bs)))(e)))})})})()})})()})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Var.$tag)?((function(ann,v){
+return (ret(local$instance$Monad$0))(Left((Var(ann))((get(v))(env))))})($pm.$0,$pm.$1)):((function(){
+return (ret(local$instance$Monad$0))(Left(e))})())))})()};return (((((((((((((((((breakableDownM(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(local$instance$Monad$0))(f))(e)})()}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}};
+var uniquify = function(env){
+return function(e){
+return (evalState(0))(((((((((((((((((((((((((((((((((((((rewriteExpr($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))($import1$instance$Monad$7))(env))(e))}};
+var newIdent = function(n){
+return (($gt$gt$eq($import1$instance$Monad$7))(gets))(function(i){
+return (($gt$gt($import1$instance$Monad$7))(sets(($add(i))(1))))((ret($import1$instance$Monad$7))(($concat(($concat(n))("_$u$")))(intToString(i))))})};
+var exports = {rewriteExpr:rewriteExpr,uniquify:uniquify,newIdent:newIdent}
+return exports;})();
+cache["//compiler/graph.jg"] = (function() {var $neq = (_require("./builtins.js")).$neq;
+var empty = (_require("./builtins.js")).empty;
+var get = (_require("./builtins.js")).get;
+var getIx = (_require("./builtins.js")).getIx;
+var has = (_require("./builtins.js")).has;
+var del = (_require("./builtins.js")).del;
+var set = (_require("./builtins.js")).set;
+var mapRecord = (_require("./builtins.js")).mapRecord;
+var foldRecord = (_require("./builtins.js")).foldRecord;
+var unsafeStringToInt = (_require("./builtins.js")).unsafeStringToInt;
+var emptyArray = (_require("./builtins.js")).emptyArray;
+var push = (_require("./builtins.js")).push;
+var enqueue = (_require("./builtins.js")).enqueue;
+var intToString = (_require("./builtins.js")).intToString;
+var concat = (_require("./builtins.js")).concat;
+var map = (_require("./builtins.js")).map;
+var filter = (_require("./builtins.js")).filter;
+var foldr = (_require("./builtins.js")).foldr;
+var foldl = (_require("./builtins.js")).foldl;
+var sort = (_require("./builtins.js")).sort;
+var True = (_require("./builtins.js")).True;
+var False = (_require("./builtins.js")).False;
+var Pair = (_require("//compiler/prelude.jg")).Pair;
+var snd = (_require("//compiler/prelude.jg")).snd;
+var reverse = (_require("//compiler/prelude.jg")).reverse;
+var uniq = (_require("//compiler/prelude.jg")).uniq;
+var mergeSet = (_require("//compiler/prelude.jg")).mergeSet;
+var arr1 = (_require("//compiler/prelude.jg")).arr1;
+var zipWithIndex = (_require("//compiler/prelude.jg")).zipWithIndex;
+var exists = (_require("//compiler/prelude.jg")).exists;
+var contains = (_require("//compiler/prelude.jg")).contains;
+var not = (_require("//compiler/prelude.jg")).not;
+var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
+var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
+var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
+var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
+var fmap = (_require("//compiler/prelude.jg")).fmap;
+var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
+var pure = (_require("//compiler/prelude.jg")).pure;
+var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
+var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
+var zero = (_require("//compiler/prelude.jg")).zero;
+var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
+var dfs = function(g){
+return function(visited){
+return function(v){
+return (function(){
+var visit = function(r){
+return function(e){
+return (function(){
+var $pm = (contains(e))(r);return $pm?((function(){
+return r})()):((!$pm)?((function(){
+return (concat(((dfs(g))((push(v))((concat(r))(visited))))(e)))(r)})()):(error("pattern match fail")))})()}};var es = (filter(function(v){
+return not((contains(v))(visited))}))((get(v))(g));var r = ((foldr(visit))(emptyArray))(es);return (enqueue(v))(r)})()}}};
+var fullDfs = function(g){
+return (function(){
+var visit = function(result){
+return function(v){
+return function(_){
+return (function(){
+var $pm = (contains(v))(result);return $pm?((function(){
+return result})()):((!$pm)?((function(){
+return (concat(((dfs(g))(result))(v)))(result)})()):(error("pattern match fail")))})()}}};var result = ((foldRecord(visit))(emptyArray))(g);return result})()};
+var scc = function(g){
+return (function(){
+var invertedG = (function(){
+var invertEdge = function(v){
+return function(ig){
+return function(e){
+return (function(){
+var $pm = (has(e))(ig);return $pm?((function(){
+return ((set(e))((push(v))((get(e))(ig))))(ig)})()):((!$pm)?((function(){
+return ((set(e))(arr1(v)))(ig)})()):(error("pattern match fail")))})()}}};var invert = function(ig){
+return function(v){
+return function(es){
+return (function(){
+var ig2 = (function(){
+var $pm = (has(v))(ig);return $pm?((function(){
+return ig})()):((!$pm)?((function(){
+return ((set(v))(emptyArray))(ig)})()):(error("pattern match fail")))})();return ((foldl(invertEdge(v)))(ig2))(es)})()}}};return ((foldRecord(invert))(empty))(g)})();var assembleCc = function(gs){
+return function(v){
+return (function(){
+var $pm = gs;return ($pm.$tag==Pair.$tag)?((function(ig,ccs){
+return (function(){
+var $pm = (exists(contains(v)))(ccs);return $pm?((function(){
+return (Pair(ig))(ccs)})()):((!$pm)?((function(){
+return (function(){
+var cc = ((dfs(ig))(emptyArray))(v);var ig2 = ((foldl(function(g){
+return function(v){
+return (del(v))((mapRecord(filter(function(w){
+return ($neq(w))(v)})))(g))}}))(ig))(cc);return (Pair(ig2))((push(cc))(ccs))})()})()):(error("pattern match fail")))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};var firstDfs = fullDfs(g);var ccs = snd(((foldl(assembleCc))((Pair(invertedG))(emptyArray)))(firstDfs));return ccs})()};
+var sccSorted = function(g){
+return (function(){
+var ccs = scc(g);var topSort = function(ccs){
+return (function(){
+var g2g = (function(){
+var f = function(r){
+return function(icc){
+return (function(){
+var $pm = icc;return ($pm.$tag==Pair.$tag)?((function(i,cc){
+return ((foldl(function(r){
+return function(c){
+return ((set(c))(intToString(i)))(r)}}))(r))(cc)})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};return ((foldl(f))(empty))(zipWithIndex(ccs))})();var addGraph = function(r){
+return function(v){
+return function(es){
+return (function(){
+var rv = (get(v))(g2g);var res = uniq(sort((filter(function(re){
+return ($neq(re))(rv)}))((map(function(e){
+return (get(e))(g2g)}))(es))));return (function(){
+var $pm = (has(rv))(r);return (!$pm)?((function(){
+return ((set(rv))(res))(r)})()):($pm?((function(){
+return ((set(rv))((mergeSet(res))((get(rv))(r))))(r)})()):(error("pattern match fail")))})()})()}}};var cg = ((foldRecord(addGraph))(empty))(g);var ord = fullDfs(cg);return reverse((map(function(i){
+return (getIx(unsafeStringToInt(i)))(ccs)}))(ord))})()};var result = topSort(ccs);return result})()};
+var exports = {dfs:dfs,fullDfs:fullDfs,scc:scc,sccSorted:sccSorted}
 return exports;})();
 cache["//compiler/printer.jg"] = (function() {var $concat = (_require("./builtins.js")).$concat;
 var length = (_require("./builtins.js")).length;
@@ -747,7 +1099,11 @@ var join = (_require("//compiler/prelude.jg")).join;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -756,6 +1112,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var Var = (_require("//compiler/ast.jg")).Var;
 var Const = (_require("//compiler/ast.jg")).Const;
 var App = (_require("//compiler/ast.jg")).App;
@@ -903,7 +1262,11 @@ var fst = (_require("//compiler/prelude.jg")).fst;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -912,6 +1275,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var Var = (_require("//compiler/ast.jg")).Var;
 var Const = (_require("//compiler/ast.jg")).Const;
 var App = (_require("//compiler/ast.jg")).App;
@@ -945,6 +1311,12 @@ var emptyAnn = (_require("//compiler/ast.jg")).emptyAnn;
 var printType = (_require("//compiler/printer.jg")).printType;
 var printTypeBound = (_require("//compiler/printer.jg")).printTypeBound;
 var sccSorted = (_require("//compiler/graph.jg")).sccSorted;
+var $Subs = function($0,$1){
+this.$0=$0;this.$1=$1;this.$tag="Subs"};
+var Subs = function($0){
+return function($1){
+return new $Subs($0,$1)}};
+Subs.$tag = "Subs";
 var $ICtx = function($0,$1,$2){
 this.$0=$0;this.$1=$1;this.$2=$2;this.$tag="ICtx"};
 var ICtx = function($0){
@@ -987,6 +1359,180 @@ var et = (concatMap(conTypes))(ts);var ed = (map(function(d){
 return (Pair(fst(d)))(getType(snd(d)))}))(ds);var bs = ((foldl(function(es){
 return function(e){
 return ((set(fst(e)))(snd(e)))(es)}}))(empty))((concat(et))(ed));return ((ModuleInterface(bs))(cs))((map(instanceToTypeBound))(ins))})()})($pm.$2,$pm.$3,$pm.$4,$pm.$5)):(error("pattern match fail"))})()};
+var freeVars = function(e){
+return (function(){
+var namesInPat = function(p){
+return (function(){
+var $pm = p;return ($pm.$tag==PVar.$tag)?((function(v){
+return arr1(v)})($pm.$1)):(($pm.$tag==PConst.$tag)?((function(c){
+return emptyArray})($pm.$1)):(($pm.$tag==PData.$tag)?((function(n,ps){
+return ((foldl(mergeSet))(emptyArray))((map(namesInPat))(ps))})($pm.$1,$pm.$2)):(error("pattern match fail"))))})()};var freeVarsInPData = function(p){
+return (function(){
+var $pm = p;return ($pm.$tag==PData.$tag)?((function(n,ps){
+return ((foldl(mergeSet))(arr1(n)))((map(freeVarsInPData))(ps))})($pm.$1,$pm.$2)):((function(){
+return emptyArray})())})()};var freeVarsInPat = function(p){
+return (function(){
+var $pm = p;return ($pm.$tag==Pair.$tag)?((function(pat,e){
+return (mergeSet((filter(function(v){
+return not((contains(v))(namesInPat(pat)))}))(freeVars(e))))(freeVarsInPData(pat))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()};return (function(){
+var $pm = e;return ($pm.$tag==Var.$tag)?((function(v){
+return arr1(v)})($pm.$1)):(($pm.$tag==Const.$tag)?((function(c){
+return emptyArray})($pm.$1)):(($pm.$tag==App.$tag)?((function(f,x){
+return (mergeSet(freeVars(f)))(freeVars(x))})($pm.$1,$pm.$2)):(($pm.$tag==Lam.$tag)?((function(p,b){
+return (filter(function(v){
+return ($neq(v))(p)}))(freeVars(b))})($pm.$1,$pm.$2)):(($pm.$tag==Case.$tag)?((function(e,ps){
+return ((foldl(mergeSet))(freeVars(e)))((map(freeVarsInPat))(ps))})($pm.$1,$pm.$2)):(($pm.$tag==Let.$tag)?((function(ds,e){
+return (filter(function(v){
+return not((contains(v))((map(fst))(ds)))}))(((foldl(mergeSet))(freeVars(e)))((map(function(d){
+return freeVars(snd(d))}))(ds)))})($pm.$1,$pm.$2)):(error("pattern match fail")))))))})()})()};
+var getSub = function(v){
+return function(subs){
+return (function(){
+var $pm = subs;return ($pm.$tag==Subs.$tag)?((function(sat,unsat){
+return (function(){
+var $pm = (has(v))(sat);return $pm?((function(){
+return (get(v))(sat)})()):((!$pm)?((function(){
+return (get(v))(unsat)})()):(error("pattern match fail")))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};
+var hasSub = function(v){
+return function(subs){
+return (function(){
+var $pm = subs;return ($pm.$tag==Subs.$tag)?((function(sat,unsat){
+return ($or((has(v))(sat)))((has(v))(unsat))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};
+var dropSubs = function(vs){
+return function(subs){
+return (function(){
+var $pm = subs;return ($pm.$tag==Subs.$tag)?((function(sat,unsat){
+return (Subs(((foldl(function(r){
+return function(v){
+return (del(v))(r)}}))(sat))(vs)))(((foldl(function(r){
+return function(v){
+return (del(v))(r)}}))(unsat))(vs))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};
+var applySubs = function(subs){
+return function(t){
+return (function(){
+var $pm = t;return ($pm.$tag==TForall.$tag)?((function(ann,vs,bs,t){
+return (function(){
+var subs2 = (dropSubs(vs))(subs);return (((TForall(ann))(vs))((map(applySubsBound(subs2)))(bs)))((applySubs(subs2))(t))})()})($pm.$0,$pm.$1,$pm.$2,$pm.$3)):(($pm.$tag==TVar.$tag)?((function(v){
+return (function(){
+var $pm = (hasSub(v))(subs);return (!$pm)?((function(){
+return t})()):($pm?((function(){
+return (getSub(v))(subs)})()):(error("pattern match fail")))})()})($pm.$1)):(($pm.$tag==TApp.$tag)?((function(ann,f,a){
+return ((TApp(ann))((applySubs(subs))(f)))((applySubs(subs))(a))})($pm.$0,$pm.$1,$pm.$2)):((function(){
+return t})())))})()}};
+var applySubsBound = function(subs){
+return function(b){
+return (function(){
+var $pm = b;return ($pm.$tag==TCBound.$tag)?((function(ann,n,t){
+return ((TCBound(ann))(n))((applySubs(subs))(t))})($pm.$0,$pm.$1,$pm.$2)):(error("pattern match fail"))})()}};
+var emptySubs = (Subs(empty))(empty);
+var freeTVars = function(t){
+return (function(){
+var $pm = t;return ($pm.$tag==TVar.$tag)?((function(v){
+return arr1(v)})($pm.$1)):(($pm.$tag==TBot.$tag)?((function(){
+return emptyArray})()):(($pm.$tag==TUnknown.$tag)?((function(){
+return emptyArray})()):(($pm.$tag==TConst.$tag)?((function(c){
+return emptyArray})($pm.$1)):(($pm.$tag==TForall.$tag)?((function(vs,bs,t){
+return (filter(function(n){
+return not((contains(n))(vs))}))(((foldl(mergeSet))(freeTVars(t)))((map(freeTVarsInBound))(bs)))})($pm.$1,$pm.$2,$pm.$3)):(($pm.$tag==TApp.$tag)?((function(f,a){
+return (mergeSet(freeTVars(f)))(freeTVars(a))})($pm.$1,$pm.$2)):(error("pattern match fail")))))))})()};
+var freeTVarsInBound = function(b){
+return (function(){
+var $pm = b;return ($pm.$tag==TCBound.$tag)?((function(t){
+return freeTVars(t)})($pm.$2)):(error("pattern match fail"))})()};
+var composeSubs = function(sa){
+return function(sb){
+return (function(){
+var $pm = sb;return ($pm.$tag==Subs.$tag)?((function(sat,unsat){
+return ((foldRecord(function(r){
+return function(v){
+return function(t){
+return ((addSub(v))(t))(r)}}}))(((foldRecord(function(r){
+return function(v){
+return function(t){
+return ((addSatSub(v))(t))(r)}}}))(sa))(sat)))(unsat)})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};
+var addSub = function(v){
+return function(t){
+return function(subs){
+return (function(){
+var t2 = (applySubs(subs))(t);return (function(){
+var $pm = (hasSub(v))(subs);return (!$pm)?((function(){
+return (function(){
+var $pm = subs;return ($pm.$tag==Subs.$tag)?((function(sat,unsat){
+return (function(){
+var subUnsat = function(su){
+return function(uv){
+return function(ut){
+return (function(){
+var $pm = su;return ($pm.$tag==Pair.$tag)?((function(sat,unsat){
+return (function(){
+var ut2 = ((substitute(v))(t2))(ut);return (function(){
+var $pm = length(freeTVars(ut2));return (0==$pm)?((function(){
+return (Pair(((set(uv))(ut2))(sat)))(unsat)})()):((function(){
+return (Pair(sat))(((set(uv))(ut2))(unsat))})())})()})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}}};var su = ((foldRecord(subUnsat))((Pair(sat))(empty)))(unsat);var unsat2 = snd(su);var sat2 = fst(su);return (function(){
+var $pm = length(freeTVars(t2));return (0==$pm)?((function(){
+return (Subs(((set(v))(t2))(sat2)))(unsat2)})()):((function(){
+return (Subs(sat2))(((set(v))(t2))(unsat2))})())})()})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})()):($pm?((function(){
+return (composeSubs(subs))((unify((getSub(v))(subs)))(t2))})()):(error("pattern match fail")))})()})()}}};
+var addSatSub = function(v){
+return function(t){
+return function(subs){
+return (function(){
+var $pm = (hasSub(v))(subs);return (!$pm)?((function(){
+return (function(){
+var $pm = subs;return ($pm.$tag==Subs.$tag)?((function(sat,unsat){
+return (function(){
+var subUnsat = function(su){
+return function(uv){
+return function(ut){
+return (function(){
+var $pm = su;return ($pm.$tag==Pair.$tag)?((function(sat,unsat){
+return (function(){
+var ut2 = ((substitute(v))(t))(ut);return (function(){
+var $pm = length(freeTVars(ut2));return (0==$pm)?((function(){
+return (Pair(((set(uv))(ut2))(sat)))(unsat)})()):((function(){
+return (Pair(sat))(((set(uv))(ut2))(unsat))})())})()})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}}};var su = ((foldRecord(subUnsat))((Pair(sat))(empty)))(unsat);var unsat2 = snd(su);var sat2 = fst(su);return (Subs(((set(v))(t))(sat2)))(unsat2)})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})()):($pm?((function(){
+return (composeSubs(subs))((unify((getSub(v))(subs)))(t))})()):(error("pattern match fail")))})()}}};
+var substitute = function(n){
+return function(s){
+return function(t){
+return (applySubs(((addSub(n))(s))(emptySubs)))(t)}}};
+var unify = function(a){
+return function(b){
+return (function(){
+var err = function(a){
+return function(b){
+return error(($concat(($concat(($concat("cannot unify "))(printType(a))))(" with ")))(printType(b)))}};var bind = function(n){
+return function(t){
+return (function(){
+var $pm = t;return ($pm.$tag==TVar.$tag)?((function(m){
+return (function(){
+var $pm = ($eq(n))(m);return $pm?((function(){
+return emptySubs})()):((!$pm)?((function(){
+return ((addSub(n))(t))(emptySubs)})()):(error("pattern match fail")))})()})($pm.$1)):((function(){
+return (function(){
+var $pm = (contains(n))(freeTVars(t));return $pm?((function(){
+return (function(){
+var _ = 13;return error("occurs check failed")})()})()):((!$pm)?((function(){
+return ((addSub(n))(t))(emptySubs)})()):(error("pattern match fail")))})()})())})()}};return (function(){
+var $pm = a;return ($pm.$tag==TVar.$tag)?((function(v){
+return (bind(v))(b)})($pm.$1)):(($pm.$tag==TConst.$tag)?((function(ca){
+return (function(){
+var $pm = b;return ($pm.$tag==TConst.$tag)?((function(cb){
+return (function(){
+var $pm = ($eq(ca))(cb);return $pm?((function(){
+return emptySubs})()):((!$pm)?((function(){
+return (err(a))(b)})()):(error("pattern match fail")))})()})($pm.$1)):(($pm.$tag==TVar.$tag)?((function(v){
+return (bind(v))(a)})($pm.$1)):((function(){
+return (err(a))(b)})()))})()})($pm.$1)):(($pm.$tag==TUnknown.$tag)?((function(){
+return (err(a))(b)})()):(($pm.$tag==TBot.$tag)?((function(){
+return (err(a))(b)})()):(($pm.$tag==TApp.$tag)?((function(fa,xa){
+return (function(){
+var $pm = b;return ($pm.$tag==TVar.$tag)?((function(v){
+return (bind(v))(a)})($pm.$1)):(($pm.$tag==TApp.$tag)?((function(fb,xb){
+return (function(){
+var fsubs = (unify(fa))(fb);var xsubs = (unify((applySubs(fsubs))(xa)))((applySubs(fsubs))(xb));return (composeSubs(fsubs))(xsubs)})()})($pm.$1,$pm.$2)):((function(){
+return (err(a))(b)})()))})()})($pm.$1,$pm.$2)):((function(){
+return (err(a))(b)})())))))})()})()}};
 var newTVar = function(ctx){
 return (function(){
 var $pm = ctx;return ($pm.$tag==ICtx.$tag)?((function(subs,bs,i){
@@ -996,25 +1542,6 @@ var getSubs = function(ctx){
 return (function(){
 var $pm = ctx;return ($pm.$tag==ICtx.$tag)?((function(subs){
 return subs})($pm.$0)):(error("pattern match fail"))})()};
-var applySubs = function(subs){
-return function(t){
-return (function(){
-var $pm = t;return ($pm.$tag==TForall.$tag)?((function(ann,vs,bs,t){
-return (function(){
-var subs2 = ((foldl(function(s){
-return function(v){
-return (del(v))(s)}}))(subs))(vs);return (((TForall(ann))(vs))((map(applySubsBound(subs2)))(bs)))((applySubs(subs2))(t))})()})($pm.$0,$pm.$1,$pm.$2,$pm.$3)):(($pm.$tag==TVar.$tag)?((function(v){
-return (function(){
-var $pm = (has(v))(subs);return (!$pm)?((function(){
-return t})()):($pm?((function(){
-return (get(v))(subs)})()):(error("pattern match fail")))})()})($pm.$1)):(($pm.$tag==TApp.$tag)?((function(ann,f,a){
-return ((TApp(ann))((applySubs(subs))(f)))((applySubs(subs))(a))})($pm.$0,$pm.$1,$pm.$2)):((function(){
-return t})())))})()}};
-var applySubsBound = function(subs){
-return function(b){
-return (function(){
-var $pm = b;return ($pm.$tag==TCBound.$tag)?((function(ann,n,t){
-return ((TCBound(ann))(n))((applySubs(subs))(t))})($pm.$0,$pm.$1,$pm.$2)):(error("pattern match fail"))})()}};
 var setSubs = function(subs){
 return function(ctx){
 return (function(){
@@ -1041,11 +1568,6 @@ return function(env){
 return (function(){
 var $pm = env;return ($pm.$tag==IEnv.$tag)?((function(bs,ts){
 return (IEnv((merge(bs))(nbs)))(ts)})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};
-var applySubsEnv = function(subs){
-return function(env){
-return (function(){
-var $pm = env;return ($pm.$tag==IEnv.$tag)?((function(bs,ts){
-return (IEnv((mapRecord(applySubs(subs)))(bs)))(ts)})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};
 var addBound = function(b){
 return function(ctx){
 return (function(){
@@ -1060,82 +1582,15 @@ return (function(){
 var $pm = cs;return ($pm.$tag==Pair.$tag)?((function(ctx,subs){
 return (function(){
 var $pm = newTVar(ctx);return ($pm.$tag==Pair.$tag)?((function(ctx2,tv){
-return (Pair(ctx2))(((set(v))(tv))(subs))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};return (function(){
+return (Pair(ctx2))(((addSub(v))(tv))(subs))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};return (function(){
 var $pm = t;return ($pm.$tag==TForall.$tag)?((function(vs,bs,t){
 return (function(){
-var $pm = ((foldl(mkvar))((Pair(ctx))(empty)))(vs);return ($pm.$tag==Pair.$tag)?((function(ctx2,subs){
+var $pm = ((foldl(mkvar))((Pair(ctx))(emptySubs)))(vs);return ($pm.$tag==Pair.$tag)?((function(ctx2,subs){
 return (function(){
 var bs2 = (map(applySubsBound(subs)))(bs);var ctx3 = ((foldl(function(ctx){
 return function(b){
 return (addBound(b))(ctx)}}))(ctx2))(bs2);var t2 = (applySubs(subs))(t);return (Pair(ctx3))(t2)})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$1,$pm.$2,$pm.$3)):((function(){
 return (Pair(ctx))(t)})())})()})()}};
-var freeTVars = function(t){
-return (function(){
-var $pm = t;return ($pm.$tag==TVar.$tag)?((function(v){
-return arr1(v)})($pm.$1)):(($pm.$tag==TBot.$tag)?((function(){
-return emptyArray})()):(($pm.$tag==TUnknown.$tag)?((function(){
-return emptyArray})()):(($pm.$tag==TConst.$tag)?((function(c){
-return emptyArray})($pm.$1)):(($pm.$tag==TForall.$tag)?((function(vs,bs,t){
-return (filter(function(n){
-return not((contains(n))(vs))}))(((foldl(mergeSet))(freeTVars(t)))((map(freeTVarsInBound))(bs)))})($pm.$1,$pm.$2,$pm.$3)):(($pm.$tag==TApp.$tag)?((function(f,a){
-return (mergeSet(freeTVars(f)))(freeTVars(a))})($pm.$1,$pm.$2)):(error("pattern match fail")))))))})()};
-var freeTVarsInBound = function(b){
-return (function(){
-var $pm = b;return ($pm.$tag==TCBound.$tag)?((function(t){
-return freeTVars(t)})($pm.$2)):(error("pattern match fail"))})()};
-var substitute = function(n){
-return function(s){
-return function(t){
-return (applySubs(((set(n))(s))(empty)))(t)}}};
-var composeSubs = function(sa){
-return function(sb){
-return (function(){
-var compose = function(subs){
-return function(n){
-return function(t){
-return (function(){
-var t2 = (applySubs(subs))(t);return (function(){
-var $pm = (has(n))(subs);return (!$pm)?((function(){
-return ((set(n))(t2))((mapRecord((substitute(n))(t2)))(subs))})()):($pm?((function(){
-return (function(){
-var msubs = (unify((get(n))(subs)))(t2);return (composeSubs(subs))(msubs)})()})()):(error("pattern match fail")))})()})()}}};return ((foldRecord(compose))(sa))(sb)})()}};
-var unify = function(a){
-return function(b){
-return (function(){
-var err = function(a){
-return function(b){
-return error(($concat(($concat(($concat("cannot unify "))(printType(a))))(" with ")))(printType(b)))}};var bind = function(n){
-return function(t){
-return (function(){
-var $pm = t;return ($pm.$tag==TVar.$tag)?((function(m){
-return (function(){
-var $pm = ($eq(n))(m);return $pm?((function(){
-return empty})()):((!$pm)?((function(){
-return ((set(n))(t))(empty)})()):(error("pattern match fail")))})()})($pm.$1)):((function(){
-return (function(){
-var $pm = (contains(n))(freeTVars(t));return $pm?((function(){
-return (function(){
-var _ = 13;return error("occurs check failed")})()})()):((!$pm)?((function(){
-return ((set(n))(t))(empty)})()):(error("pattern match fail")))})()})())})()}};return (function(){
-var $pm = a;return ($pm.$tag==TVar.$tag)?((function(v){
-return (bind(v))(b)})($pm.$1)):(($pm.$tag==TConst.$tag)?((function(ca){
-return (function(){
-var $pm = b;return ($pm.$tag==TConst.$tag)?((function(cb){
-return (function(){
-var $pm = ($eq(ca))(cb);return $pm?((function(){
-return empty})()):((!$pm)?((function(){
-return (err(a))(b)})()):(error("pattern match fail")))})()})($pm.$1)):(($pm.$tag==TVar.$tag)?((function(v){
-return (bind(v))(a)})($pm.$1)):((function(){
-return (err(a))(b)})()))})()})($pm.$1)):(($pm.$tag==TUnknown.$tag)?((function(){
-return (err(a))(b)})()):(($pm.$tag==TBot.$tag)?((function(){
-return (err(a))(b)})()):(($pm.$tag==TApp.$tag)?((function(fa,xa){
-return (function(){
-var $pm = b;return ($pm.$tag==TVar.$tag)?((function(v){
-return (bind(v))(a)})($pm.$1)):(($pm.$tag==TApp.$tag)?((function(fb,xb){
-return (function(){
-var fsubs = (unify(fa))(fb);var xsubs = (unify((applySubs(fsubs))(xa)))((applySubs(fsubs))(xb));return (composeSubs(fsubs))(xsubs)})()})($pm.$1,$pm.$2)):((function(){
-return (err(a))(b)})()))})()})($pm.$1,$pm.$2)):((function(){
-return (err(a))(b)})())))))})()})()}};
 var unrollDataConType = function(t){
 return (function(){
 var $pm = t;return (($pm.$tag==TApp.$tag)&&(($pm.$1.$tag==TApp.$tag)&&(($pm.$1.$1.$tag==TConst.$tag)&&("->"==$pm.$1.$1.$1))))?((function(a,b){
@@ -1170,7 +1625,9 @@ return function(t){
 return (function(){
 var $pm = (contains(v))(envTVars);return (!$pm)?((function(){
 return rs})()):($pm?((function(){
-return (concat(rs))(freeTVars(t))})()):(error("pattern match fail")))})()}}};return ((foldRecord(f))(emptyArray))(subs)})();var nonFree = (concat(envTVars))(tvarsSubstitutingForEnvTVars);var vs = (filter(function(v){
+return (concat(rs))(freeTVars(t))})()):(error("pattern match fail")))})()}}};return ((foldRecord(f))(emptyArray))((function(){
+var $pm = subs;return ($pm.$tag==Subs.$tag)?((function(unsat){
+return unsat})($pm.$1)):(error("pattern match fail"))})())})();var nonFree = (concat(envTVars))(tvarsSubstitutingForEnvTVars);var vs = (filter(function(v){
 return not((contains(v))(nonFree))}))(freeTVars(t));var processBounds = function(vbb){
 return function(b){
 return (function(){
@@ -1187,10 +1644,19 @@ return (Pair((concat(bvs))(sharedVars)))((Pair(rbs))((push(b))(obs)))})()):(erro
 var $pm = vbb;return (($pm.$tag==Pair.$tag)&&($pm.$1.$tag==Pair.$tag))?((function(bvs,rbs,obs){
 return (function(){
 var finalVars = (filter(function(v){
-return not((contains(v))(bvs))}))(vs);return (function(){
+return not((contains(v))(bvs))}))(vs);var drop = function(r){
+return function(v){
+return function(t){
+return (function(){
+var $pm = (exists(function(v){
+return (contains(v))(finalVars)}))(freeTVars(t));return (!$pm)?((function(){
+return ((set(v))(t))(r)})()):($pm?((function(){
+return r})()):(error("pattern match fail")))})()}}};var subs2 = (function(){
+var $pm = subs;return ($pm.$tag==Subs.$tag)?((function(sat,unsat){
+return (Subs(sat))(((foldRecord(drop))(empty))(unsat))})($pm.$0,$pm.$1)):(error("pattern match fail"))})();var ctx2 = (setSubs(subs2))(ctx);return (function(){
 var $pm = ($or(($gt(length(finalVars)))(0)))(($gt(length(rbs)))(0));return $pm?((function(){
-return (Pair((setBounds(obs))(ctx)))((((TForall(emptyAnn))(finalVars))(rbs))(t))})()):((!$pm)?((function(){
-return (Pair((setBounds(obs))(ctx)))(t)})()):(error("pattern match fail")))})()})()})($pm.$0,$pm.$1.$0,$pm.$1.$1)):(error("pattern match fail"))})()})()}}};
+return (Pair((setBounds(obs))(ctx2)))((((TForall(emptyAnn))(finalVars))(rbs))(t))})()):((!$pm)?((function(){
+return (Pair((setBounds(obs))(ctx2)))(t)})()):(error("pattern match fail")))})()})()})($pm.$0,$pm.$1.$0,$pm.$1.$1)):(error("pattern match fail"))})()})()}}};
 var getInstances = function(env){
 return (function(){
 var $pm = env;return ($pm.$tag==IEnv.$tag)?((function(ts){
@@ -1222,53 +1688,18 @@ return (function(){
 var is = getInstances(env);var bs = getBounds(ctx);var bs2 = (filter(function(b){
 return not((exists(function(i){
 return (satisfiesBound(i))(b)}))(is))}))(bs);return (setBounds(bs2))(ctx)})()}};
-var dropNonEnvSubs = function(env){
-return function(subs){
-return (function(){
-var ftv = freeTVarsInEnv(env);var drop = function(subs){
-return function(v){
-return function(t){
-return (function(){
-var $pm = (contains(v))(ftv);return (!$pm)?((function(){
-return subs})()):($pm?((function(){
-return ((set(v))(t))(subs)})()):(error("pattern match fail")))})()}}};return ((foldRecord(drop))(empty))(subs)})()}};
 var applySubsE = function(subs){
 return function(e){
 return (function(){
 var f = function(a){
 return function(e){
-return (Pair(a))((setType((applySubs(subs))(getType(e))))(e))}};return snd(((down(f))(true))(e))})()}};
+return (function(){
+var t2 = (applySubs(subs))(getType(e));return (Pair(a))((setType(t2))(e))})()}};return snd(((down(f))(true))(e))})()}};
 var applySubsDef = function(subs){
 return function(d){
 return (function(){
 var $pm = d;return ($pm.$tag==Pair.$tag)?((function(n,e){
 return (Pair(n))((applySubsE(subs))(e))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}};
-var freeVars = function(e){
-return (function(){
-var namesInPat = function(p){
-return (function(){
-var $pm = p;return ($pm.$tag==PVar.$tag)?((function(v){
-return arr1(v)})($pm.$1)):(($pm.$tag==PConst.$tag)?((function(c){
-return emptyArray})($pm.$1)):(($pm.$tag==PData.$tag)?((function(n,ps){
-return ((foldl(mergeSet))(emptyArray))((map(namesInPat))(ps))})($pm.$1,$pm.$2)):(error("pattern match fail"))))})()};var freeVarsInPData = function(p){
-return (function(){
-var $pm = p;return ($pm.$tag==PData.$tag)?((function(n,ps){
-return ((foldl(mergeSet))(arr1(n)))((map(freeVarsInPData))(ps))})($pm.$1,$pm.$2)):((function(){
-return emptyArray})())})()};var freeVarsInPat = function(p){
-return (function(){
-var $pm = p;return ($pm.$tag==Pair.$tag)?((function(pat,e){
-return (mergeSet((filter(function(v){
-return not((contains(v))(namesInPat(pat)))}))(freeVars(e))))(freeVarsInPData(pat))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()};return (function(){
-var $pm = e;return ($pm.$tag==Var.$tag)?((function(v){
-return arr1(v)})($pm.$1)):(($pm.$tag==Const.$tag)?((function(c){
-return emptyArray})($pm.$1)):(($pm.$tag==App.$tag)?((function(f,x){
-return (mergeSet(freeVars(f)))(freeVars(x))})($pm.$1,$pm.$2)):(($pm.$tag==Lam.$tag)?((function(p,b){
-return (filter(function(v){
-return ($neq(v))(p)}))(freeVars(b))})($pm.$1,$pm.$2)):(($pm.$tag==Case.$tag)?((function(e,ps){
-return ((foldl(mergeSet))(freeVars(e)))((map(freeVarsInPat))(ps))})($pm.$1,$pm.$2)):(($pm.$tag==Let.$tag)?((function(ds,e){
-return (filter(function(v){
-return not((contains(v))((map(fst))(ds)))}))(((foldl(mergeSet))(freeVars(e)))((map(function(d){
-return freeVars(snd(d))}))(ds)))})($pm.$1,$pm.$2)):(error("pattern match fail")))))))})()})()};
 var infer = function(env){
 return function(ctx){
 return function(e){
@@ -1336,7 +1767,7 @@ return (function(){
 var $pm = (hasBinding(v))(env);return (!$pm)?((function(){
 return error(($concat(($concat("no var "))(v)))(" in environment"))})()):($pm?((function(){
 return (function(){
-var $pm = (instantiate(ctx))((getBinding(v))(env));return ($pm.$tag==Pair.$tag)?((function(ctx2,t){
+var $pm = (instantiate(ctx))((applySubs(getSubs(ctx)))((getBinding(v))(env)));return ($pm.$tag==Pair.$tag)?((function(ctx2,t){
 return ((setFinalType(ctx2))(t))(e)})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})()):(error("pattern match fail")))})()})($pm.$1)):(($pm.$tag==Lam.$tag)?((function(ann,p,a){
 return (function(){
 var $pm = newTVar(ctx);return ($pm.$tag==Pair.$tag)?((function(ctx2,tv){
@@ -1348,7 +1779,7 @@ var $pm = newTVar(ctx);return ($pm.$tag==Pair.$tag)?((function(ctx2,tv){
 return (function(){
 var $pm = ((infer(env))(ctx2))(f);return ($pm.$tag==Pair.$tag)?((function(ctx3,f2){
 return (function(){
-var $pm = ((infer((applySubsEnv(getSubs(ctx3)))(env)))(ctx3))(a);return ($pm.$tag==Pair.$tag)?((function(ctx4,a2){
+var $pm = ((infer(env))(ctx3))(a);return ($pm.$tag==Pair.$tag)?((function(ctx4,a2){
 return (function(){
 var subs2 = getSubs(ctx4);var tf = (applySubs(subs2))(getType(f2));var synth = (f1(getType(a2)))(tv);var usubs = (unify(tf))(synth);var subs3 = (composeSubs(subs2))(usubs);var t = (applySubs(subs3))(tv);return ((setFinalType((setSubs(subs3))(ctx4)))(t))(((App(ann))(f2))(a2))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1,$pm.$2)):(($pm.$tag==Case.$tag)?((function(ann,e,ps){
 return (function(){
@@ -1381,7 +1812,7 @@ var $pm = cr;return ($pm.$tag==Pair.$tag)?((function(ctx,r){
 return (function(){
 var $pm = d;return ($pm.$tag==Pair.$tag)?((function(n,e){
 return (function(){
-var $pm = ((generalize(env))(ctx))(getType(e));return ($pm.$tag==Pair.$tag)?((function(ctx2,t){console.log(n, printType(t))
+var $pm = ((generalize(env))(ctx))(getType(e));return ($pm.$tag==Pair.$tag)?((function(ctx2,t){
 return (Pair(ctx2))((push((Pair(n))((setType(t))(e))))(r))})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}}};var unifyDef = function(env){
 return function(d){
 return (function(){
@@ -1408,7 +1839,7 @@ var $pm = ((foldl(generateTVar))((Pair(ctx))(env)))(ds);return ($pm.$tag==Pair.$
 return (function(){
 var $pm = ((foldl(inferDef(env2)))((Pair(ctx2))(emptyArray)))(ds);return ($pm.$tag==Pair.$tag)?((function(ctx3,ds2){
 return (function(){
-var subs = getSubs(ctx3);var dsSubs = (map(unifyDef(env2)))(ds2);var subs2 = ((foldl(composeSubs))(subs))(dsSubs);var ds3 = (map(applySubsDef(subs2)))(ds2);var subs3 = (dropNonEnvSubs(env))(subs2);var ctx4 = (dropSatisfiedBounds(env))((setSubs(subs3))(ctx3));var cds = ((foldl(generalizeDef(env)))((Pair(ctx4))(emptyArray)))(ds3);return cds})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})()}}};
+var subs = getSubs(ctx3);var dsSubs = (map(unifyDef(env2)))(ds2);var subs2 = ((foldl(composeSubs))(subs))(dsSubs);var ds3 = (map(applySubsDef(subs2)))(ds2);var ctx4 = (dropSatisfiedBounds(env))((setSubs(subs2))(ctx3));var cds = ((foldl(generalizeDef(env)))((Pair(ctx4))(emptyArray)))(ds3);return cds})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})()}}};
 var inferDefs = function(env){
 return function(ctx){
 return function(ds){
@@ -1428,7 +1859,7 @@ return (function(){
 var $pm = d;return ($pm.$tag==Pair.$tag)?((function(n,e){
 return ((set(n))((filter(function(v){
 return ($and((contains(v))(ns)))(($neq(v))(n))}))(freeVars(e))))(g)})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}}))(empty))(ds);var ccs = sccSorted(g);return ((foldl(infer))((Pair(ctx))(emptyArray)))(ccs)})()}}};
-var newCtx = ((ICtx(empty))(emptyArray))(1);
+var newCtx = ((ICtx(emptySubs))(emptyArray))(1);
 var inferInstance = function(env){
 return function(cs){
 return function(i){
@@ -1523,18 +1954,6 @@ return ((addBinding(n))(getType(e)))(env)})($pm.$0,$pm.$1)):(error("pattern matc
 return (function(){
 var $pm = (get(getFile(i)))(ms);return ($pm.$tag==ModuleInterface.$tag)?((function(cs){
 return cs})($pm.$1)):(error("pattern match fail"))})()}))(is)))))(ins);return (((((Module(ann))(is))(ts))(cs))(ins2))(ds3)})()})($pm.$0,$pm.$1,$pm.$2,$pm.$3,$pm.$4,$pm.$5)):(error("pattern match fail"))})()})()}};
-var checkSubs = function(subs){
-return (function(){
-var rhs = ((foldRecord(function(rs){
-return function(_){
-return function(t){
-return (concat(rs))(freeTVars(t))}}}))(emptyArray))(subs);var check = function(_){
-return function(v){
-return function(_){
-return (function(){
-var $pm = (contains(v))(rhs);return $pm?((function(){
-return error(($concat(($concat("tvar "))(v)))(" appears both at LHS and RHS of subs"))})()):((!$pm)?((function(){
-return true})()):(error("pattern match fail")))})()}}};return ((foldRecord(check))(true))(subs)})()};
 var inferType = function(env){
 return function(ctx){
 return function(e){
@@ -1546,7 +1965,7 @@ return (function(){
 var $pm = e;return ($pm.$tag==IEnv.$tag)?((function(bs,ts){
 return (function(){
 var _2 = debug((map(printTypeBound))(ts));var _ = debug((mapRecord(printType))(bs));return e})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()};
-var exports = {ICtx:ICtx,IEnv:IEnv,instanceToTypeBound:instanceToTypeBound,f1:f1,conType:conType,conTypes:conTypes,getTypedExports:getTypedExports,newTVar:newTVar,getSubs:getSubs,applySubs:applySubs,applySubsBound:applySubsBound,setSubs:setSubs,getBinding:getBinding,hasBinding:hasBinding,addBinding:addBinding,addBindings:addBindings,applySubsEnv:applySubsEnv,addBound:addBound,instantiate:instantiate,freeTVars:freeTVars,freeTVarsInBound:freeTVarsInBound,substitute:substitute,composeSubs:composeSubs,unify:unify,unrollDataConType:unrollDataConType,getBounds:getBounds,setBounds:setBounds,freeTVarsInEnv:freeTVarsInEnv,generalize:generalize,getInstances:getInstances,satisfies:satisfies,satisfiesBound:satisfiesBound,dropSatisfiedBounds:dropSatisfiedBounds,dropNonEnvSubs:dropNonEnvSubs,applySubsE:applySubsE,applySubsDef:applySubsDef,freeVars:freeVars,infer:infer,inferSccDefs:inferSccDefs,inferDefs:inferDefs,newCtx:newCtx,inferInstance:inferInstance,classToBindings:classToBindings,emptyEnv:emptyEnv,addInstance:addInstance,inferTypeModule:inferTypeModule,checkSubs:checkSubs,inferType:inferType,debugEnv:debugEnv}
+var exports = {Subs:Subs,ICtx:ICtx,IEnv:IEnv,instanceToTypeBound:instanceToTypeBound,f1:f1,conType:conType,conTypes:conTypes,getTypedExports:getTypedExports,freeVars:freeVars,getSub:getSub,hasSub:hasSub,dropSubs:dropSubs,applySubs:applySubs,applySubsBound:applySubsBound,emptySubs:emptySubs,freeTVars:freeTVars,freeTVarsInBound:freeTVarsInBound,composeSubs:composeSubs,addSub:addSub,addSatSub:addSatSub,substitute:substitute,unify:unify,newTVar:newTVar,getSubs:getSubs,setSubs:setSubs,getBinding:getBinding,hasBinding:hasBinding,addBinding:addBinding,addBindings:addBindings,addBound:addBound,instantiate:instantiate,unrollDataConType:unrollDataConType,getBounds:getBounds,setBounds:setBounds,freeTVarsInEnv:freeTVarsInEnv,generalize:generalize,getInstances:getInstances,satisfies:satisfies,satisfiesBound:satisfiesBound,dropSatisfiedBounds:dropSatisfiedBounds,applySubsE:applySubsE,applySubsDef:applySubsDef,infer:infer,inferSccDefs:inferSccDefs,inferDefs:inferDefs,newCtx:newCtx,inferInstance:inferInstance,classToBindings:classToBindings,emptyEnv:emptyEnv,addInstance:addInstance,inferTypeModule:inferTypeModule,inferType:inferType,debugEnv:debugEnv}
 return exports;})();
 cache["//compiler/importNormalizer.jg"] = (function() {var get = (_require("./builtins.js")).get;
 var keys = (_require("./builtins.js")).keys;
@@ -1564,7 +1983,11 @@ var not = (_require("//compiler/prelude.jg")).not;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -1573,6 +1996,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var Module = (_require("//compiler/ast.jg")).Module;
 var ModuleInterface = (_require("//compiler/ast.jg")).ModuleInterface;
 var Instance = (_require("//compiler/ast.jg")).Instance;
@@ -1634,6 +2060,7 @@ var foldr = (_require("./builtins.js")).foldr;
 var foldl = (_require("./builtins.js")).foldl;
 var sort = (_require("./builtins.js")).sort;
 var error = (_require("./builtins.js")).error;
+var debug = (_require("./builtins.js")).debug;
 var jsonStringify = (_require("./builtins.js")).jsonStringify;
 var True = (_require("./builtins.js")).True;
 var False = (_require("./builtins.js")).False;
@@ -1653,7 +2080,11 @@ var fst = (_require("//compiler/prelude.jg")).fst;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -1662,6 +2093,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var Var = (_require("//compiler/ast.jg")).Var;
 var App = (_require("//compiler/ast.jg")).App;
 var Lam = (_require("//compiler/ast.jg")).Lam;
@@ -1697,6 +2131,10 @@ var applySubs = (_require("//compiler/typer.jg")).applySubs;
 var applySubsBound = (_require("//compiler/typer.jg")).applySubsBound;
 var instanceToTypeBound = (_require("//compiler/typer.jg")).instanceToTypeBound;
 var satisfiesBound = (_require("//compiler/typer.jg")).satisfiesBound;
+var emptySubs = (_require("//compiler/typer.jg")).emptySubs;
+var addSub = (_require("//compiler/typer.jg")).addSub;
+var printTypeBound = (_require("//compiler/printer.jg")).printTypeBound;
+var reallyPrintExpr = (_require("//compiler/printer.jg")).reallyPrintExpr;
 var $S = function($0,$1,$2){
 this.$0=$0;this.$1=$1;this.$2=$2;this.$tag="S"};
 var S = function($0){
@@ -1786,7 +2224,7 @@ var $pm = t;return ($pm.$tag==TForall.$tag)?((function(ann,vs,bs,t){
 return (function(){
 var subs = ((foldl(function(subs){
 return function(v){
-return ((set(v))((TVar(emptyAnn))(($concat(p))(v))))(subs)}}))(empty))(vs);return (applySubs(subs))((((TForall(ann))((map(function(v){
+return ((addSub(v))((TVar(emptyAnn))(($concat(p))(v))))(subs)}}))(emptySubs))(vs);return (applySubs(subs))((((TForall(ann))((map(function(v){
 return ($concat(p))(v)}))(vs)))(bs))(t))})()})($pm.$0,$pm.$1,$pm.$2,$pm.$3)):((function(){
 return t})())})()}};
 var rewriteExpr = function(is){
@@ -1814,7 +2252,7 @@ return (function(){
 var $pm = p;return ($pm.$tag==Pair.$tag)?((function(ib){
 return (satisfiesBound(ib))(b)})($pm.$1)):(error("pattern match fail"))})()}))(is);return (($pm.$tag==Just.$tag)&&($pm.$0.$tag==Pair.$tag))?((function(n){
 return n})($pm.$0.$0)):((function(){
-return error("declasser failed to find satisfying instance " + JSON.stringify([b, is]))})())})()})($pm.$1)):(error("pattern match fail"))})()}};var requiredInstances = function(tv){
+return error(($concat("declasser failed to find satisfying instance for "))(printTypeBound(b)))})())})()})($pm.$1)):(error("pattern match fail"))})()}};var requiredInstances = function(tv){
 return function(td){
 return (function(){
 var $pm = (addPrefix("ins$"))(td);return ($pm.$tag==TForall.$tag)?((function(bs,t){
@@ -1823,10 +2261,10 @@ var subs = (unify(tv))(t);return (map(applySubsBound(subs)))(bs)})()})($pm.$2,$p
 return emptyArray})())})()}};var rewriteVar = function(a){
 return function(e){
 return (function(){
-var $pm = e;return ($pm.$tag==Var.$tag)?((function(v){console.log('looking at var', v);
+var $pm = e;return ($pm.$tag==Var.$tag)?((function(v){
 return (function(){
 var $pm = getType(e);return ($pm.$tag==TForall.$tag)?((function(){
-return (Pair(a))(e)})()):((function(tv){console.log('local type', _require('//compiler/printer.jg').printType(tv));
+return (Pair(a))(e)})()):((function(tv){
 return (function(){
 var t = (fromEnv(v))(getEnv(a));var is = (requiredInstances(tv))(t);var mis = (map(function(b){
 return (findMatching(b))(a)}))(is);var e2 = ((foldl(function(e){
@@ -1857,21 +2295,11 @@ return ((foldr(rewriteBound))((Pair(a))((setType(t))(e))))(zipWithIndex(bs))})()
 return (Pair(a))(e)})())})()}};return snd((((((breakableDownAndUpWithEnv(getEnv))(setEnv))(function(a){
 return function(e){
 return Left((rewriteBounds(a))(e))}}))(rewriteVar))(((S(arr1(env)))(is))(0)))(e))})()}}};
-var instanceName = function(ix){
-return function(i){
-return (function(){
-var $pm = i;return ($pm.$tag==Instance.$tag)?((function(n){
-return ($concat(($concat(($concat("$instance$"))(n)))("$")))(intToString(ix))})($pm.$1)):(error("pattern match fail"))})()}};
-var className = function(n){
-return ($concat("$class$"))(n)};
-var rewriteInstance = function(is){
+var rewriteTopExpr = function(is){
 return function(env){
-return function(ix){
-return function(i){
+return function(e){
 return (function(){
-var $pm = i;return ($pm.$tag==Instance.$tag)?((function(n,bs){
-return (function(){
-var args = (map((rewriteExpr(is))(env)))((map(snd))(sort(bs)));var name = (instanceName(ix))(i);return (Pair(name))(((foldl(App(emptyAnn)))((Var(emptyAnn))(className(n))))(args))})()})($pm.$1,$pm.$3)):(error("pattern match fail"))})()}}}};
+var _ = debug((reallyPrintExpr(true))(e));return ((rewriteExpr(is))(env))(e)})()}}};
 var instanceNameFromImport = function(imix){
 return function(inix){
 return function(b){
@@ -1892,6 +2320,8 @@ return (function(){
 var $pm = ib;return ($pm.$tag==Pair.$tag)?((function(inix,b){
 return (function(){
 var alias = ((instanceNameFromImport(imix))(inix))(b);var symbol = (instanceName2(inix))(b);return (Pair((push((Pair(symbol))(alias)))(ns)))((push((Pair(alias))(b)))(bs))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}}};
+var className = function(n){
+return ($concat("$class$"))(n)};
 var rewriteImportedInstances = function(ms){
 return function(isi){
 return function(ixi){
@@ -1953,6 +2383,19 @@ return (function(){
 var $pm = n;return ($pm.$tag==Pair.$tag)?((function(n,a){
 return ((set(a))((get(n))(bs)))(env)})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}}))(env))(ns)})($pm.$1,$pm.$2)):((function(){
 return error("import type not supported in type inference")})()))})();var env3 = ((foldl(addClass))(env2))(cs);return env3})()})($pm.$0,$pm.$1,$pm.$2)):(error("pattern match fail"))})()}};return ((foldl(addImports))(empty))((enqueue((ImportAll(emptyAnn))("./builtins.js")))(is))})()}};
+var instanceName = function(ix){
+return function(i){
+return (function(){
+var $pm = i;return ($pm.$tag==Instance.$tag)?((function(n){
+return ($concat(($concat(($concat("$instance$"))(n)))("$")))(intToString(ix))})($pm.$1)):(error("pattern match fail"))})()}};
+var rewriteInstance = function(is){
+return function(env){
+return function(ix){
+return function(i){
+return (function(){
+var $pm = i;return ($pm.$tag==Instance.$tag)?((function(n,bs){
+return (function(){
+var args = (map((rewriteExpr(is))(env)))((map(snd))(sort(bs)));var name = (instanceName(ix))(i);return (Pair(name))(((foldl(App(emptyAnn)))((Var(emptyAnn))(className(n))))(args))})()})($pm.$1,$pm.$3)):(error("pattern match fail"))})()}}}};
 var declassModule = function(ms){
 return function(m){
 return (function(){
@@ -1970,7 +2413,7 @@ return (function(){
 var $pm = p;return ($pm.$tag==Pair.$tag)?((function(n,i){
 return (((rewriteInstance(availableInstances))(env2))(n))(i)})($pm.$0,$pm.$1)):(error("pattern match fail"))})()}))(zipWithIndex(ins));var ds2 = (map(function(d){
 return (Pair(fst(d)))(((rewriteExpr(availableInstances))(env2))(snd(d)))}))(ds);var is2 = fst(isi);return (((((Module(ann))(is2))(dt2))(cs))(ins))((concat(classFuns))((concat(instancesAsDefs))(ds2)))})()})($pm.$0,$pm.$1,$pm.$2,$pm.$3,$pm.$4,$pm.$5)):(error("pattern match fail"))})()}};
-var exports = {S:S,setEnv:setEnv,instanceNameFromBound:instanceNameFromBound,getEnv:getEnv,breakableDownAndUpWithEnv:breakableDownAndUpWithEnv,addPrefix:addPrefix,rewriteExpr:rewriteExpr,instanceName:instanceName,className:className,rewriteInstance:rewriteInstance,instanceNameFromImport:instanceNameFromImport,instanceName2:instanceName2,rewriteImportedBound:rewriteImportedBound,rewriteImportedInstances:rewriteImportedInstances,className2:className2,rewriteClassToFun:rewriteClassToFun,rewriteClassToData:rewriteClassToData,importsToTypeEnv:importsToTypeEnv,declassModule:declassModule}
+var exports = {S:S,setEnv:setEnv,instanceNameFromBound:instanceNameFromBound,getEnv:getEnv,breakableDownAndUpWithEnv:breakableDownAndUpWithEnv,addPrefix:addPrefix,rewriteExpr:rewriteExpr,rewriteTopExpr:rewriteTopExpr,instanceNameFromImport:instanceNameFromImport,instanceName2:instanceName2,rewriteImportedBound:rewriteImportedBound,className:className,rewriteImportedInstances:rewriteImportedInstances,className2:className2,rewriteClassToFun:rewriteClassToFun,rewriteClassToData:rewriteClassToData,importsToTypeEnv:importsToTypeEnv,instanceName:instanceName,rewriteInstance:rewriteInstance,declassModule:declassModule}
 return exports;})();
 cache["//compiler/args.jg"] = (function() {var $eq = (_require("./builtins.js")).$eq;
 var $and = (_require("./builtins.js")).$and;
@@ -1996,7 +2439,11 @@ var contains = (_require("//compiler/prelude.jg")).contains;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -2005,6 +2452,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var $ArgBool = function($0,$1){
 this.$0=$0;this.$1=$1;this.$tag="ArgBool"};
 var ArgBool = function($0){
@@ -2219,7 +2669,11 @@ var Pair = (_require("//compiler/prelude.jg")).Pair;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -2228,6 +2682,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var JSIndex = (_require("//compiler/js/ast.jg")).JSIndex;
 var JSBinOp = (_require("//compiler/js/ast.jg")).JSBinOp;
 var JSCall = (_require("//compiler/js/ast.jg")).JSCall;
@@ -2286,7 +2743,11 @@ var Pair = (_require("//compiler/prelude.jg")).Pair;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -2295,6 +2756,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var JSRef = (_require("//compiler/js/ast.jg")).JSRef;
 var JSIndex = (_require("//compiler/js/ast.jg")).JSIndex;
 var JSUnOp = (_require("//compiler/js/ast.jg")).JSUnOp;
@@ -2404,7 +2868,11 @@ var fst = (_require("//compiler/prelude.jg")).fst;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -2413,6 +2881,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var Var = (_require("//compiler/ast.jg")).Var;
 var Const = (_require("//compiler/ast.jg")).Const;
 var App = (_require("//compiler/ast.jg")).App;
@@ -2566,7 +3037,11 @@ var join = (_require("//compiler/prelude.jg")).join;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -2575,6 +3050,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var jaguarExprToJsExpr = (_require("//compiler/js/jaguarToJs.jg")).jaguarExprToJsExpr;
 var moduleToJs = (_require("//compiler/js/jaguarToJs.jg")).moduleToJs;
 var jsExprToString = (_require("//compiler/js/printer.jg")).jsExprToString;
@@ -2613,7 +3091,11 @@ var fst = (_require("//compiler/prelude.jg")).fst;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -2622,6 +3104,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var $Success = function($0,$1){
 this.$0=$0;this.$1=$1;this.$tag="Success"};
 var Success = function($0){
@@ -2787,7 +3272,11 @@ var not = (_require("//compiler/prelude.jg")).not;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -2796,6 +3285,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var Success = (_require("//compiler/parsers.jg")).Success;
 var Error = (_require("//compiler/parsers.jg")).Error;
 var Parser = (_require("//compiler/parsers.jg")).Parser;
@@ -2895,8 +3387,8 @@ return (($lt$mul$gt($import2$instance$Applicative$1))((pure($import2$instance$Ap
 var lineCommentP = (($lt$mul$gt($import2$instance$Applicative$1))(mkTok(ComTok)))((((($pip$gt($import2$instance$Applicative$1))($import2$instance$Applicative$1))($import2$instance$Applicative$1))((((($pip$gt($import2$instance$Applicative$1))($import2$instance$Applicative$1))($import2$instance$Applicative$1))(charP("/")))(charP("/"))))(manyStr(notCharP("\n"))));
 var symbolP = (($lt$mul$gt($import2$instance$Applicative$1))(mkTok(SymTok)))(charP("()[]{},\\"));
 var identP = (($lt$mul$gt($import2$instance$Applicative$1))(mkTok(IdTok)))((($lt$mul$gt($import2$instance$Applicative$1))((($lt$mul$gt($import2$instance$Applicative$1))((pure($import2$instance$Applicative$1))($concat)))(charP(($concat(letters))("_")))))(manyStr(charP(($concat(($concat(letters))(digits)))("_")))));
-var opIdentP = (($lt$mul$gt($import2$instance$Applicative$1))(mkTok(IdTok)))((((($lt$pip($import2$instance$Applicative$1))($import2$instance$Applicative$1))($import2$instance$Applicative$1))((((($pip$gt($import2$instance$Applicative$1))($import2$instance$Applicative$1))($import2$instance$Applicative$1))(charP("(")))(someStr(charP("-+*/=:&|<>^")))))(charP(")")));
-var opP = (($lt$mul$gt($import2$instance$Applicative$1))(mkTok(OpTok)))(someStr(charP("-+*/=:&|<>^")));
+var opIdentP = (($lt$mul$gt($import2$instance$Applicative$1))(mkTok(IdTok)))((((($lt$pip($import2$instance$Applicative$1))($import2$instance$Applicative$1))($import2$instance$Applicative$1))((((($pip$gt($import2$instance$Applicative$1))($import2$instance$Applicative$1))($import2$instance$Applicative$1))(charP("(")))(someStr(charP("-+*/=:&|<>^$")))))(charP(")")));
+var opP = (($lt$mul$gt($import2$instance$Applicative$1))(mkTok(OpTok)))(someStr(charP("-+*/=:&|<>^$")));
 var anyCharP = parseChar(function(_){
 return true});
 var stringCharP = (function(){
@@ -2936,7 +3428,11 @@ var justOr = (_require("//compiler/prelude.jg")).justOr;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -2945,6 +3441,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var Var = (_require("//compiler/ast.jg")).Var;
 var Const = (_require("//compiler/ast.jg")).Const;
 var App = (_require("//compiler/ast.jg")).App;
@@ -3306,7 +3805,11 @@ var snd = (_require("//compiler/prelude.jg")).snd;
 var $import1$instance$Functor$0 = (_require("//compiler/prelude.jg")).$instance$Functor$0;
 var $import1$instance$Applicative$1 = (_require("//compiler/prelude.jg")).$instance$Applicative$1;
 var $import1$instance$Alternative$2 = (_require("//compiler/prelude.jg")).$instance$Alternative$2;
-var $import1$instance$Functor$3 = (_require("//compiler/prelude.jg")).$instance$Functor$3;
+var $import1$instance$Monad$3 = (_require("//compiler/prelude.jg")).$instance$Monad$3;
+var $import1$instance$Functor$4 = (_require("//compiler/prelude.jg")).$instance$Functor$4;
+var $import1$instance$Functor$5 = (_require("//compiler/prelude.jg")).$instance$Functor$5;
+var $import1$instance$Applicative$6 = (_require("//compiler/prelude.jg")).$instance$Applicative$6;
+var $import1$instance$Monad$7 = (_require("//compiler/prelude.jg")).$instance$Monad$7;
 var $class$Functor = (_require("//compiler/prelude.jg")).$class$Functor;
 var fmap = (_require("//compiler/prelude.jg")).fmap;
 var $class$Applicative = (_require("//compiler/prelude.jg")).$class$Applicative;
@@ -3315,6 +3818,9 @@ var $lt$mul$gt = (_require("//compiler/prelude.jg")).$lt$mul$gt;
 var $class$Alternative = (_require("//compiler/prelude.jg")).$class$Alternative;
 var zero = (_require("//compiler/prelude.jg")).zero;
 var $lt$pip$gt = (_require("//compiler/prelude.jg")).$lt$pip$gt;
+var $class$Monad = (_require("//compiler/prelude.jg")).$class$Monad;
+var ret = (_require("//compiler/prelude.jg")).ret;
+var $gt$gt$eq = (_require("//compiler/prelude.jg")).$gt$gt$eq;
 var Success = (_require("//compiler/parsers.jg")).Success;
 var $import2$instance$Functor$0 = (_require("//compiler/parsers.jg")).$instance$Functor$0;
 var $import2$instance$Applicative$1 = (_require("//compiler/parsers.jg")).$instance$Applicative$1;
@@ -3370,7 +3876,11 @@ var bs = (mapRecord(function(s){
 return snd(((generalize(emptyEnv))(newCtx))(parseT(s)))}))(e);return ((ModuleInterface(bs))(emptyArray))(emptyArray)})()};
 var instrument = function(m){
 return (function(){
-var instrumentExpr = function(n){
+var addImport = function(i){
+return (function(){
+var $pm = i;return (($pm.$tag==ImportOpen.$tag)&&("./builtins.js"==$pm.$1))?((function(ann,syms){
+return ((ImportOpen(ann))("./builtins.js"))((push((Pair("perfTime"))("perfTime")))(syms))})($pm.$0,$pm.$2)):((function(){
+return i})())})()};var instrumentExpr = function(n){
 return function(e){
 return (function(){
 var $pm = e;return ($pm.$tag==Lam.$tag)?((function(a,p,e){
@@ -3382,7 +3892,7 @@ var $pm = d;return (($pm.$tag==Pair.$tag)&&($pm.$1.$tag==Lam.$tag))?((function(n
 return (Pair(n))((instrumentExpr(n))(((Lam(a))(p))(e)))})($pm.$0,$pm.$1.$0,$pm.$1.$1,$pm.$1.$2)):((function(){
 return d})())})()};return (function(){
 var $pm = m;return ($pm.$tag==Module.$tag)?((function(ann,is,ds,cs,ins,vs){
-return (((((Module(ann))(is))(ds))(cs))(ins))((map(instrumentDef))(vs))})($pm.$0,$pm.$1,$pm.$2,$pm.$3,$pm.$4,$pm.$5)):(error("pattern match fail"))})()})()};
+return (((((Module(ann))((map(addImport))(is)))(ds))(cs))(ins))((map(instrumentDef))(vs))})($pm.$0,$pm.$1,$pm.$2,$pm.$3,$pm.$4,$pm.$5)):(error("pattern match fail"))})()})()};
 var builtinsPathArg = (ArgString("builtins"))(Nothing);
 var outPathArg = (ArgString("out"))(Nothing);
 var mainArg = (ArgString("main"))(Nothing);

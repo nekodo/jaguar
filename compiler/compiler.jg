@@ -9,6 +9,7 @@ import {dfs} from '//compiler/graph.jg'
 import {ArgBool, ArgString, parseArgs, getPositional, getString, getBool} from '//compiler/args.jg'
 import {declassModule} from '//compiler/declasser.jg'
 import {normalizeImports} from '//compiler/importNormalizer.jg'
+import {uniquify} from '//compiler/uniquifier.jg'
 
 compile s = case (parseModule s) of
   Success m (ParserState ts p li ri) -> case (p == length ts) of
@@ -42,8 +43,11 @@ instrument m = let
     _ -> let
       we = Lam emptyAnn '$unused$' e
       in App emptyAnn (App emptyAnn (Var emptyAnn 'perfTime') (Const emptyAnn (CStr n))) we
+  addImport i = case i of
+    ImportOpen ann './builtins.js' syms -> ImportOpen ann './builtins.js' (push (Pair 'perfTime' 'perfTime') syms)
+    _ -> i
   in case m of
-    Module ann is ds cs ins vs -> Module ann is ds cs ins (map instrumentDef vs)
+    Module ann is ds cs ins vs -> Module ann (map addImport is) ds cs ins (map instrumentDef vs)
 
 builtinsPathArg = ArgString 'builtins' Nothing
 outPathArg = ArgString 'out' Nothing

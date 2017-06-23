@@ -1,7 +1,7 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {classToBindings, conTypes, unify, applySubs, applySubsBound, instanceToTypeBound, satisfiesBound} from '//compiler/typer.jg'
-import {printType, printTypeBound} from '//compiler/printer.jg'
+import {classToBindings, conTypes, unify, applySubs, applySubsBound, instanceToTypeBound, satisfiesBound, emptySubs, addSub} from '//compiler/typer.jg'
+import {printType, printTypeBound, reallyPrintExpr} from '//compiler/printer.jg'
 
 declassModule ms m = case m of
   Module ann is dt cs ins ds -> let 
@@ -67,6 +67,10 @@ getEnv s = case s of
 setEnv env s = case s of
   S _ is n -> S env is n
 
+rewriteTopExpr is env e = let
+  _ = debug (reallyPrintExpr True e)
+  in rewriteExpr is env e
+
 // 1. if type has a bound then wrap it in lambdas to pass the correct instances
 // 2. a reference to a var with a bound is replaced by a App of the instance
 //    dict to the var
@@ -86,7 +90,7 @@ rewriteExpr is env e = let
   findMatching b a = case a of
     S _ is _ -> case (find (\p -> case p of Pair _ ib -> satisfiesBound ib b) is) of
       Just (Pair n _) -> n
-      _ -> error 'declasser failed to find satisfying instance'
+      _ -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b)
   requiredInstances tv td = case (addPrefix 'ins$' td) of
     TForall _ _ bs t -> let
       subs = unify tv t
@@ -118,7 +122,7 @@ rewriteExpr is env e = let
 
 addPrefix p t = case t of
   TForall ann vs bs t -> let
-    subs = foldl (\subs v -> set v (TVar emptyAnn (p ++ v)) subs) empty vs
+    subs = foldl (\subs v -> addSub v (TVar emptyAnn (p ++ v)) subs) emptySubs vs
     in applySubs subs (TForall ann (map (\v -> p ++ v) vs) bs t)
   _ -> t
 

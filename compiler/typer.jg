@@ -3,16 +3,70 @@ import * from '//compiler/ast.jg'
 import {printType, printTypeBound} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
 
+// --------------- Subs -------------------------------
+
+data Subs = Subs (Record Type) (Record Type)
+
+getSub v subs = case subs of
+  Subs sat unsat -> case (has v sat) of
+    True -> get v sat
+    False -> get v unsat
+
+hasSub v subs = case subs of
+  Subs sat unsat -> has v sat || has v unsat
+
+emptySubs = Subs empty empty
+
+composeSubs sa sb = case sb of
+  Subs sat unsat -> foldRecord (\r v t -> addSub v t r) (foldRecord (\r v t -> addSatSub v t r) sa sat) unsat
+
+addSub v t subs = let
+  t2 = applySubs subs t
+  in case (hasSub v subs) of
+    False -> case subs of
+      Subs sat unsat -> let
+        subUnsat su uv ut = case su of
+          Pair sat unsat -> let
+            ut2 = substitute v t2 ut
+            in case (length (freeTVars ut2)) of
+              0 -> Pair (set uv ut2 sat) unsat
+              _ -> Pair sat (set uv ut2 unsat)
+        su = foldRecord subUnsat (Pair sat empty) unsat
+        sat2 = fst su
+        unsat2 = snd su
+        in case (length (freeTVars t2)) of
+          0 -> Subs (set v t2 sat2) unsat2
+          _ -> Subs sat2 (set v t2 unsat2)
+    True -> composeSubs subs (unify (getSub v subs) t2)
+
+addSatSub v t subs = case (hasSub v subs) of
+  False -> case subs of
+    Subs sat unsat -> let
+      subUnsat su uv ut = case su of
+        Pair sat unsat -> let
+          ut2 = substitute v t ut
+          in case (length (freeTVars ut2)) of
+            0 -> Pair (set uv ut2 sat) unsat
+            _ -> Pair sat (set uv ut2 unsat)
+      su = foldRecord subUnsat (Pair sat empty) unsat
+      sat2 = fst su
+      unsat2 = snd su
+      in Subs (set v t sat2) unsat2
+  True -> composeSubs subs (unify (getSub v subs) t)
+
+dropSubs vs subs = case subs of
+  Subs sat unsat -> Subs (foldl (\r v -> del v r) sat vs) (foldl (\r v -> del v r) unsat vs)
+
 // -------------- Context -----------------------------
 
-data InferenceContext = ICtx (Record Type) (Array TypeBound) Number
+data InferenceContext = ICtx Subs (Array TypeBound) Number
 
 newTVar ctx = case ctx of
   ICtx subs bs i -> let
     n = '$' ++ intToString i
     in Pair (ICtx subs bs (i + 1)) (TVar emptyAnn n)
 
-newCtx = ICtx empty emptyArray 1
+newCtx = ICtx emptySubs emptyArray 1
 
 getSubs ctx = case ctx of
   ICtx subs _ _ -> subs
@@ -45,9 +99,6 @@ addBinding n t env = case env of
 addBindings nbs env = case env of
   IEnv bs ts -> IEnv (merge bs nbs) ts
 
-applySubsEnv subs env = case env of
-  IEnv bs ts -> IEnv (mapRecord (applySubs subs) bs) ts
-
 freeTVarsInEnv env = case env of
   IEnv bs _ -> foldRecord (\vs _ t -> concat vs (freeTVars t)) emptyArray bs
 
@@ -72,9 +123,9 @@ f1 a b = TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b
 instantiate ctx t = let
   mkvar cs v = case cs of
     Pair ctx subs -> case (newTVar ctx) of
-      Pair ctx2 tv -> Pair ctx2 (set v tv subs)
+      Pair ctx2 tv -> Pair ctx2 (addSub v tv subs)
   in case t of
-    TForall _ vs bs t -> case (foldl mkvar (Pair ctx empty) vs) of
+    TForall _ vs bs t -> case (foldl mkvar (Pair ctx emptySubs) vs) of
       Pair ctx2 subs -> let
         t2 = applySubs subs t
         bs2 = map (applySubsBound subs) bs
@@ -82,49 +133,39 @@ instantiate ctx t = let
         in Pair ctx3 t2
     _ -> Pair ctx t
 
-substitute n s t = applySubs (set n s empty) t
+substitute n s t = applySubs (addSub n s emptySubs) t
 
 applySubs subs t = case t of
   TForall ann vs bs t -> let
-    subs2 = foldl (\s v -> del v s) subs vs
+    subs2 = dropSubs vs subs
     in TForall ann vs (map (applySubsBound subs2) bs) (applySubs subs2 t)
-  TVar _ v -> case (has v subs) of
+  TVar _ v -> case (hasSub v subs) of
     False -> t
-    True -> get v subs
+    True -> getSub v subs
   TApp ann f a -> TApp ann (applySubs subs f) (applySubs subs a)
   _ -> t
 
 applySubsBound subs b = case b of
   TCBound ann n t -> TCBound ann n (applySubs subs t)
 
-composeSubs sa sb = let
-  compose subs n t = let
-    t2 = applySubs subs t
-    in case (has n subs) of
-      False -> set n t2 (mapRecord (substitute n t2) subs)
-      True -> let
-        msubs = unify (get n subs) t2
-        in composeSubs subs msubs
-  in foldRecord compose sa sb
-
 unify a b = let
   bind n t = case t of
     TVar _ m -> case (n == m) of
-      True -> empty
-      False -> set n t empty
+      True -> emptySubs
+      False -> addSub n t emptySubs
     _ -> case (contains n (freeTVars t)) of
       True -> let
         _ = 13//debug (printType a)
         //_ = debug (printType b)
         in error 'occurs check failed'
-      False -> set n t empty
+      False -> addSub n t emptySubs
   err a b = error
     ('cannot unify ' ++ printType a ++ ' with ' ++ printType b)
   in case a of
     TVar _ v -> bind v b
     TConst _ ca -> case b of
       TConst _ cb -> case (ca == cb) of
-        True -> empty
+        True -> emptySubs
         False -> err a b
       TVar _ v -> bind v a
       _ -> err a b
@@ -201,7 +242,7 @@ infer env ctx e = let
     Const _ (CStr s) -> setFinalType ctx (TConst emptyAnn 'String') e
     Var _ v -> case (hasBinding v env) of
       False -> error ('no var ' ++ v ++ ' in environment')
-      True -> case (instantiate ctx (getBinding v env)) of
+      True -> case (instantiate ctx (applySubs (getSubs ctx) (getBinding v env))) of
         Pair ctx2 t -> setFinalType ctx2 t e
     Lam ann p a -> case (newTVar ctx) of
       Pair ctx2 tv -> case (infer (addBinding p tv env) ctx2 a) of
@@ -209,7 +250,7 @@ infer env ctx e = let
           setFinalType ctx3 (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') (applySubs (getSubs ctx3) tv)) (getType a2)) (Lam ann p a2)
     App ann f a -> case (newTVar ctx) of
       Pair ctx2 tv -> case (infer env ctx2 f) of
-        Pair ctx3 f2 -> case (infer (applySubsEnv (getSubs ctx3) env) ctx3 a) of
+        Pair ctx3 f2 -> case (infer env ctx3 a) of
           Pair ctx4 a2 -> let
             subs2 = getSubs ctx4
             tf = applySubs subs2 (getType f2)
@@ -263,12 +304,12 @@ inferSccDefs env ctx ds = let
         dsSubs = map (unifyDef env2) ds2
         subs2 = foldl composeSubs subs dsSubs
         ds3 = map (applySubsDef subs2) ds2
-        subs3 = dropNonEnvSubs env subs2
+        //subs3 = dropNonEnvSubs env subs2
         //_ = debug (mapRecord printType subs3)
         // NOTE: generalizing with env *without* the bindings being generalized.
-        ctx4 = dropSatisfiedBounds env (setSubs subs3 ctx3)
+        ctx4 = dropSatisfiedBounds env (setSubs subs2 ctx3)
         cds = foldl (generalizeDef env) (Pair ctx4 emptyArray) ds3
-        //_ = debug ('inferred ' ++ jsonStringify (map (\d -> case d of Pair n e -> Pair n (printType (getType e))) ds4))
+        //_ = debug ('inferred ' ++ jsonStringify (map (\d -> case d of Pair n e -> Pair n (printType (getType e))) (snd cds)))
         in cds
 
 dropSatisfiedBounds env ctx = let
@@ -276,13 +317,6 @@ dropSatisfiedBounds env ctx = let
   bs = getBounds ctx
   bs2 = filter (\b -> not (exists (\i -> satisfiesBound i b) is)) bs
   in setBounds bs2 ctx
-
-dropNonEnvSubs env subs = let
-  ftv = freeTVarsInEnv env
-  drop subs v t = case (contains v ftv) of
-    False -> subs
-    True -> set v t subs
-  in foldRecord drop empty subs
 
 inferDefs env ctx ds = let
   ns = map fst ds
@@ -295,13 +329,6 @@ inferDefs env ctx ds = let
       Pair ctx2 ds -> Pair ctx2 (concat rs ds)
   in foldl infer (Pair ctx emptyArray) ccs
 
-checkSubs subs = let
-  rhs = foldRecord (\rs _ t -> concat rs (freeTVars t)) emptyArray subs
-  check _ v _ = case (contains v rhs) of
-    True -> error ('tvar ' ++ v ++ ' appears both at LHS and RHS of subs')
-    False -> True
-  in foldRecord check True subs
-
 generalize env ctx t = let
   subs = getSubs ctx
   envTVars = freeTVarsInEnv env
@@ -309,7 +336,7 @@ generalize env ctx t = let
     f rs v t = case (contains v envTVars) of
       False -> rs
       True -> concat rs (freeTVars t)
-    in foldRecord f emptyArray subs
+    in foldRecord f emptyArray (case subs of Subs _ unsat -> unsat)
   //_ = debug freeTVarsInEnv
   //_ = debug tvarsSubstitutingForEnvTVars
   nonFree = concat envTVars tvarsSubstitutingForEnvTVars
@@ -327,9 +354,15 @@ generalize env ctx t = let
   in case vbb of
     Pair bvs (Pair rbs obs) -> let
       finalVars = filter (\v -> not (contains v bvs)) vs
+      drop r v t = case (exists (\v -> contains v finalVars) (freeTVars t)) of
+        False -> set v t r
+        True -> r
+      subs2 = case subs of
+        Subs sat unsat -> Subs sat (foldRecord drop empty unsat)
+      ctx2 = setSubs subs2 ctx
       in case ((length finalVars > 0) || (length rbs > 0)) of
-        True -> Pair (setBounds obs ctx) (TForall emptyAnn finalVars rbs t)
-        False -> Pair (setBounds obs ctx) t
+        True -> Pair (setBounds obs ctx2) (TForall emptyAnn finalVars rbs t)
+        False -> Pair (setBounds obs ctx2) t
 
 // a -> (b -> (c -> Foo a b c))
 unrollDataConType t = case t of
@@ -341,7 +374,9 @@ applySubsDef subs d = case d of
   Pair n e -> Pair n (applySubsE subs e)
 
 applySubsE subs e = let
-  f a e = Pair a (setType (applySubs subs (getType e)) e)
+  f a e = let
+    t2 = applySubs subs (getType e)
+    in Pair a (setType t2 e)
   in snd (down f True e)
 
 freeVars e = let
