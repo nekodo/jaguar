@@ -104,6 +104,12 @@ builtins.set = function(f) {
     }
 }
 
+builtins.setIx = i => a => as => {
+  const r = as.slice(0);
+  r[i] = a;
+  return r;
+};
+
 builtins.mapRecord = function(f) {
     return function(r) {
         var out = {};
@@ -199,6 +205,12 @@ builtins.slice2 = function(from) {
     }
   }
 }
+
+builtins.splice = start => del => newItems => arr => {
+  const r = arr.slice(0);
+  r.splice(start, del, ...newItems);
+  return r;
+};
 
 builtins.concat = function(a) {
     return function(b) {
@@ -371,6 +383,23 @@ builtins.loadJSExports = function(f) {
   return require(process.cwd() + '/' + f).$TYPE;
 }
 
+builtins.bitAnd = a => b => a & b;
+builtins.bitOr = a => b => a | b;
+builtins.bitShiftRight = a => b => a >>> b;
+builtins.bitShiftLeft = a => b => a << b;
+builtins.bitNot = a => ~a;
+
+builtins.strHashCode = function(s) {
+  var hash = 0, i, chr;
+  if (s.length === 0) return hash;
+  for (i = 0; i < s.length; i++) {
+    chr   = s.charCodeAt(i);
+    hash  = ((hash << 5) - hash) + chr;
+    hash |= 0; // Convert to 32bit integer
+  }
+  return hash;
+};
+
 builtins.$TYPE = {
     'writeFile': 'String -> String -> Bool',
     'readFile': 'String -> String',
@@ -390,6 +419,7 @@ builtins.$TYPE = {
     empty: 'Record a',
     get: 'String -> Record a -> a',
     getIx: 'Number -> Array a -> a',
+    setIx: 'Number -> a -> Array a -> Array a',
     getChar: 'Number -> String -> String',
     keys: 'Record a -> Array String',
     has: 'String -> Record a -> Bool',
@@ -409,6 +439,7 @@ builtins.$TYPE = {
     intercalate: 'String -> Array String -> String',
     slice: 'Number -> Array a -> Array a',
     slice2: 'Number -> Number -> Array a -> Array a',
+    splice: 'Number -> Number -> Array a -> Array a -> Array a',
     concat: 'Array a -> Array a -> Array a',
     map: '(a -> b) -> Array a -> Array b',
     filter: '(a -> Bool) -> Array a -> Array a',
@@ -424,6 +455,12 @@ builtins.$TYPE = {
     True: 'Bool',
     False: 'Bool',
     perfTime: 'String -> (a -> b) -> b',
+    bitAnd: 'Number -> Number -> Number',
+    bitOr: 'Number -> Number -> Number',
+    bitShiftRight: 'Number -> Number -> Number',
+    bitShiftLeft: 'Number -> Number -> Number',
+    strHashCode: 'String -> Number',
+    bitNot: 'Number -> Number',
 };
 
 module.exports = builtins;

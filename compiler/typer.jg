@@ -28,15 +28,15 @@ addSub v t subs = let
         subUnsat su uv ut = case su of
           Pair sat unsat -> let
             ut2 = substitute v t2 ut
-            in case (length (freeTVars ut2)) of
-              0 -> Pair (set uv ut2 sat) unsat
-              _ -> Pair sat (set uv ut2 unsat)
+            in case (isEmpty (freeTVars ut2)) of
+              True -> Pair (set uv ut2 sat) unsat
+              False -> Pair sat (set uv ut2 unsat)
         su = foldRecord subUnsat (Pair sat empty) unsat
         sat2 = fst su
         unsat2 = snd su
-        in case (length (freeTVars t2)) of
-          0 -> Subs (set v t2 sat2) unsat2
-          _ -> Subs sat2 (set v t2 unsat2)
+        in case (isEmpty (freeTVars t2)) of
+          True -> Subs (set v t2 sat2) unsat2
+          False -> Subs sat2 (set v t2 unsat2)
     True -> composeSubs subs (unify (getSub v subs) t2)
 
 addSatSub v t subs = case (hasSub v subs) of
@@ -45,9 +45,9 @@ addSatSub v t subs = case (hasSub v subs) of
       subUnsat su uv ut = case su of
         Pair sat unsat -> let
           ut2 = substitute v t ut
-          in case (length (freeTVars ut2)) of
-            0 -> Pair (set uv ut2 sat) unsat
-            _ -> Pair sat (set uv ut2 unsat)
+          in case (isEmpty (freeTVars ut2)) of
+            True -> Pair (set uv ut2 sat) unsat
+            False -> Pair sat (set uv ut2 unsat)
       su = foldRecord subUnsat (Pair sat empty) unsat
       sat2 = fst su
       unsat2 = snd su
@@ -100,7 +100,7 @@ addBindings nbs env = case env of
   IEnv bs ts -> IEnv (merge bs nbs) ts
 
 freeTVarsInEnv env = case env of
-  IEnv bs _ -> foldRecord (\vs _ t -> concat vs (freeTVars t)) emptyArray bs
+  IEnv bs _ -> foldRecord (\vs _ t -> setUnion vs (freeTVars t)) emptySet bs
 
 emptyEnv = IEnv empty emptyArray
 
@@ -153,7 +153,7 @@ unify a b = let
     TVar _ m -> case (n == m) of
       True -> emptySubs
       False -> addSub n t emptySubs
-    _ -> case (contains n (freeTVars t)) of
+    _ -> case (setContains n (freeTVars t)) of
       True -> let
         _ = 13//debug (printType a)
         //_ = debug (printType b)
@@ -181,13 +181,13 @@ unify a b = let
     _ -> err a b
 
 freeTVars t = case t of
-  TVar _ v -> arr1 v
-  TBot -> emptyArray
-  TUnknown -> emptyArray
-  TConst _ c -> emptyArray
+  TVar _ v -> setAdd v emptySet
+  TBot -> emptySet
+  TUnknown -> emptySet
+  TConst _ c -> emptySet
   TForall _ vs bs t -> 
-    filter (\n -> not (contains n vs)) (foldl mergeSet (freeTVars t) (map freeTVarsInBound bs))
-  TApp _ f a -> mergeSet (freeTVars f) (freeTVars a)
+    foldl (\s v -> setRemove v s) (foldl setUnion (freeTVars t) (map freeTVarsInBound bs)) vs
+  TApp _ f a -> setUnion (freeTVars f) (freeTVars a)
 
 freeTVarsInBound b = case b of
   TCBound _ _ t -> freeTVars t
@@ -333,35 +333,35 @@ generalize env ctx t = let
   subs = getSubs ctx
   envTVars = freeTVarsInEnv env
   tvarsSubstitutingForEnvTVars = let
-    f rs v t = case (contains v envTVars) of
+    f rs v t = case (setContains v envTVars) of
       False -> rs
-      True -> concat rs (freeTVars t)
-    in foldRecord f emptyArray (case subs of Subs _ unsat -> unsat)
+      True -> setUnion rs (freeTVars t)
+    in foldRecord f emptySet (case subs of Subs _ unsat -> unsat)
   //_ = debug freeTVarsInEnv
   //_ = debug tvarsSubstitutingForEnvTVars
-  nonFree = concat envTVars tvarsSubstitutingForEnvTVars
-  vs = filter (\v -> not (contains v nonFree)) (freeTVars t)
-  vbb = foldl processBounds (Pair emptyArray (Pair emptyArray emptyArray)) (getBounds ctx)
+  nonFree = setUnion envTVars tvarsSubstitutingForEnvTVars
+  vs = setDiff (freeTVars t) nonFree
+  vbb = foldl processBounds (Pair emptySet (Pair emptyArray emptyArray)) (getBounds ctx)
   processBounds vbb b = case vbb of
     Pair bvs (Pair rbs obs) -> let
       boundVars = freeTVarsInBound b
-      sharedVars = filter (\v -> contains v vs) boundVars
-      in case (length sharedVars == 0) of
+      sharedVars = setIntersection boundVars vs
+      in case (isEmpty sharedVars) of
         True -> Pair bvs (Pair rbs (push b obs))
-        False -> case (length sharedVars == length boundVars) of
+        False -> case (size sharedVars == size boundVars) of
           True -> Pair bvs (Pair (push b rbs) obs)
-          False -> Pair (concat bvs sharedVars) (Pair rbs (push b obs))
+          False -> Pair (setUnion bvs sharedVars) (Pair rbs (push b obs))
   in case vbb of
     Pair bvs (Pair rbs obs) -> let
-      finalVars = filter (\v -> not (contains v bvs)) vs
-      drop r v t = case (exists (\v -> contains v finalVars) (freeTVars t)) of
+      finalVars = setDiff vs bvs
+      drop r v t = case (exists (\v -> setContains v finalVars) (setToArray $ freeTVars t)) of
         False -> set v t r
         True -> r
       subs2 = case subs of
         Subs sat unsat -> Subs sat (foldRecord drop empty unsat)
       ctx2 = setSubs subs2 ctx
-      in case ((length finalVars > 0) || (length rbs > 0)) of
-        True -> Pair (setBounds obs ctx2) (TForall emptyAnn finalVars rbs t)
+      in case ((not $ isEmpty finalVars) || (length rbs > 0)) of
+        True -> Pair (setBounds obs ctx2) (TForall emptyAnn (setToArray finalVars) rbs t)
         False -> Pair (setBounds obs ctx2) t
 
 // a -> (b -> (c -> Foo a b c))
@@ -419,9 +419,9 @@ classToBindings c = case c of
     process b = case b of
       Pair v t -> let
         ftv = freeTVars t
-        in case (contains tv ftv) of
+        in case (setContains tv ftv) of
           False -> error ('invalid clas definition ' ++ n ++ ', binding ' ++ v)
-          True -> Pair v (TForall emptyAnn ftv (arr1 (TCBound emptyAnn n (TVar emptyAnn tv))) t)
+          True -> Pair v (TForall emptyAnn (setToArray ftv) (arr1 (TCBound emptyAnn n (TVar emptyAnn tv))) t)
     in map process bs
 
 inferTypeModule ms m = let

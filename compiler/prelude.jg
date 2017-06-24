@@ -1,4 +1,5 @@
 data Unit = Unit
+($) f a = f a
 
 class Functor f where
   fmap :: (a -> b) -> f a -> f b
@@ -108,6 +109,8 @@ find predicate xs = let
       False -> Left (i + 1)
   in loop f 0
 
+mapIx f ix xs = setIx ix (f (getIx ix xs)) xs
+
 containsChar x xs = let 
   f i = case (i < length xs) of
     False -> False
@@ -196,3 +199,136 @@ sets s = State (\_ -> Pair s Unit)
 
 runState s m = case m of State f -> f s
 evalState s m = snd (runState s m)
+
+
+class Hashable a where
+  hashCode :: a -> Number
+
+instance Hashable Number where
+  hashCode n = n
+
+instance Hashable String where
+  hashCode s = strHashCode s
+
+data HAMT k v =
+  Empty
+  | Leaf k v
+  | Collision (Array (Pair k v))
+  | BitmapIndexed Number (Array (HAMT k v))
+
+popCount n = let
+  n2 = n - (bitAnd (bitShiftRight n 1) 1431655765)
+  n3 = (bitAnd n2 858993459) + (bitAnd (bitShiftRight n2 2) 858993459)
+  n4 = bitAnd (n3 + bitShiftRight n3 4) 252645135
+  n5 = n4 + bitShiftRight n4 8
+  n6 = n5 + bitShiftRight n5 16
+  in bitAnd n6 127
+
+hamtMask depth hash = let
+  // Just the 5 bits of the hash for this depth (value 0-31).
+  h = bitAnd (bitShiftRight hash (depth * 5)) 31
+  // The mask for the h-th bit (from the right).
+  in bitShiftLeft 1 h
+
+hamtIndex bitmap mask = popCount (bitAnd bitmap (mask - 1))
+
+lookup k t = let
+  hash = hashCode k
+  f depth t = case t of
+    Empty -> Nothing
+    Leaf k2 v -> case (k == k2) of
+      False -> Nothing
+      True -> Just v
+    Collision entries -> fmap snd $ find (\e -> fst e == k) entries
+    BitmapIndexed bitmap entries -> let
+      m = hamtMask depth hash
+      in case (bitAnd m bitmap) of
+        0 -> Nothing
+        _ -> f (depth + 1) (getIx (hamtIndex bitmap m) entries) 
+  in f 0 t
+
+insert k v t = let
+  hash = hashCode k
+  f depth t = case t of
+    Empty -> Leaf k v
+    Collision entries -> Collision (push (Pair k v) (filter (\e -> fst e /= k) entries))
+    Leaf k2 v2 -> case (k == k2) of
+      True -> Leaf k v
+      False -> case depth of
+        7 -> Collision (arr2 (Pair k2 v2) (Pair k v))
+        _ -> f depth (BitmapIndexed (hamtMask depth (hashCode k2)) (arr1 t))
+    BitmapIndexed bitmap entries -> let
+      m = hamtMask depth hash
+      bitmap2 = bitOr m bitmap
+      ix = hamtIndex bitmap2 m
+      in case (bitAnd m bitmap) of
+        0 -> BitmapIndexed bitmap2 (splice ix 0 (arr1 (Leaf k v)) entries)
+        _ -> BitmapIndexed bitmap2 (mapIx (f (depth + 1)) ix entries)
+  in f 0 t
+
+remove k t = let
+  hash = hashCode k
+  f depth t = case t of
+    Empty -> Empty
+    Leaf k2 _ -> case (k2 == k) of
+      True -> Empty
+      False -> t
+    Collision entries -> let
+      entries2 = filter (\e -> fst e /= k) entries
+      in case (length entries2) of
+        0 -> Empty
+        1 -> Leaf (fst (getIx 0 entries2)) (snd (getIx 0 entries2))
+        _ -> Collision entries2
+    BitmapIndexed bitmap entries -> let
+      m = hamtMask depth hash
+      ix = hamtIndex bitmap m
+      in case (bitAnd m bitmap) of
+        0 -> t
+        _ -> case (f (depth + 1) (getIx ix entries)) of
+          Empty -> let
+            bitmap2 = bitAnd (bitNot m) bitmap
+            in case bitmap2 of
+              0 -> Empty
+              _ -> BitmapIndexed bitmap2 (splice ix 1 emptyArray entries)
+          e -> BitmapIndexed bitmap (setIx ix e entries)
+  in f 0 t
+
+foldTrie f a t = case t of
+  Empty -> a
+  Leaf k v -> f a k v
+  Collision entries -> foldl (\a e -> f a (fst e) (snd e)) a entries
+  BitmapIndexed _ entries -> foldl (foldTrie f) a entries
+
+mapTrie f t = case t of
+  Empty -> Empty
+  Leaf k v -> Leaf k (f k v)
+  Collision entries -> Collision $ map (\e -> Pair (fst e) $ f (fst e) (snd e)) entries
+  BitmapIndexed bitmap entries -> BitmapIndexed bitmap $ map (mapTrie f) entries
+
+size t = case t of
+  Empty -> 0
+  Leaf _ _ -> 1
+  Collision entries -> length entries
+  BitmapIndexed _ entries -> foldl (+) 0 (map size entries)
+
+isEmpty t = case t of
+  Empty -> True
+  _ -> False
+
+mergeTrie a b = foldTrie (\a k v -> insert k v a) a b
+
+emptySet = Empty
+setAdd a s = insert a Unit s
+setAddAll vs s = foldl (\s v -> setAdd v s) s vs
+setRemove = remove
+setContains a s = case (lookup a s) of
+  Just _ -> True
+  Nothing -> False
+setUnion = mergeTrie
+setToArray = foldTrie (\vs v _ -> push v vs) emptyArray
+setDiff a b = foldTrie (\a v _ -> setRemove v a) a b
+setIntersection a b = let
+  f r v _ = case (setContains v b) of
+    False -> r
+    True -> setAdd v r
+  in foldTrie f emptySet a

@@ -14,6 +14,7 @@ data JSExpr =
   | JSUndefined
   | JSInstanceOf JSExpr JSExpr
   | JSNew JSExpr (Array JSExpr)
+  | JSSeq (Array JSExpr)
 
 data JSStmt =
   JSExpr JSExpr

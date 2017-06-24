@@ -112,40 +112,16 @@ applicativeTest2 = case (pure (+) <*> TJust 5 <*> TJust 8) of
   TJust n -> n
   TNothing -> 0
 
-// forall m. (Expr -> m (Either Expr Expr)) -> (Expr -> m Expr) -> Expr -> m Expr
-mtest down up e = let
-  go = mtest down up
-  gos = mapM (\d -> case d of Pair n e -> go e >>= \e -> ret (Pair n e))
-  in down e >>= \e -> case e of
-    Right e -> ret e
-    Left e -> case e of
-      Lam ann p e -> go e >>= \e -> up (Lam ann p e)
-      App ann f x -> go f >>= \f -> go x >>= \x -> up (App ann f x)
-      Case ann e ps -> go e >>= \e -> gos ps >>= \ps -> up (Case ann e ps)
-      Let ann bs e -> gos bs >>= \bs -> go e >>= \e -> up (Let ann bs e)
-      _ -> up e
+hamtTest = case (lookup 'pony' $ insert 'pony' 13 Empty) of
+  Just n -> n
+  Nothing -> 0
 
-mtest2 env e = let
-  newIdent n = gets >>= \i -> sets (i + 1) >> ret (n ++ '_$u$' ++ intToString i)
-  rename n = case (has n env) of
-    False -> ret n
-    True -> newIdent n
-  renamePat p = case p of
-    PConst _ _ -> ret (Pair p empty)
-    PVar ann v -> rename v >>= \n -> ret (Pair (PVar ann n) (set v n empty))
-    PData ann n ps -> mapM renamePat ps >>= \ps -> ret (Pair (PData ann n (map fst ps)) (foldl merge empty (map snd ps)))
-  rewritePat p = case p of Pair pat e -> renamePat pat >>= \pe -> case pe of Pair pat penv -> mtest2 (merge env penv) e >>= \e -> ret (Pair pat e)
-  f e = case e of
-    Lam ann p e -> rename p >>= \n -> mtest2 (set p n env) e >>= \e -> ret (Right (Lam ann n e))
-    Let ann bs e -> let
-      ns = map fst bs
-      ns2 = mapM rename ns
-      in ns2 >>= \ns -> let
-        env2 = merge env (toRecord (zip (map fst bs) ns))
-        bs2 = mapM (mtest2 env2) (map snd bs)
-        e2 = mtest2 env2 e
-        in bs2 >>= \bs -> e2 >>= \e -> ret (Right (Let ann (zip ns bs) e))
-    Case ann e ps -> mtest2 env e >>= \e -> mapM rewritePat ps >>= \ps -> ret (Right (Case ann e ps))
-    Var ann v -> ret (Left (Var ann (get v env)))
-    _ -> ret (Left e)
-  in mtest f ret e
+hamtTest2 = case (lookup 'kitten' $ insert 'pony' 13 Empty) of
+  Just n -> n
+  Nothing -> 42
+
+hamtTestData = insert 'fluttershy' 13 $ insert 'applejack' 42 Empty
+
+hamtTest3 = justOr 0 (pure (+) <*> lookup 'applejack' hamtTestData <*> lookup 'fluttershy' hamtTestData)
+hamtTest4 = size hamtTestData
+hamtTest5 = justOr 0 $ lookup 'fluttershy' (remove 'applejack' hamtTestData)

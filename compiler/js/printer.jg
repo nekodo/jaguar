@@ -37,6 +37,7 @@ jsExprToString = \e -> case e of
   JSObject kvs -> '{' ++ intercalate ',' (map keyValueToString kvs) ++ '}'
   JSInstanceOf x c -> jsExprToParenString x ++ ' instanceof '
     ++ jsExprToParenString c
+  JSSeq es -> intercalate ',' (map jsExprToString es)
   e -> error e
 
 jsExprToParenString = \e -> case e of

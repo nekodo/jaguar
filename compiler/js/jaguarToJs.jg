@@ -2,12 +2,21 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import * from '//compiler/js/ast.jg'
 
+binOp op a b = JSBinOp op (jaguarExprToJsExpr a) (jaguarExprToJsExpr b)
+
 jaguarExprToJsExpr = \e -> case e of
   Var _ 'True' -> JSBool True
   Var _ 'False' -> JSBool False
   Var _ v -> JSRef (opName v)
   Const _ (CNum n) -> JSNum n
   Const _ (CStr s) -> JSString s
+  App _ (App _ (Var _ '+') a) b -> binOp '+' a b
+  App _ (App _ (Var _ '-') a) b -> binOp '-' a b
+  App _ (App _ (Var _ '*') a) b -> binOp '*' a b
+  App _ (App _ (Var _ 'bitAnd') a) b -> binOp '&' a b
+  App _ (App _ (Var _ 'bitOr') a) b -> binOp '|' a b
+  App _ (App _ (Var _ 'bitShiftLeft') a) b -> binOp '<<' a b
+  App _ (App _ (Var _ 'bitShiftRight') a) b -> binOp '>>>' a b
   App _ f a -> JSCall (jaguarExprToJsExpr f) (arr1 (jaguarExprToJsExpr a))
   Lam _ p e -> JSFun (arr1 p) (arr1 (JSReturn (jaguarExprToJsExpr e)))
   Case _ e ps -> JSCall

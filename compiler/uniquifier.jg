@@ -3,34 +3,15 @@ import * from '//compiler/ast.jg'
 
 newIdent n = gets >>= \i -> sets (i + 1) >> ret (n ++ '_$u$' ++ intToString i)
 
-//rewriteExpr env e = let
-//  rename n = case (has n env) of
-//    False -> ret n
-//    True -> newIdent n
-//  renamePat p = case p of
-//    PConst _ _ -> ret (Pair p empty)
-//    PVar ann v -> rename v >>= \n -> ret (Pair (PVar ann n) (set v n empty))
-//    PData ann n ps -> mapM renamePat ps >>= \ps -> ret (Pair (PData ann n (map fst ps)) (foldl merge empty (map snd ps)))
-//  rewritePat p = case p of Pair pat e -> renamePat pat >>= \pe -> case pe of Pair pat penv -> rewriteExpr (merge env penv) e >>= \e -> ret (Pair pat e)
-//  f e = case e of
-//    Lam ann p e -> rename p >>= \n -> rewriteExpr (set p n env) e >>= \e -> ret (Right (Lam ann n e))
-//    Let ann bs e -> mapM rename (map fst bs) >>= \ns -> let
-//      env2 = merge env (toRecord (zip (map fst bs) ns))
-//      in mapM (rewriteExpr env2) (map snd bs) >>= \bs -> rewriteExpr env2 e >>= \e -> ret (Right (Let ann (zip ns bs) e))
-//    Case ann e ps -> rewriteExpr env e >>= \e -> mapM rewritePat ps >>= \ps -> ret (Right (Case ann e ps))
-//    Var ann v -> ret (Left (Var ann (get v env)))
-//    _ -> ret (Left e)
-//  in breakableDownM f e
-
 rewriteExpr env e = let
   rename n = case (has n env) of
     False -> ret n
-//    True -> newIdent n
-//  renamePat p = case p of
-//    PConst _ _ -> ret (Pair p empty)
-//    PVar ann v -> rename v >>= \n -> ret (Pair (PVar ann n) (set v n empty))
-//    PData ann n ps -> mapM renamePat ps >>= \ps -> ret (Pair (PData ann n (map fst ps)) (foldl merge empty (map snd ps)))
-//  rewritePat p = case p of Pair pat e -> renamePat pat >>= \pe -> case pe of Pair pat penv -> rewriteExpr (merge env penv) e >>= \e -> ret (Pair pat e)
+    True -> newIdent n
+  renamePat p = case p of
+    PConst _ _ -> ret (Pair p empty)
+    PVar ann v -> rename v >>= \n -> ret (Pair (PVar ann n) (set v n empty))
+    PData ann n ps -> mapM renamePat ps >>= \ps -> ret (Pair (PData ann n (map fst ps)) (foldl merge empty (map snd ps)))
+  rewritePat p = case p of Pair pat e -> renamePat pat >>= \pe -> case pe of Pair pat penv -> rewriteExpr (merge env penv) e >>= \e -> ret (Pair pat e)
   f e = case e of
     Lam ann p e -> rename p >>= \n -> rewriteExpr (set p n env) e >>= \e -> ret (Right (Lam ann n e))
     Let ann bs e -> let
@@ -41,9 +22,26 @@ rewriteExpr env e = let
         bs2 = mapM (rewriteExpr env2) (map snd bs)
         e2 = rewriteExpr env2 e
         in bs2 >>= \bs -> e2 >>= \e -> ret (Right (Let ann (zip ns bs) e))
-//    Case ann e ps -> rewriteExpr env e >>= \e -> mapM rewritePat ps >>= \ps -> ret (Right (Case ann e ps))
+    Case ann e ps -> rewriteExpr env e >>= \e -> mapM rewritePat ps >>= \ps -> ret (Right (Case ann e ps))
     Var ann v -> ret (Left (Var ann (get v env)))
     _ -> ret (Left e)
   in breakableDownM f e
 
-uniquify env e = evalState 0 (rewriteExpr env e)
+rewriteInstance env i = case i of
+  Instance ann n t bs -> rewriteBindings env bs >>= \bs -> ret (Instance ann n t bs)
+
+rewriteBindings env bs = mapM (\d -> case d of Pair n e -> rewriteExpr env e >>= \e -> ret (Pair n e)) bs
+
+rewriteModule ms m = case m of
+  Module ann is ds cs ins bs -> let
+    addBindings env bs = foldl (\env b -> set (fst b) (fst b) env) env bs
+    addClass env c = case c of
+      Class _ _ _ bs -> addBindings env bs
+    addImport env i = case i of
+      ImportOpen _ f ns -> addBindings (foldl addClass env (case (get f ms) of ModuleInterface _ cs _ -> cs)) (map (\n -> Pair (snd n) (fst n)) ns)
+    env = foldl addImport (foldl addClass (addBindings (toRecord (concatMap (\d -> map (\n -> Pair n n) (dataConNames d)) ds)) bs) cs) is
+    bs2 = rewriteBindings env bs
+    ins2 = mapM (rewriteInstance env) ins
+    in bs2 >>= \bs -> ins2 >>= \ins -> ret (Module ann is ds cs ins bs)
+
+uniquify ms m = evalState 0 (rewriteModule ms m)

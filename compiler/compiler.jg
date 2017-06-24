@@ -82,7 +82,8 @@ main argv = let
   toJs er n = case er of
     Pair exports result -> let
       m = get n compiled
-      typed = inferTypeModule exports (normalizeImports exports m)
+      normalized = uniquify exports (normalizeImports exports m)
+      typed = inferTypeModule exports normalized
       e = getTypedExports typed
       //_ = debug (case e of ModuleInterface bs _ _ -> mapRecord printType bs)
       declassed = declassModule exports typed
