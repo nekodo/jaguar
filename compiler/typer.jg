@@ -5,57 +5,52 @@ import {sccSorted} from '//compiler/graph.jg'
 
 // --------------- Subs -------------------------------
 
-data Subs = Subs (Record Type) (Record Type)
+data Subs = Subs (Map String Type) (Map String Type)
 
 getSub v subs = case subs of
-  Subs sat unsat -> case (has v sat) of
-    True -> get v sat
-    False -> get v unsat
+  Subs sat unsat -> lookup v sat <|> lookup v unsat
 
-hasSub v subs = case subs of
-  Subs sat unsat -> has v sat || has v unsat
-
-emptySubs = Subs empty empty
+emptySubs = Subs Empty Empty
 
 composeSubs sa sb = case sb of
-  Subs sat unsat -> foldRecord (\r v t -> addSub v t r) (foldRecord (\r v t -> addSatSub v t r) sa sat) unsat
+  Subs sat unsat -> foldTrie (\r v t -> addSub v t r) (foldTrie (\r v t -> addSatSub v t r) sa sat) unsat
 
 addSub v t subs = let
   t2 = applySubs subs t
-  in case (hasSub v subs) of
-    False -> case subs of
+  in case (getSub v subs) of
+    Nothing -> case subs of
       Subs sat unsat -> let
         subUnsat su uv ut = case su of
           Pair sat unsat -> let
             ut2 = substitute v t2 ut
             in case (isEmpty (freeTVars ut2)) of
-              True -> Pair (set uv ut2 sat) unsat
-              False -> Pair sat (set uv ut2 unsat)
-        su = foldRecord subUnsat (Pair sat empty) unsat
+              True -> Pair (insert uv ut2 sat) unsat
+              False -> Pair sat (insert uv ut2 unsat)
+        su = foldTrie subUnsat (Pair sat Empty) unsat
         sat2 = fst su
         unsat2 = snd su
         in case (isEmpty (freeTVars t2)) of
-          True -> Subs (set v t2 sat2) unsat2
-          False -> Subs sat2 (set v t2 unsat2)
-    True -> composeSubs subs (unify (getSub v subs) t2)
+          True -> Subs (insert v t2 sat2) unsat2
+          False -> Subs sat2 (insert v t2 unsat2)
+    Just subT -> composeSubs subs (unify subT t2)
 
-addSatSub v t subs = case (hasSub v subs) of
-  False -> case subs of
+addSatSub v t subs = case (getSub v subs) of
+  Nothing -> case subs of
     Subs sat unsat -> let
       subUnsat su uv ut = case su of
         Pair sat unsat -> let
           ut2 = substitute v t ut
           in case (isEmpty (freeTVars ut2)) of
-            True -> Pair (set uv ut2 sat) unsat
-            False -> Pair sat (set uv ut2 unsat)
-      su = foldRecord subUnsat (Pair sat empty) unsat
+            True -> Pair (insert uv ut2 sat) unsat
+            False -> Pair sat (insert uv ut2 unsat)
+      su = foldTrie subUnsat (Pair sat Empty) unsat
       sat2 = fst su
       unsat2 = snd su
-      in Subs (set v t sat2) unsat2
-  True -> composeSubs subs (unify (getSub v subs) t)
+      in Subs (insert v t sat2) unsat2
+  Just subT -> composeSubs subs (unify subT t)
 
 dropSubs vs subs = case subs of
-  Subs sat unsat -> Subs (foldl (\r v -> del v r) sat vs) (foldl (\r v -> del v r) unsat vs)
+  Subs sat unsat -> Subs (foldl (\r v -> remove v r) sat vs) (foldl (\r v -> remove v r) unsat vs)
 
 // -------------- Context -----------------------------
 
@@ -85,36 +80,30 @@ setBounds bs ctx = case ctx of
 
 // -------------- Environment -------------------------
 
-data InferenceEnvironment = IEnv (Record Type) (Array TypeBound)
+data InferenceEnvironment = IEnv (Record Type) (Array TypeBound) (Map String Unit)
+
+emptyEnv = IEnv empty emptyArray emptySet
 
 getBinding n env = case env of
-  IEnv bs _ -> get n bs
+  IEnv bs _ _ -> get n bs
 
 hasBinding n env = case env of
-  IEnv bs _ -> has n bs
+  IEnv bs _ _ -> has n bs
 
 addBinding n t env = case env of
-  IEnv bs ts -> IEnv (set n t bs) ts
+  IEnv bs ts fvs -> IEnv (set n t bs) ts (setUnion fvs (freeTVars t))
 
 addBindings nbs env = case env of
-  IEnv bs ts -> IEnv (merge bs nbs) ts
+  IEnv bs ts fvs -> IEnv (merge bs nbs) ts (foldRecord (\fvs _ t -> setUnion fvs (freeTVars t)) fvs nbs)
 
 freeTVarsInEnv env = case env of
-  IEnv bs _ -> foldRecord (\vs _ t -> setUnion vs (freeTVars t)) emptySet bs
-
-emptyEnv = IEnv empty emptyArray
+  IEnv _ _ fvs -> fvs
 
 addInstance b env = case env of
-  IEnv bs ts -> IEnv bs (push b ts)
+  IEnv bs ts fvs -> IEnv bs (push b ts) fvs
 
 getInstances env = case env of
-  IEnv _ ts -> ts
-
-debugEnv e = case e of
-  IEnv bs ts -> let
-    _ = debug (mapRecord printType bs)
-    _2 = debug (map printTypeBound ts)
-    in e
+  IEnv _ ts _ -> ts
 
 // ------------ Inference Engine ----------------------
 
@@ -139,9 +128,9 @@ applySubs subs t = case t of
   TForall ann vs bs t -> let
     subs2 = dropSubs vs subs
     in TForall ann vs (map (applySubsBound subs2) bs) (applySubs subs2 t)
-  TVar _ v -> case (hasSub v subs) of
-    False -> t
-    True -> getSub v subs
+  TVar _ v -> case (getSub v subs) of
+    Nothing -> t
+    Just subT -> subT
   TApp ann f a -> TApp ann (applySubs subs f) (applySubs subs a)
   _ -> t
 
@@ -332,14 +321,8 @@ inferDefs env ctx ds = let
 generalize env ctx t = let
   subs = getSubs ctx
   envTVars = freeTVarsInEnv env
-  tvarsSubstitutingForEnvTVars = let
-    f rs v t = case (setContains v envTVars) of
-      False -> rs
-      True -> setUnion rs (freeTVars t)
-    in foldRecord f emptySet (case subs of Subs _ unsat -> unsat)
-  //_ = debug freeTVarsInEnv
-  //_ = debug tvarsSubstitutingForEnvTVars
-  nonFree = setUnion envTVars tvarsSubstitutingForEnvTVars
+  nonFree = case subs of Subs _ unsat ->
+    foldTrie (\s v _ -> setUnion s (justOr Empty (fmap freeTVars (lookup v unsat)))) envTVars envTVars
   vs = setDiff (freeTVars t) nonFree
   vbb = foldl processBounds (Pair emptySet (Pair emptyArray emptyArray)) (getBounds ctx)
   processBounds vbb b = case vbb of
@@ -354,11 +337,11 @@ generalize env ctx t = let
   in case vbb of
     Pair bvs (Pair rbs obs) -> let
       finalVars = setDiff vs bvs
-      drop r v t = case (exists (\v -> setContains v finalVars) (setToArray $ freeTVars t)) of
-        False -> set v t r
-        True -> r
+      drop r v t = case (isEmpty $ setIntersection finalVars (freeTVars t)) of
+        True -> insert v t r
+        False -> r
       subs2 = case subs of
-        Subs sat unsat -> Subs sat (foldRecord drop empty unsat)
+        Subs sat unsat -> Subs sat (foldTrie drop Empty unsat)
       ctx2 = setSubs subs2 ctx
       in case ((not $ isEmpty finalVars) || (length rbs > 0)) of
         True -> Pair (setBounds obs ctx2) (TForall emptyAnn (setToArray finalVars) rbs t)

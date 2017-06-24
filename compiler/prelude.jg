@@ -51,6 +51,14 @@ justOr d m = case m of
   Just x -> x
   Nothing -> d
 
+fromJust m = case m of
+  Just x -> x
+  Nothing -> error 'expected Just but got Nothing'
+
+isJust m = case m of
+  Just _ -> True
+  Nothing -> False
+
 data Pair a b = Pair a b
 
 fst = \p -> case p of Pair a b -> a
@@ -210,11 +218,11 @@ instance Hashable Number where
 instance Hashable String where
   hashCode s = strHashCode s
 
-data HAMT k v =
+data Map k v =
   Empty
   | Leaf k v
   | Collision (Array (Pair k v))
-  | BitmapIndexed Number (Array (HAMT k v))
+  | BitmapIndexed Number (Array (Map k v))
 
 popCount n = let
   n2 = n - (bitAnd (bitShiftRight n 1) 1431655765)
@@ -293,6 +301,36 @@ remove k t = let
           e -> BitmapIndexed bitmap (setIx ix e entries)
   in f 0 t
 
+//filterTrie f t = case t of
+//  Empty -> Empty
+//  Leaf k v -> case (f k v) of
+//    False -> Empty
+//    True -> t
+//  Collision entries -> let
+//    entries2 = filter (\e -> f (fst e) (snd e)) entries
+//    in case (length entries2) of
+//      0 -> Empty
+//      1 -> Leaf (fst (getIx 0 entries2)) (snd (getIx 0 entries2))
+//      _ -> Collision entries2
+//  BitmapIndexed bitmap entries -> let
+//    entries2 = map (filterTrie f) entries
+//    process bes e = case bes of
+//      Pair bitmap entries -> case e of
+//        Empty -> let
+//          n = length entries
+//          i = nthSetBit n bitmap
+//          bitmap2 = bitAnd bitmap (bitNot (bitShiftLeft 1 i))
+//          in Pair bitmap2 entries
+//        _ -> Pair bitmap (push e entries)
+//    bes = foldl process (Pair bitmap emptyArray) entries2
+//    in case bes of
+//      Pair 0 _ -> Empty
+//      Pair bitmap entries -> case (length entries) of
+//        1 -> case (getIx 0 entries) of
+//          Leaf _ _ -> getIx 0 entries
+//          _ -> BitmapIndexed bitmap entries
+//        _ -> BitmapIndexed bitmap entries
+
 foldTrie f a t = case t of
   Empty -> a
   Leaf k v -> f a k v
@@ -321,9 +359,7 @@ emptySet = Empty
 setAdd a s = insert a Unit s
 setAddAll vs s = foldl (\s v -> setAdd v s) s vs
 setRemove = remove
-setContains a s = case (lookup a s) of
-  Just _ -> True
-  Nothing -> False
+setContains a s = isJust (lookup a s)
 setUnion = mergeTrie
 setToArray = foldTrie (\vs v _ -> push v vs) emptyArray
 setDiff a b = foldTrie (\a v _ -> setRemove v a) a b

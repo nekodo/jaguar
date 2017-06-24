@@ -2,10 +2,10 @@ import * from '//compiler/prelude.jg'
 
 data Ann =
   AnnType Type
-emptyAnn = emptyArray
+emptyAnn = Empty
 
-getAnn name ann = fmap snd (find (\p -> fst p == name) ann)
-setAnn name val ann = push (Pair name val) (filter (\p -> fst p /= name) ann)
+getAnn name ann = lookup name ann
+setAnn name val ann = insert name val ann
 
 getAnnType ann = case (getAnn 'type' ann) of
   Just (AnnType t) -> t
@@ -13,24 +13,24 @@ getAnnType ann = case (getAnn 'type' ann) of
 setAnnType t ann = setAnn 'type' (AnnType t) ann
 
 data Expr =
-  Var (Array (Pair String Ann)) String
-  | Const (Array (Pair String Ann)) CVal
-  | App (Array (Pair String Ann)) Expr Expr
-  | Lam (Array (Pair String Ann)) String Expr
-  | Case (Array (Pair String Ann)) Expr (Array (Pair Pat Expr))
-  | Let (Array (Pair String Ann)) (Array (Pair String Expr)) Expr
+  Var (Map String Ann) String
+  | Const (Map String Ann) CVal
+  | App (Map String Ann) Expr Expr
+  | Lam (Map String Ann) String Expr
+  | Case (Map String Ann) Expr (Array (Pair Pat Expr))
+  | Let (Map String Ann) (Array (Pair String Expr)) Expr
 
 data CVal =
   CNum Number
   | CStr String
 
 data Pat =
-  PVar (Array (Pair String Ann)) String
-  | PConst (Array (Pair String Ann)) CVal
-  | PData (Array (Pair String Ann)) String (Array Pat)
+  PVar (Map String Ann) String
+  | PConst (Map String Ann) CVal
+  | PData (Map String Ann) String (Array Pat)
 
 data Module = Module
-  (Array (Pair String Ann))                        // annotations
+  (Map String Ann)                        // annotations
   (Array Import)             // imports
   (Array Data)               // ADT definitions
   (Array Class)              // type clas definitions
@@ -42,39 +42,39 @@ data ModuleInterface = ModuleInterface
   (Array Class)      // exported classes
   (Array TypeBound)  // exported clas instances
 
-data Data = Data (Array (Pair String Ann)) String (Array String) (Array DataCon)
-data DataCon = DataCon (Array (Pair String Ann)) String (Array Type)
+data Data = Data (Map String Ann) String (Array String) (Array DataCon)
+data DataCon = DataCon (Map String Ann) String (Array Type)
 
 data Class = Class
-  (Array (Pair String Ann))
+  (Map String Ann)
   String     // name
   String     // type var
   (Array (Pair String Type))
 
 data Instance = Instance
-  (Array (Pair String Ann))
+  (Map String Ann)
   String     // name
   Type       // type for which we're defining the instanc
   (Array (Pair String Expr))
 
 data TypeBound =
   TCBound  // type clas bound
-    (Array (Pair String Ann))    // annotation
+    (Map String Ann)    // annotation
     String // name of the type clas
     Type   // param
 
 data Type =
-  TConst (Array (Pair String Ann)) String
-  | TVar (Array (Pair String Ann)) String
-  | TApp (Array (Pair String Ann)) Type Type
+  TConst (Map String Ann) String
+  | TVar (Map String Ann) String
+  | TApp (Map String Ann) Type Type
   | TBot
-  | TForall (Array (Pair String Ann)) (Array String) (Array TypeBound) Type
+  | TForall (Map String Ann) (Array String) (Array TypeBound) Type
   | TUnknown
 
 data Import =
-  ImportClosed (Array (Pair String Ann)) String String
-  | ImportOpen (Array (Pair String Ann)) String (Array (Pair String String))
-  | ImportAll (Array (Pair String Ann)) String
+  ImportClosed (Map String Ann) String String
+  | ImportOpen (Map String Ann) String (Array (Pair String String))
+  | ImportAll (Map String Ann) String
 
 dataConName = \dc -> case dc of DataCon _ n ts -> n
 dataConNames = \d -> case d of Data _ n ps cs -> map dataConName cs
