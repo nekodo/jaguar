@@ -45,6 +45,9 @@ assemblePatternMatch = \alt p -> case p of
         (JSCall (JSFun ns (arr1 (JSReturn (jaguarExprToJsExpr e)))) vs)
         alt
 
+checkUndefined label expr =
+  JSTernary (JSBinOp '===' expr JSUndefined) (JSCall (JSRef 'error') (arr1 (JSString label))) expr
+
 processPattern = \pm p -> case p of
   PVar _ '_' -> Pair (JSBool True) (Pair emptyArray emptyArray)
   PVar _ v -> Pair (JSBool True) (Pair (arr1 (opName v)) (arr1 pm))
@@ -88,7 +91,7 @@ dataConToJs = \dc -> case dc of
   DataCon _ n ts -> let
     conName = '$' ++ n
     in arr3
-      (JSVar conName (JSFun (dataConFieldIds ts) (push (JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString '$tag')) (JSString n))) (map (\f -> JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString f)) (JSRef f))) (dataConFieldIds ts)))))
+      (JSVar conName (JSFun (dataConFieldIds ts) (push (JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString '$tag')) (JSString n))) (map (\f -> JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString f)) (checkUndefined 'con' $ JSRef f))) (dataConFieldIds ts)))))
       (JSVar n (foldr (\b f -> JSFun (arr1 f) (arr1 (JSReturn b))) (JSNew (JSRef conName) (map JSRef (dataConFieldIds ts))) (dataConFieldIds ts)))
       (JSAssign (JSIndex (JSRef n) (JSString '$tag')) (JSString n))
 

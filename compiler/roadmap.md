@@ -1,6 +1,8 @@
 # Roadmap
 
 ## TODO
+-   better error messages from the typer
+-   proper associativity for operators
 -   tests
     -   Unit tests: for the compiler modules from lexer through parser
         to optimization passes and JS backend. These can be more picky
@@ -24,6 +26,7 @@
 -   we're at 0.15 now
 -   type classes
 -   user-defined operators
+-   Hash-Array-Mapped-Tries as the data structure of choice:)
 
 # Ideas
 

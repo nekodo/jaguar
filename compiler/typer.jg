@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {printType, printTypeBound} from '//compiler/printer.jg'
+import {printType, printTypeBound, reallyPrintExpr} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
 
 // --------------- Subs -------------------------------
@@ -87,6 +87,9 @@ emptyEnv = IEnv empty emptyArray emptySet
 getBinding n env = case env of
   IEnv bs _ _ -> get n bs
 
+getBindings env = case env of
+  IEnv bs _ _ -> bs
+
 hasBinding n env = case env of
   IEnv bs _ _ -> has n bs
 
@@ -143,10 +146,10 @@ unify a b = let
       True -> emptySubs
       False -> addSub n t emptySubs
     _ -> case (setContains n (freeTVars t)) of
-      True -> let
-        _ = 13//debug (printType a)
+      True ->
+        //debug (printType a)
         //_ = debug (printType b)
-        in error 'occurs check failed'
+        error 'occurs check failed'
       False -> addSub n t emptySubs
   err a b = error
     ('cannot unify ' ++ printType a ++ ' with ' ++ printType b)
@@ -298,7 +301,8 @@ inferSccDefs env ctx ds = let
         // NOTE: generalizing with env *without* the bindings being generalized.
         ctx4 = dropSatisfiedBounds env (setSubs subs2 ctx3)
         cds = foldl (generalizeDef env) (Pair ctx4 emptyArray) ds3
-        //_ = debug ('inferred ' ++ jsonStringify (map (\d -> case d of Pair n e -> Pair n (printType (getType e))) (snd cds)))
+        //_ = debug ('inferred:\n  ' ++ intercalate '\n  ' (map (\d -> case d of Pair n e -> n ++ ' :: ' ++ (printType (getType e))) (snd cds)))
+        //_ = debug ('inferred:\n  ' ++ intercalate '\n  ' (map (\d -> case d of Pair n e -> n ++ ' = ' ++ (reallyPrintExpr True e)) (snd cds)))
         in cds
 
 dropSatisfiedBounds env ctx = let
@@ -429,6 +433,7 @@ inferTypeModule ms m = let
     _ -> d
   in case m of
     Module ann is ts cs ins ds -> let
+      //ds = let _ = debug $ intercalate '\n' (map (\d -> case d of Pair n e -> n ++ ' = ' ++ reallyPrintExpr False e) _ds) in _ds
       env = emptyEnv
       env2 = foldl addImports env is
       env3 = foldl addTypes env2 ts

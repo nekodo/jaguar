@@ -676,7 +676,7 @@ this.$0=$0;this.$tag="AnnType"};
 var AnnType = function($0){
 return new $AnnType($0)};
 AnnType.$tag = "AnnType";
-var $Var = function($0,$1){
+var $Var = function($0,$1){if($1 === undefined)throw Error('undefined var');
 this.$0=$0;this.$1=$1;this.$tag="Var"};
 var Var = function($0){
 return function($1){

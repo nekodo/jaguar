@@ -8,6 +8,8 @@ data ParseResult a s =
   | Error String
 
 data Parser i a = Parser (i -> ParseResult a i)
+applyParser p i = case p of
+  Parser f -> f i
 
 instance Functor (Parser i) where
   fmap f pa = case pa of
@@ -33,8 +35,8 @@ instance Alternative (Parser i) where
         Error _ -> pb i
         Success a i -> Success a i)
 
-(|>) a b = pure (\a b -> b) <*> a <*> b
-(<|) a b = pure (\a b -> a) <*> a <*> b
+(|>) a b = pure (\_ b -> b) <*> a <*> b
+(<|) a b = pure (\a _ -> a) <*> a <*> b
 
 fmany p = case p of
   Parser p -> Parser (\i -> many p i)
@@ -79,13 +81,14 @@ many1 = \a s -> case (a s) of
   Success r s -> apply (enqueue r) (many a) s
   Error e -> Error e
 
-sepBy1 p sp = apply
-  (\rrs -> case rrs of Pair r rs -> enqueue r rs)
-  (and p (many (precedes sp p)))
+sepBy1 p sp = pure enqueue <*>
+  p <*> fmany (sp |> p)
 
-opt = \a s -> case (a s) of
-  Success r s -> Success (Just r) s
-  e -> Success Nothing s
+opt a = case a of Parser a -> let 
+  parse s = case (a s) of
+    Success r s -> Success (Just r) s
+    e -> Success Nothing s
+  in Parser parse
 
 digits = '0123456789'
 upperCaseLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'

@@ -2,6 +2,7 @@ import * from '//compiler/prelude.jg'
 
 data Ann =
   AnnType Type
+  | AnnCodeLoc String Number Number // file, line col
 emptyAnn = Empty
 
 getAnn name ann = lookup name ann
@@ -11,6 +12,12 @@ getAnnType ann = case (getAnn 'type' ann) of
   Just (AnnType t) -> t
   Nothing -> TUnknown
 setAnnType t ann = setAnn 'type' (AnnType t) ann
+
+getAnnCodeLoc ann = getAnn 'codeLoc' ann
+setAnnCodeLoc file line col ann = setAnn 'codeLoc' (AnnCodeLoc file line col) ann
+printCodeLoc l = case l of
+  AnnCodeLoc file line col ->
+    'in ' ++ file ++ ' at l' ++ intToString (line + 1) ++ ':c' ++ intToString (col + 1)
 
 data Expr =
   Var (Map String Ann) String
