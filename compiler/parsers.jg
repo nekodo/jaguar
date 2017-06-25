@@ -38,57 +38,30 @@ instance Alternative (Parser i) where
 (|>) a b = pure (\_ b -> b) <*> a <*> b
 (<|) a b = pure (\a _ -> a) <*> a <*> b
 
-fmany p = case p of
-  Parser p -> Parser (\i -> many p i)
+many p = let
+  manyIterate s = let
+    r = iterate
+      (Left (Success emptyArray s))
+      (\r -> case r of
+        Left s -> False
+        Right s -> True)
+      (\rs -> case rs of Left (Success rs s) -> case (applyParser p s) of
+        Success r s -> Left (Success (push r rs) s)
+        Error e -> Right (Success rs s))
+    in case r of
+      Right a -> a
+      Left _ -> error 'manyIterate should never return a Left'
+  in Parser manyIterate
 
-fsome p = case p of
-  Parser p -> Parser (\i -> many1 p i)
+some p = pure enqueue <*>
+  p <*> many p
 
-and pa pb s = case (pa s) of
-  Success a s2 -> case (pb s2) of
-    Success b s3 -> Success (Pair a b) s3
-    Error e -> Error e
-  Error e -> Error e
-
-apply = \f p s -> case (p s) of
-  Success r s -> Success (f r) s
-  Error e -> Error e
-
-precedes = \a b -> apply snd (and a b)
-
-succeeds = \a b -> apply fst (and a b)
-
-between = \a b c -> precedes a (succeeds b c)
-
-or = \a b s -> case (a s) of
-  Error e -> b s
-  s -> s
-
-manyIterate = \p s -> iterate
-  (Left (Success emptyArray s))
-  (\r -> case r of
-    Left s -> False
-    Right s -> True)
-  (\rs -> case rs of Left (Success rs s) -> case (p s) of
-    Success r s -> Left (Success (push r rs) s)
-    Error e -> Right (Success rs s))
-
-many = \p s -> case (manyIterate p s) of
-  Right a -> a
-  Left b -> error 'manyIterate should never return a Left'
-
-many1 = \a s -> case (a s) of
-  Success r s -> apply (enqueue r) (many a) s
-  Error e -> Error e
+success a = Parser (Success a)
 
 sepBy1 p sp = pure enqueue <*>
-  p <*> fmany (sp |> p)
+  p <*> many (sp |> p)
 
-opt a = case a of Parser a -> let 
-  parse s = case (a s) of
-    Success r s -> Success (Just r) s
-    e -> Success Nothing s
-  in Parser parse
+opt a = (pure Just <*> a) <|> success Nothing
 
 digits = '0123456789'
 upperCaseLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'

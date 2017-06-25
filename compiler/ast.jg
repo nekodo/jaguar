@@ -96,13 +96,15 @@ setType t e = case e of
   Case ann e ps -> Case (setAnnType t ann) e ps
   Let ann ds e -> Let (setAnnType t ann) ds e
 
-getType e = case e of
-  Var ann v -> getAnnType ann
-  Const ann c -> getAnnType ann
-  App ann f a -> getAnnType ann
-  Lam ann p b -> getAnnType ann
-  Case ann e ps -> getAnnType ann
-  Let ann ds e -> getAnnType ann
+annOf e = case e of
+  Var ann v -> ann
+  Const ann c -> ann
+  App ann f a -> ann
+  Lam ann p b -> ann
+  Case ann e ps -> ann
+  Let ann ds e -> ann
+
+getType e = getAnnType $ annOf e
 
 breakableDownAndUp down up a e = let
   go = breakableDownAndUp down up

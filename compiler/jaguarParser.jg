@@ -41,6 +41,15 @@ parseToken f = let
                   True -> Success r (ParserState ts (p + 1) c ri)
   in Parser parse
 
+locP = let
+  parse s = case s of
+    ParserState ts p _ _ -> case (p < length ts) of
+      False -> Error 'run out of tokens'
+      // Check that the indentation is sufficient.
+      True -> case (getIx p ts) of
+        Token _ _ l c -> Success (withLocAnn $ AnnCodeLoc '' l c) s
+  in Parser parse
+
 (<*->) pf pa = case pf of
   Parser pf -> case pa of
     Parser pa -> let
@@ -100,18 +109,21 @@ notUpperCaseId = parseToken (\t -> case t of
 
 parenP p = symP '(' |> p <| symP ')'
 
+withLocAnn a = setAnn 'codeLoc' a emptyAnn
+withLocOf e = withLocAnn (fromJust $ getAnn 'codeLoc' (annOf e))
+
 varP = parseToken (\t -> case t of
   Token (IdTok) v l c -> case (contains v reserved) of
     True -> Nothing
-    False -> Just (Var emptyAnn v)
+    False -> Just (Var (withLocAnn $ AnnCodeLoc '' l c) v)
   x -> Nothing)
 
 cnumP = parseToken (\t -> case t of
-  Token (NumTok) v l c -> Just (Const emptyAnn (CNum (unsafeStringToInt v)))
+  Token (NumTok) v l c -> Just (Const (withLocAnn $ AnnCodeLoc '' l c) (CNum (unsafeStringToInt v)))
   x -> Nothing)
 
 cstrP = parseToken (\t -> case t of
-  Token (StrTok) v l c -> Just (Const emptyAnn (CStr v))
+  Token (StrTok) v l c -> Just (Const (withLocAnn $ AnnCodeLoc '' l c) (CStr v))
   x -> Nothing)
   
 constP = cstrP <|> cnumP
@@ -120,22 +132,22 @@ exprP = Parser (\s -> applyParser opP s)
 
 simpleExprP = varP <|> constP <|> parenP exprP
 
-appP = pure (foldl (App emptyAnn)) <*>
-  (varP <|> parenP exprP) <*-> fmany simpleExprP
+appP = pure (foldl (\f a -> App (withLocOf f) f a)) <*>
+  (varP <|> parenP exprP) <*-> many simpleExprP
 
-lamP = pure (\ps a -> foldr (\a p -> Lam emptyAnn p a) a ps) <*>
-  (symP '\\' |-> fsome notUpperCaseId) <*-> (operatorP '->' |> exprP)
+lamP = pure (\l ps a -> foldr (\a p -> Lam l p a) a ps) <*>
+  locP <*> (symP '\\' |-> some notUpperCaseId) <*-> (operatorP '->' |> exprP)
 
 patP = Parser (\s -> applyParser allPatP s)
 
-pvarP = pure (PVar emptyAnn) <*> notUpperCaseId
+pvarP = pure PVar <*> locP <*> notUpperCaseId
 
 pcnumP = parseToken (\t -> case t of
-  Token (NumTok) v l c -> Just (PConst emptyAnn (CNum (unsafeStringToInt v)))
+  Token (NumTok) v l c -> Just (PConst (withLocAnn $ AnnCodeLoc '' l c) (CNum (unsafeStringToInt v)))
   x -> Nothing)
 
 pcstrP = parseToken (\t -> case t of
-  Token (StrTok) v l c -> Just (PConst emptyAnn (CStr v))
+  Token (StrTok) v l c -> Just (PConst (withLocAnn $ AnnCodeLoc '' l c) (CStr v))
   x -> Nothing)
 
 strP = parseToken (\t -> case t of
@@ -144,27 +156,27 @@ strP = parseToken (\t -> case t of
 
 pconstP = pcnumP <|> pcstrP
 
-pdataP = pure (PData emptyAnn) <*>
-  upperCaseId <*-> fmany (pvarP <|> pconstP <|> parenP patP)
+pdataP = pure PData <*>
+  locP <*> upperCaseId <*-> many (pvarP <|> pconstP <|> parenP patP)
   
 allPatP = pvarP <|> pconstP <|> pdataP
 
 ofP = pure Pair <*>
   patP <*-> (operatorP '->' |> exprP)
 
-caseP = pure (Case emptyAnn) <*>
-  (reservedP 'case' |-> simpleExprP) <*-> (reservedP 'of' |> fsome ofP)
+caseP = pure Case <*>
+  locP <*> (reservedP 'case' |-> simpleExprP) <*-> (reservedP 'of' |> some ofP)
 
-defP = pure (\n ps e -> Pair n (foldr (\e p -> Lam emptyAnn p e) e ps)) <*>
-  notUpperCaseId <*-> fmany notUpperCaseId <*-> (operatorP '=' |> exprP)
+defP = pure (\l n ps e -> Pair n (foldr (\e p -> Lam l p e) e ps)) <*>
+  locP <*> notUpperCaseId <*-> many notUpperCaseId <*-> (operatorP '=' |> exprP)
 
-letP = pure (Let emptyAnn) <*>
-  (reservedP 'let' |-> fsome defP) <*> (reservedP 'in' |-> exprP)
+letP = pure Let <*>
+  locP <*> (reservedP 'let' |-> some defP) <*> (reservedP 'in' |-> exprP)
 
 primaryExprP = appP <|> constP <|> lamP <|> caseP <|> letP
 
-opP = pure (\e oes -> foldl (\a ob -> case ob of Pair op b -> App emptyAnn (App emptyAnn (Var emptyAnn op) a) b) e oes) <*>
-  primaryExprP <*-> fmany (pure Pair <*> anyOpP <*> primaryExprP)
+opP = pure (\e oes -> foldl (\a lob -> case lob of Pair l (Pair op b) -> App l (App l (Var l op) a) b) e oes) <*>
+  primaryExprP <*-> many (pure (\l op e -> Pair l (Pair op e)) <*> locP <*> anyOpP <*> primaryExprP)
 
 // --------------- types -------------------
 
@@ -177,29 +189,29 @@ tvarP = pure (TVar emptyAnn) <*> notUpperCaseId
 simpleTypeP = tconstP <|> tvarP <|> parenP typeP
 
 tappP = pure (foldl (TApp emptyAnn)) <*>
-  simpleTypeP <*-> fmany simpleTypeP
+  simpleTypeP <*-> many simpleTypeP
 
 tfunP = pure (\t ts -> foldr1 (\b a -> TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b) (enqueue t ts)) <*>
-  tappP <*-> fmany (operatorP '->' |> tappP)
+  tappP <*-> many (operatorP '->' |> tappP)
 
 // ------------ type classes ---------------
 
 classP = pure (\name tv maybeDefs -> Class emptyAnn name tv (justOr emptyArray maybeDefs)) <*>
-  (reservedP 'class' |-> upperCaseId) <*-> notUpperCaseId <*-> opt (reservedP 'where' |> fsome classMemberP)
+  (reservedP 'class' |-> upperCaseId) <*-> notUpperCaseId <*-> opt (reservedP 'where' |> some classMemberP)
 
 classMemberP = pure Pair <*>
   notUpperCaseId <*-> (operatorP '::' |> typeP)
 
 instanceP = pure (\name t maybeDefs -> Instance emptyAnn name t (justOr emptyArray maybeDefs)) <*>
-  (reservedP 'instance' |-> upperCaseId) <*-> simpleTypeP <*-> opt (reservedP 'where' |> fsome defP)
+  (reservedP 'instance' |-> upperCaseId) <*-> simpleTypeP <*-> opt (reservedP 'where' |> some defP)
 
 // --------------- module ------------------
 
 dataConP = pure (DataCon emptyAnn) <*>
-  upperCaseId <*-> fmany simpleTypeP
+  upperCaseId <*-> many simpleTypeP
 
 dataP = pure (Data emptyAnn) <*>
-  (reservedP 'data' |-> upperCaseId) <*-> fmany notUpperCaseId <*-> (operatorP '=' |> sepBy1 dataConP (operatorP '|'))
+  (reservedP 'data' |-> upperCaseId) <*-> many notUpperCaseId <*-> (operatorP '=' |> sepBy1 dataConP (operatorP '|'))
 
 importNoAliasP = pure (\n -> Pair n n) <*> nonReservedP
 
@@ -214,7 +226,7 @@ importAllP = pure (ImportAll emptyAnn) <*>
 importP = reservedP 'import' |> (importOpenP <|> importAllP)
 
 moduleP = pure (\is es -> case (splitFourWay es) of Pair (Pair dts dfs) (Pair cs ins) -> Module emptyAnn is dts cs ins dfs) <*>
-  fmany importP <*> fsome topLevelP
+  many importP <*> some topLevelP
 
 splitFourWay e = case (splitEither e) of
   Pair a b -> Pair (splitEither a) (splitEither b)
@@ -223,6 +235,6 @@ eitherP a b = Parser $ \s -> applyParser ((pure Left <*> a) <|> (pure Right <*> 
 topLevelP = eitherP (eitherP dataP defP) (eitherP classP instanceP)
   
 parseModule = runParser moduleP
-parseImports = runParser (fmany importP)
+parseImports = runParser (many importP)
 parseExpr = runParser exprP
 parseType = runParser typeP
