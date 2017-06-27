@@ -31,7 +31,7 @@ parseT s = case (parseType s) of
   e -> error e
 
 parseExports e = let
-  bs = mapRecord (\s -> snd (generalize emptyEnv newCtx (parseT s))) e
+  bs = mapRecord (\s -> evalState newCtx (generalize emptyEnv (parseT s))) e
   in ModuleInterface bs emptyArray emptyArray
 
 instrument m = let

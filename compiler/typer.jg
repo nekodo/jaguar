@@ -61,6 +61,11 @@ newTVar ctx = case ctx of
     n = '$' ++ intToString i
     in Pair (ICtx subs bs (i + 1)) (TVar emptyAnn n)
 
+newTVarM = gets >>= \ctx -> case ctx of
+  ICtx subs bs i -> let
+    n = '$' ++ intToString i
+    in sets (ICtx subs bs (i + 1)) >> ret (TVar emptyAnn n)
+
 newCtx = ICtx emptySubs emptyArray 1
 
 getSubs ctx = case ctx of
@@ -87,6 +92,8 @@ emptyEnv = IEnv empty emptyArray emptySet
 getBinding n env = case env of
   IEnv bs _ _ -> get n bs
 
+getBindingM n env = gets >>= \ctx -> ret $ applySubs (getSubs ctx) (getBinding n env)
+
 getBindings env = case env of
   IEnv bs _ _ -> bs
 
@@ -112,7 +119,7 @@ getInstances env = case env of
 
 f1 a b = TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b
 
-instantiate ctx t = let
+instantiate t = gets >>= \ctx -> let
   mkvar cs v = case cs of
     Pair ctx subs -> case (newTVar ctx) of
       Pair ctx2 tv -> Pair ctx2 (addSub v tv subs)
@@ -122,8 +129,8 @@ instantiate ctx t = let
         t2 = applySubs subs t
         bs2 = map (applySubsBound subs) bs
         ctx3 = foldl (\ctx b -> addBound b ctx) ctx2 bs2
-        in Pair ctx3 t2
-    _ -> Pair ctx t
+        in sets ctx3 >> ret t2
+    _ -> ret t
 
 substitute n s t = applySubs (addSub n s emptySubs) t
 
@@ -139,6 +146,8 @@ applySubs subs t = case t of
 
 applySubsBound subs b = case b of
   TCBound ann n t -> TCBound ann n (applySubs subs t)
+
+unifyM a b = gets >>= \ctx -> sets (setSubs (composeSubs (getSubs ctx) (unify a b)) ctx)
 
 unify a b = let
   bind n t = case t of
@@ -184,145 +193,90 @@ freeTVars t = case t of
 freeTVarsInBound b = case b of
   TCBound _ _ t -> freeTVars t
 
-infer env ctx e = let
-  setFinalType ctx t e = case (getType e) of
-    TUnknown -> Pair ctx (setType t e)
-    te -> let
-      subs = composeSubs (getSubs ctx) (unify t te)
-      in Pair (setSubs subs ctx) e
-  inferCase env cps p = case cps of
-    Pair ctx (Pair te ps) -> case p of
-      Pair pat e -> case (inferPat env ctx te pat) of
-        Pair (Pair ctx2 bs) pat -> let
-          subs = getSubs ctx2
-          te2 = applySubs subs te
-          bs2 = mapRecord (applySubs subs) bs
-          in case (infer (addBindings bs2 env) ctx2 e) of
-            Pair ctx2 e2 -> Pair ctx2 (Pair te2 (push (Pair pat e2) ps))
-  inferPat env ctx te pat = case pat of
-    PVar ann v -> case (newTVar ctx) of
-      Pair ctx2 tv -> let
-        usubs = unify te tv
-        subs2 = composeSubs (getSubs ctx2) usubs
-        tv2 = applySubs subs2 tv
-        in Pair (Pair (setSubs subs2 ctx2) (set v tv2 empty)) (PVar (setAnnType tv2 ann) v)
-    PConst _ (CNum n) -> let
-      usubs = unify te (TConst emptyAnn 'Number')
-      subs2 = composeSubs (getSubs ctx) usubs
-      in Pair (Pair (setSubs subs2 ctx) empty) pat
-    PConst _ (CStr s) -> let
-      usubs = unify te (TConst emptyAnn 'String')
-      subs2 = composeSubs (getSubs ctx) usubs
-      in Pair (Pair (setSubs subs2 ctx) empty) pat
+infer env e = let
+  setFinalType t e = case (getType e) of
+    TUnknown -> ret (setType t e)
+    te -> unifyM t te >> ret e
+  inferCase env te p = case p of
+    Pair pat e -> inferPat env te pat >>= \cb -> case cb of
+      Pair bs pat ->
+        infer (addBindings bs env) e >>= \e ->
+          ret (Pair pat e)
+  inferPat env te pat = case pat of
+    PVar ann v -> newTVarM >>= \tv ->
+      unifyM te tv >>
+        ret (Pair (set v tv empty) (PVar (setAnnType tv ann) v))
+    PConst _ (CNum n) -> unifyM te (TConst emptyAnn 'Number') >> ret (Pair empty pat)
+    PConst _ (CStr s) -> unifyM te (TConst emptyAnn 'String') >> ret (Pair empty pat)
     PData ann n ps -> case (hasBinding n env) of
       False -> error ('unknown data type ' ++ n)
-      True -> case (instantiate ctx (getBinding n env)) of
-        Pair ctx2 t -> case (unrollDataConType t) of
+      True -> (getBindingM n env >>= instantiate) >>= \t ->
+        case (unrollDataConType t) of
           Pair tps dt -> case (length ps == length tps) of
             False -> error 'number of pattern params does not match the number of constructor params'
-            True -> case (foldl (inferSubPat env) (Pair (Pair ctx2 empty) emptyArray) (zip ps tps)) of
-              Pair (Pair ctx3 bs) ps -> let
-                usubs = unify te (applySubs (getSubs ctx3) dt)
-                subs = composeSubs (getSubs ctx3) usubs
-                in Pair (Pair (setSubs subs ctx3) (mapRecord (applySubs subs) bs)) (PData ann n ps)
-  inferSubPat env cbp pt = case cbp of
-    Pair (Pair ctx bs) ps -> case pt of
-      Pair pat t -> case (inferPat env ctx t pat) of
-        Pair (Pair ctx2 bs2) pat -> Pair (Pair ctx2 (merge bs bs2)) (push pat ps)
+            True -> foldM (inferSubPat env) (Pair empty emptyArray) (zip ps tps) >>= \bps -> case bps of
+              Pair bs ps ->
+                unifyM te dt >>
+                  (ret $ Pair bs (PData ann n ps))
+  inferSubPat env bp pt = case bp of
+    Pair bs ps -> case pt of
+      Pair pat t -> inferPat env t pat >>= \bp -> case bp of
+        Pair bs2 pat -> (ret $ Pair (merge bs bs2) (push pat ps))
   in case e of
-    Const _ (CNum n) -> setFinalType ctx (TConst emptyAnn 'Number') e
-    Const _ (CStr s) -> setFinalType ctx (TConst emptyAnn 'String') e
+    Const _ (CNum n) -> setFinalType (TConst emptyAnn 'Number') e
+    Const _ (CStr s) -> setFinalType (TConst emptyAnn 'String') e
     Var _ v -> case (hasBinding v env) of
       False -> error ('no var ' ++ v ++ ' in environment')
-      True -> case (instantiate ctx (applySubs (getSubs ctx) (getBinding v env))) of
-        Pair ctx2 t -> setFinalType ctx2 t e
-    Lam ann p a -> case (newTVar ctx) of
-      Pair ctx2 tv -> case (infer (addBinding p tv env) ctx2 a) of
-        Pair ctx3 a2 ->
-          setFinalType ctx3 (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') (applySubs (getSubs ctx3) tv)) (getType a2)) (Lam ann p a2)
-    App ann f a -> case (newTVar ctx) of
-      Pair ctx2 tv -> case (infer env ctx2 f) of
-        Pair ctx3 f2 -> case (infer env ctx3 a) of
-          Pair ctx4 a2 -> let
-            subs2 = getSubs ctx4
-            tf = applySubs subs2 (getType f2)
-            synth = f1 (getType a2) tv
-            //_ = debug (printType tf)
-            //_ = debug (printType synth)
-            usubs = unify tf synth
-            subs3 = composeSubs subs2 usubs
-            t = applySubs subs3 tv
-            in setFinalType (setSubs subs3 ctx4) t (App ann f2 a2)
-    Case ann e ps -> case (infer env ctx e) of
-      Pair ctx2 e2 -> case (foldl (inferCase env) (Pair ctx2 (Pair (getType e2) emptyArray)) ps) of
-        Pair ctx3 (Pair te ps2) -> let
-          t = getType (snd (head ps2))
-          subs = foldl composeSubs (getSubs ctx3) (map (\p -> unify t (getType (snd p))) ps2)
-          in setFinalType (setSubs subs ctx3) (applySubs subs t) (Case ann (setType te e2) ps2)
-    Let ann ds e -> case (inferDefs env ctx ds) of
-      Pair ctx2 ds2 -> let
-        env2 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env ds2
-        //_ = debug (mapRecord printType env2)
-        in case (infer env2 ctx2 e) of
-          Pair ctx3 e2 -> setFinalType ctx3 (getType e2) (Let ann ds2 e2)
+      True -> getBindingM v env >>= instantiate >>= \t -> setFinalType t e
+    Lam ann p a -> newTVarM >>= \tv ->
+      infer (addBinding p tv env) a >>= \a ->
+        setFinalType (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') tv) (getType a)) (Lam ann p a)
+    App ann f a -> newTVarM >>= \tv ->
+      infer env f >>= \f ->
+        infer env a >>= \a -> let
+          synth = f1 (getType a) tv
+          in unifyM (getType f) synth >>
+            setFinalType tv (App ann f a)
+    Case ann e ps -> infer env e >>= \e ->
+      mapM (inferCase env (getType e)) ps >>= \ps -> let
+        t = getType (snd (head ps))
+        in mapM (\p -> unifyM t (getType $ snd p)) (tail ps) >>
+          setFinalType t (Case ann e ps)
+    Let ann ds e -> inferDefs env ds >>= \ds -> let
+      env2 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env ds
+      in infer env2 e >>= \e ->
+        setFinalType (getType e) (Let ann ds e)
     _ -> error 'type inference not supported for this AST node'
 
-inferType env ctx e = case (infer env ctx e) of
-  Pair ctx e2 -> applySubsE (getSubs ctx) e2
-
-inferSccDefs env ctx ds = let
-  generateTVar ce d = case ce of
-    Pair ctx env -> case d of
-      Pair n _ -> case (newTVar ctx) of
-        Pair ctx2 tv -> Pair ctx2 (addBinding n tv env)
-  inferDef env cds d = case cds of
-    Pair ctx ds -> case d of
-      Pair n e ->
-        //_ = debug ('inferring for binding ' ++ n)
-        //_ = debug (mapRecord printType env)
-        //_ = debug (case ctx of ICtx subs _ -> mapRecord printType subs)
-        case (infer env ctx e) of
-          Pair ctx2 e2 -> Pair ctx2 (push (Pair n e2) ds)
+inferSccDefs env ds = let
+  generateTVar env d = newTVarM >>= \tv -> ret (addBinding (fst d) tv env)
+  inferDef env d = case d of
+    Pair n e -> infer env e >>= \e -> ret (Pair n e)
   unifyDef env d = case d of
-    Pair n e -> unify (getType e) (getBinding n env)
-  generalizeDef env cr d = case cr of
-    Pair ctx r -> case d of
-      Pair n e -> case (generalize env ctx (getType e)) of
-        Pair ctx2 t -> Pair ctx2 (push (Pair n (setType t e)) r)
-  in case (foldl generateTVar (Pair ctx env) ds) of
-    Pair ctx2 env2 -> case (foldl (inferDef env2) (Pair ctx2 emptyArray) ds) of
-      Pair ctx3 ds2 -> let
-        subs = getSubs ctx3
-        dsSubs = map (unifyDef env2) ds2
-        subs2 = foldl composeSubs subs dsSubs
-        ds3 = map (applySubsDef subs2) ds2
-        //subs3 = dropNonEnvSubs env subs2
-        //_ = debug (mapRecord printType subs3)
-        // NOTE: generalizing with env *without* the bindings being generalized.
-        ctx4 = dropSatisfiedBounds env (setSubs subs2 ctx3)
-        cds = foldl (generalizeDef env) (Pair ctx4 emptyArray) ds3
-        //_ = debug ('inferred:\n  ' ++ intercalate '\n  ' (map (\d -> case d of Pair n e -> n ++ ' :: ' ++ (printType (getType e))) (snd cds)))
-        //_ = debug ('inferred:\n  ' ++ intercalate '\n  ' (map (\d -> case d of Pair n e -> n ++ ' = ' ++ (reallyPrintExpr True e)) (snd cds)))
-        in cds
+    Pair n e -> unifyM (getType e) (getBinding n env)
+  generalizeDef env d = case d of
+      Pair n e -> generalize env (getType e) >>= \t -> ret (Pair n (setType t e))
+  in foldM generateTVar env ds >>= \env2 ->
+    mapM (inferDef env2) ds >>= \ds2 ->
+      mapM (unifyDef env2) ds2 >>
+        mapM applySubsDef ds2 >>= \ds3 ->
+          dropSatisfiedBounds env >>
+            mapM (generalizeDef env) ds3
 
-dropSatisfiedBounds env ctx = let
+dropSatisfiedBounds env = gets >>= \ctx -> let
   is = getInstances env
   bs = getBounds ctx
   bs2 = filter (\b -> not (exists (\i -> satisfiesBound i b) is)) bs
-  in setBounds bs2 ctx
+  in sets (setBounds bs2 ctx)
 
-inferDefs env ctx ds = let
+inferDefs env ds = let
   ns = map fst ds
   g = foldl (\g d -> case d of Pair n e -> set n (filter (\v -> contains v ns && (v /= n)) (freeVars e)) g) empty ds
   ccs = sccSorted g
-  //_ = debug g
-  //_ = debug ccs
-  infer cr cc = case cr of
-    Pair ctx rs -> case (inferSccDefs (foldl (\env r -> addBinding (fst r) (getType (snd r)) env) env rs) ctx (filter (\d -> contains (fst d) cc) ds)) of
-      Pair ctx2 ds -> Pair ctx2 (concat rs ds)
-  in foldl infer (Pair ctx emptyArray) ccs
+  infer rs cc = fmap (concat rs) (inferSccDefs (foldl (\env r -> addBinding (fst r) (getType (snd r)) env) env rs) (filter (\d -> contains (fst d) cc) ds))
+  in foldM infer emptyArray ccs
 
-generalize env ctx t = let
+generalize env t = gets >>= \ctx -> let
   subs = getSubs ctx
   envTVars = freeTVarsInEnv env
   nonFree = case subs of Subs _ unsat ->
@@ -346,10 +300,10 @@ generalize env ctx t = let
         False -> r
       subs2 = case subs of
         Subs sat unsat -> Subs sat (foldTrie drop Empty unsat)
-      ctx2 = setSubs subs2 ctx
-      in case ((not $ isEmpty finalVars) || (length rbs > 0)) of
-        True -> Pair (setBounds obs ctx2) (TForall emptyAnn (setToArray finalVars) rbs t)
-        False -> Pair (setBounds obs ctx2) t
+      in sets (setBounds obs (setSubs subs2 ctx)) >>
+        case ((not $ isEmpty finalVars) || (length rbs > 0)) of
+          True -> ret $ TForall emptyAnn (setToArray finalVars) rbs t
+          False -> ret t
 
 // a -> (b -> (c -> Foo a b c))
 unrollDataConType t = case t of
@@ -357,8 +311,8 @@ unrollDataConType t = case t of
     Pair ps t -> Pair (enqueue a ps) t
   _ -> Pair emptyArray t
 
-applySubsDef subs d = case d of
-  Pair n e -> Pair n (applySubsE subs e)
+applySubsDef d = case d of
+  Pair n e -> gets >>= \ctx -> ret $ Pair n (applySubsE (getSubs ctx) e)
 
 applySubsE subs e = let
   f a e = let
@@ -388,7 +342,7 @@ freeVars e = let
     Let _ ds e -> filter (\v -> not (contains v (map fst ds))) (foldl mergeSet (freeVars e) (map (\d -> freeVars (snd d)) ds))
 
 inferInstance env cs i = let
-  inferE e = case (infer env newCtx e) of
+  inferE e = case (runState newCtx $ infer env e) of
     Pair ctx e2 -> applySubsE (getSubs ctx) e2
   in case i of
     Instance ann n it ds -> case (find (\c -> case c of Class _ m _ _ -> n == m) cs) of
@@ -440,7 +394,7 @@ inferTypeModule ms m = let
       env4 = foldl addClass env3 cs
       env5 = foldl addIns env4 ins
       //_ = debugEnv env5
-      ds2 = snd (inferDefs env5 newCtx ds)
+      ds2 = evalState newCtx (inferDefs env5 ds)
       //_2 = debug (map (\d -> printType (getType (snd d))) ds2)
       ds3 = map checkForUnsatisfiedBounds ds2
       env6 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env5 ds3
