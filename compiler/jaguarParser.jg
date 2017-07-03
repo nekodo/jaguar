@@ -8,22 +8,23 @@ data ParserState = ParserState
   Number // position (p)
   Number // current line indent (li)
   Number // required line indent (ri)
+  String // filename
 
-mkParserState ts = ParserState ts 0 (case (getIx 0 ts) of Token t v l c -> c) 0
+mkParserState ts f = ParserState ts 0 (case (getIx 0 ts) of Token t v l c -> c) 0 f
 
 filterWhitespaceAndComments = filter (\t -> case t of
   Token (WsTok) v l c -> False
   Token (ComTok) v l c -> False
   t -> True)
 
-runParser p s = case (tokenize s) of
-  Success ts s -> applyParser p (mkParserState (filterWhitespaceAndComments ts))
+runParser p s f = case (tokenize s) of
+  Success ts s -> applyParser p (mkParserState (filterWhitespaceAndComments ts) f)
   Error e -> Error e
 
 parseToken f = let
   parse s = case s of
     // Check that we have not ran out of tokens.
-    ParserState ts p li ri -> case (p < length ts) of
+    ParserState ts p li ri fn -> case (p < length ts) of
       False -> Error 'run out of tokens'
       // Check that the indentation is sufficient.
       True -> case (getIx p ts) of
@@ -34,29 +35,29 @@ parseToken f = let
             Nothing -> Error 'parser fun failed'
             // Success, now need to update the position and current line indent.
             Just r -> case ((p + 1) < length ts) of
-              False -> Success r (ParserState ts (p + 1) li ri)
+              False -> Success r (ParserState ts (p + 1) li ri fn)
               True -> case (getIx (p + 1) ts) of
                 Token t v l2 c -> case (l2 > l) of
-                  False -> Success r (ParserState ts (p + 1) li ri)
-                  True -> Success r (ParserState ts (p + 1) c ri)
+                  False -> Success r (ParserState ts (p + 1) li ri fn)
+                  True -> Success r (ParserState ts (p + 1) c ri fn)
   in Parser parse
 
 locP = let
   parse s = case s of
-    ParserState ts p _ _ -> case (p < length ts) of
+    ParserState ts p _ _ fn -> case (p < length ts) of
       False -> Error 'run out of tokens'
       // Check that the indentation is sufficient.
       True -> case (getIx p ts) of
-        Token _ _ l c -> Success (withLocAnn $ AnnCodeLoc '' l c) s
+        Token _ _ l c -> Success (withLocAnn $ AnnCodeLoc fn l c) s
   in Parser parse
 
 (<*->) pf pa = case pf of
   Parser pf -> case pa of
     Parser pa -> let
       parse s = case s of
-        ParserState ts p li ri -> case (pf s) of
-          Success f (ParserState ts p2 li2 ri2) -> case (pa (ParserState ts p2 li2 (li + 1))) of
-            Success a (ParserState ts p3 li3 ri3) -> Success (f a) (ParserState ts p3 li3 ri)
+        ParserState ts p li ri fn -> case (pf s) of
+          Success f (ParserState ts p2 li2 ri2 fn) -> case (pa (ParserState ts p2 li2 (li + 1) fn)) of
+            Success a (ParserState ts p3 li3 ri3 fn) -> Success (f a) (ParserState ts p3 li3 ri fn)
             Error e -> Error e
           Error e -> Error e
       in Parser parse
@@ -112,18 +113,18 @@ parenP p = symP '(' |> p <| symP ')'
 withLocAnn a = setAnn 'codeLoc' a emptyAnn
 withLocOf e = withLocAnn (fromJust $ getAnn 'codeLoc' (annOf e))
 
-varP = parseToken (\t -> case t of
+varP = pure Var <*> locP <*> parseToken (\t -> case t of
   Token (IdTok) v l c -> case (contains v reserved) of
     True -> Nothing
-    False -> Just (Var (withLocAnn $ AnnCodeLoc '' l c) v)
+    False -> Just v
   x -> Nothing)
 
-cnumP = parseToken (\t -> case t of
-  Token (NumTok) v l c -> Just (Const (withLocAnn $ AnnCodeLoc '' l c) (CNum (unsafeStringToInt v)))
+cnumP = pure Const <*> locP <*> parseToken (\t -> case t of
+  Token (NumTok) v l c -> Just (CNum (unsafeStringToInt v))
   x -> Nothing)
 
-cstrP = parseToken (\t -> case t of
-  Token (StrTok) v l c -> Just (Const (withLocAnn $ AnnCodeLoc '' l c) (CStr v))
+cstrP = pure Const <*> locP <*> parseToken (\t -> case t of
+  Token (StrTok) v l c -> Just (CStr v)
   x -> Nothing)
   
 constP = cstrP <|> cnumP
@@ -142,12 +143,12 @@ patP = Parser (\s -> applyParser allPatP s)
 
 pvarP = pure PVar <*> locP <*> notUpperCaseId
 
-pcnumP = parseToken (\t -> case t of
-  Token (NumTok) v l c -> Just (PConst (withLocAnn $ AnnCodeLoc '' l c) (CNum (unsafeStringToInt v)))
+pcnumP = pure PConst <*> locP <*> parseToken (\t -> case t of
+  Token (NumTok) v l c -> Just (CNum (unsafeStringToInt v))
   x -> Nothing)
 
-pcstrP = parseToken (\t -> case t of
-  Token (StrTok) v l c -> Just (PConst (withLocAnn $ AnnCodeLoc '' l c) (CStr v))
+pcstrP = pure PConst <*> locP <*> parseToken (\t -> case t of
+  Token (StrTok) v l c -> Just (CStr v)
   x -> Nothing)
 
 strP = parseToken (\t -> case t of
@@ -225,8 +226,8 @@ importAllP = pure (ImportAll emptyAnn) <*>
 
 importP = reservedP 'import' |> (importOpenP <|> importAllP)
 
-moduleP = pure (\is es -> case (splitFourWay es) of Pair (Pair dts dfs) (Pair cs ins) -> Module emptyAnn is dts cs ins dfs) <*>
-  many importP <*> some topLevelP
+moduleP = pure (\loc is es -> case (splitFourWay es) of Pair (Pair dts dfs) (Pair cs ins) -> Module loc (case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f) is dts cs ins dfs) <*>
+  locP <*> many importP <*> some topLevelP
 
 splitFourWay e = case (splitEither e) of
   Pair a b -> Pair (splitEither a) (splitEither b)

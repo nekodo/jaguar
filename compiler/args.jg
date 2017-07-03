@@ -4,6 +4,9 @@ data Arg =
   ArgBool String (Maybe Bool)
   | ArgString String (Maybe String)
 
+instance Eq Arg where
+  (==) a b = jsEq a b
+
 data ParsedArgs = ParsedArgs (Array String) (Record String) (Array Arg)
 
 argName a = case a of

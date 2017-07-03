@@ -10,7 +10,10 @@ rewriteExpr env e = let
   renamePat p = case p of
     PConst _ _ -> ret (Pair p empty)
     PVar ann v -> rename v >>= \n -> ret (Pair (PVar ann n) (set v n empty))
-    PData ann n ps -> mapM renamePat ps >>= \ps -> ret (Pair (PData ann n (map fst ps)) (foldl merge empty (map snd ps)))
+    PData ann n ps -> mapM renamePat ps >>= \ps ->
+      case (has n env) of
+        False -> ret (Pair (PData ann n (map fst ps)) (foldl merge empty (map snd ps)))
+        True -> ret (Pair (PData ann (get n env) (map fst ps)) (foldl merge empty (map snd ps)))
   rewritePat p = case p of Pair pat e -> renamePat pat >>= \pe -> case pe of Pair pat penv -> rewriteExpr (merge env penv) e >>= \e -> ret (Pair pat e)
   f e = case e of
     Lam ann p e -> rename p >>= \n -> rewriteExpr (set p n env) e >>= \e -> ret (Right (Lam ann n e))
@@ -23,25 +26,41 @@ rewriteExpr env e = let
         e2 = rewriteExpr env2 e
         in bs2 >>= \bs -> e2 >>= \e -> ret (Right (Let ann (zip ns bs) e))
     Case ann e ps -> rewriteExpr env e >>= \e -> mapM rewritePat ps >>= \ps -> ret (Right (Case ann e ps))
-    Var ann v -> ret (Left (Var ann (get v env)))
+    Var ann v -> case (has v env) of
+      True -> ret (Left (Var ann (get v env)))
+      False -> ret (Left e)
     _ -> ret (Left e)
   in breakableDownM f e
 
 rewriteInstance env i = case i of
-  Instance ann n t bs -> rewriteBindings env bs >>= \bs -> ret (Instance ann n t bs)
+  Instance ann n t bs -> rewriteBindingsNoPrefix env bs >>= \bs -> ret (Instance ann n t bs)
 
-rewriteBindings env bs = mapM (\d -> case d of Pair n e -> rewriteExpr env e >>= \e -> ret (Pair n e)) bs
+rewriteBindings fn env bs = mapM (\d -> case d of Pair n e -> rewriteExpr env e >>= \e -> ret (Pair (addPrefix fn n) e)) bs
+rewriteBindingsNoPrefix env bs = mapM (\d -> case d of Pair n e -> rewriteExpr env e >>= \e -> ret (Pair n e)) bs
 
 rewriteModule ms m = case m of
-  Module ann is ds cs ins bs -> let
-    addBindings env bs = foldl (\env b -> set (fst b) (fst b) env) env bs
+  Module ann fn is ds cs ins bs -> let
+    addBindings env bs = foldl (\env b -> set (fst b) (addPrefix fn $ fst b) env) env bs
+    addBindingsNoPrefix env bs = foldl (\env b -> set (fst b) (fst b) env) env bs
     addClass env c = case c of
-      Class _ _ _ bs -> addBindings env bs
+      Class _ _ _ bs -> addBindingsNoPrefix env bs
     addImport env i = case i of
+      ImportOpen _ './builtins.js' ns -> addBindingsNoPrefix (foldl addClass env (case (get './builtins.js' ms) of ModuleInterface _ cs _ -> cs)) (map (\n -> Pair (snd n) (fst n)) ns)
       ImportOpen _ f ns -> addBindings (foldl addClass env (case (get f ms) of ModuleInterface _ cs _ -> cs)) (map (\n -> Pair (snd n) (fst n)) ns)
-    env = foldl addImport (foldl addClass (addBindings (toRecord (concatMap (\d -> map (\n -> Pair n n) (dataConNames d)) ds)) bs) cs) is
-    bs2 = rewriteBindings env bs
+    ds2 = map (renameData fn) ds
+    is2 = map (renameImport fn) is
+    env = foldl addImport (foldl addClass (addBindings (toRecord (concatMap (\d -> map (\n -> Pair n (addPrefix fn n)) (dataConNames d)) ds)) bs) cs) is
+    bs2 = rewriteBindings fn env bs
     ins2 = mapM (rewriteInstance env) ins
-    in bs2 >>= \bs -> ins2 >>= \ins -> ret (Module ann is ds cs ins bs)
+    in bs2 >>= \bs -> ins2 >>= \ins -> ret (Module ann fn is2 ds2 cs ins bs)
+
+addPrefix fn n = stringReplaceChar '/' '$' (stringReplaceChar '.' '_' fn) ++ '$$' ++ n
+
+renameData fn d = case d of
+  Data ann n tvs cs -> Data ann n tvs (map (\c -> case c of DataCon ann n ts -> DataCon ann (addPrefix fn n) ts) cs)
+
+renameImport fn i = case i of
+  ImportOpen _ './builtins.js' _ -> i 
+  ImportOpen ann f ns -> ImportOpen ann f (map (\p -> case p of Pair nf nt -> Pair nf (addPrefix fn nt)) ns) 
 
 uniquify ms m = evalState 0 (rewriteModule ms m)

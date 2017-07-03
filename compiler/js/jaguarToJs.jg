@@ -13,6 +13,8 @@ jaguarExprToJsExpr = \e -> case e of
   App _ (App _ (Var _ '+') a) b -> binOp '+' a b
   App _ (App _ (Var _ '-') a) b -> binOp '-' a b
   App _ (App _ (Var _ '*') a) b -> binOp '*' a b
+  App _ (App _ (Var _ 'jsLt') a) b -> binOp '<' a b
+  App _ (App _ (Var _ 'jsEq') a) b -> binOp '===' a b
   App _ (App _ (Var _ 'bitAnd') a) b -> binOp '&' a b
   App _ (App _ (Var _ 'bitOr') a) b -> binOp '|' a b
   App _ (App _ (Var _ 'bitShiftLeft') a) b -> binOp '<<' a b
@@ -101,7 +103,7 @@ dataToJs = \d -> case d of
 exportObject = \m -> JSObject (map (\n -> Pair (opName n) (JSRef (opName n))) (getExports m))
 
 moduleToJs importSymbols m = case m of
-  Module _ is ds cs ins vs -> let
+  Module _ _ is ds cs ins vs -> let
     imports = concatMap importToJs is
     dataDefs = concatMap dataToJs ds
     defs = map defToJs vs
@@ -112,10 +114,6 @@ opName = \op -> case op of
   '+' -> '$add'
   '-' -> '$del'
   '*' -> '$mul'
-  '<' -> '$lt'
-  '>' -> '$gt'
-  '==' -> '$eq'
-  '/=' -> '$neq'
   '&&' -> '$and'
   '||' -> '$or'
   '++' -> '$concat'

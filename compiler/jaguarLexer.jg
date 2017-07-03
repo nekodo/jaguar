@@ -22,11 +22,13 @@ runLexer p s = case p of
 
 parseChar p = let
   parse s = case s of
-    LexerState s i l c -> case (p (getChar i s)) of
-      False -> Error 'parser failed'
-      True -> case (getChar i s) of
-        '\n' -> Success (getChar i s) (LexerState s (i + 1) (l + 1) 0)
-        x -> Success (getChar i s) (LexerState s (i + 1) l (c + 1))
+    LexerState s i l c -> case (i < length s) of
+      False -> Error 'no more input available'
+      True -> case (p (getChar i s)) of
+        False -> Error 'parser failed'
+        True -> case (getChar i s) of
+          '\n' -> Success (getChar i s) (LexerState s (i + 1) (l + 1) 0)
+          x -> Success (getChar i s) (LexerState s (i + 1) l (c + 1))
   in Parser parse
 
 anyCharP = parseChar (\_ -> True)

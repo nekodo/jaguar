@@ -1,7 +1,13 @@
 # Roadmap
 
 ## TODO
--   better error messages from the typer
+-   module merging pass
+-   inlining pass
+-   beta reduction pass
+-   patterns in bindings and lambda and fun params
+-   optimizations to get the compilation of the compiler below 10s
+-   row types for extensible records and maybe other things
+-   flexible 
 -   proper associativity for operators
 -   tests
     -   Unit tests: for the compiler modules from lexer through parser
@@ -27,6 +33,7 @@
 -   type classes
 -   user-defined operators
 -   Hash-Array-Mapped-Tries as the data structure of choice:)
+-   better error messages from the typer
 
 # Ideas
 
@@ -46,10 +53,10 @@ data Foo =
     size :: Number
 
 case f of
-  FooB[name] -> name
-  FooB[name = v] -> v
-  FooB[name, size = s] -> bar name s
-  FooB[name = 'Kuro', size] -> size
+  {FooB with name} -> name
+  {FooB with name = v} -> v
+  {FooB with name, size = s} -> bar name s
+  {FooB with name = 'Kuro', size} -> size
   FooB 'Kuro' size -> size
 
 name f

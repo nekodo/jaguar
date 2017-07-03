@@ -1,6 +1,30 @@
 data Unit = Unit
 ($) f a = f a
 
+class Eq a where
+  (==) :: a -> a -> Bool
+
+(/=) a b = not (a == b)
+
+instance Eq Number where
+  (==) = jsEq
+
+instance Eq String where
+  (==) = jsEq
+
+class Ord a where
+  (<) :: a -> a -> Bool
+
+(>) a b = b < a
+(<=) a b = not (b < a)
+(>=) a b = not (a < b)
+
+instance Ord Number where
+  (<) = jsLt
+
+instance Ord String where
+  (<) = jsLt
+
 class Functor f where
   fmap :: (a -> b) -> f a -> f b
 
@@ -128,6 +152,7 @@ containsChar x xs = let
   in f 0
 
 exists f xs = foldl (\r x -> f x || r) False xs
+all f xs = foldl (\r x -> f x && r) True xs
 
 join = \xs s -> case (length xs) of
   0 -> ''

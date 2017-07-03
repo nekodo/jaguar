@@ -3,17 +3,21 @@ import * from '//compiler/ast.jg'
 import {freeVars} from '//compiler/typer.jg'
 
 normalizeImports ms m = case m of
-  Module ann is ds cs ins vs -> let 
+  Module ann fn is ds cs ins vs -> let 
     getFromDefs ds = foldl mergeSet emptyArray (map (\v -> freeVars (snd v)) ds)
     freeVarsInDefs = getFromDefs vs
     freeVarsInIns = foldl mergeSet emptyArray (map (\i -> case i of Instance _ _ _ ds -> getFromDefs ds) ins)
     topLevelNames = emptyArray //concat (concatMap dataConNames ds) (concat (map fst vs) (concatMap (\i -> case i of Instance _ _ _ ds -> map fst ds) ins))
     fvs = filter (\v -> not (contains v topLevelNames)) (mergeSet freeVarsInDefs freeVarsInIns)
     is2 = map (normalize ms fvs) (enqueue (ImportAll emptyAnn './builtins.js') is)
-    in Module ann is2 ds cs ins vs
+    in Module ann fn is2 ds cs ins vs
 
 normalize ms freeVars i = case i of
   ImportClosed _ _ _ -> error 'closed imports not supported'
-  ImportOpen ann f ns -> ImportOpen ann f (filter (\n -> case n of Pair n a -> contains a freeVars) ns)
+  ImportOpen ann f ns -> ImportOpen ann f (map (\p -> case p of Pair n m -> Pair (addPrefix f n) m) ns)
+  ImportAll ann './builtins.js' -> case (get './builtins.js' ms) of
+    ModuleInterface bs _ _ -> ImportOpen ann './builtins.js' (map (\n -> Pair n n) (keys bs))
   ImportAll ann f -> case (get f ms) of
-    ModuleInterface bs _ _ -> ImportOpen ann f (filter (\n -> case n of Pair n a -> contains a freeVars) (map (\n -> Pair n n) (keys bs)))
+    ModuleInterface bs _ _ -> ImportOpen ann f (map (\n -> Pair n (drop (length f + 2) n)) (keys bs))
+
+addPrefix fn n = stringReplaceChar '/' '$' (stringReplaceChar '.' '_' fn) ++ '$$' ++ n

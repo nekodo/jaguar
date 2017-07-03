@@ -7,6 +7,8 @@ def _js_library_impl(ctx):
   srcs = ctx.files.srcs
   out = ctx.outputs.out
   compiler = ctx.executable.compiler
+  if ctx.file.builtins:
+    print("*** has builtins")
   
   inputs = [main, compiler] + srcs + list(ctx.attr.compiler.default_runfiles.files)
   args = (["--out=" + out.path, "--main=" + main.path] +
@@ -35,6 +37,7 @@ jaguar_js_library = rule(
             cfg = "host",
             providers = [CompilerInfo],
         ),
+        "builtins": attr.label(allow_single_file=True),
         "args": attr.string_list(),
     },
     outputs={

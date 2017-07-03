@@ -17,7 +17,7 @@ getAnnCodeLoc ann = getAnn 'codeLoc' ann
 setAnnCodeLoc file line col ann = setAnn 'codeLoc' (AnnCodeLoc file line col) ann
 printCodeLoc l = case l of
   AnnCodeLoc file line col ->
-    'in ' ++ file ++ ' at l' ++ intToString (line + 1) ++ ':c' ++ intToString (col + 1)
+    'in ' ++ file ++ ' at line ' ++ intToString (line + 1) ++ ', column ' ++ intToString (col + 1)
 
 data Expr =
   Var (Map String Ann) String
@@ -38,6 +38,7 @@ data Pat =
 
 data Module = Module
   (Map String Ann)                        // annotations
+  String                     // path
   (Array Import)             // imports
   (Array Data)               // ADT definitions
   (Array Class)              // type clas definitions
@@ -70,6 +71,10 @@ data TypeBound =
     String // name of the type clas
     Type   // param
 
+equivBound a b = case a of
+  TCBound _ n t -> case b of
+    TCBound _ n2 t2 -> (n == n2) && equivType t t2
+
 data Type =
   TConst (Map String Ann) String
   | TVar (Map String Ann) String
@@ -77,6 +82,28 @@ data Type =
   | TBot
   | TForall (Map String Ann) (Array String) (Array TypeBound) Type
   | TUnknown
+
+equivType a b = case a of
+  TConst _ n -> case b of
+    TConst _ n2 -> n == n2
+    _ -> False
+  TVar _ v -> case b of
+    TVar _ v2 -> v == v2
+    _ -> False
+  TApp _ f a -> case b of
+    TApp _ f2 a2 -> equivType f f2 && equivType a a2
+    _ -> False
+  TBot -> case b of
+    TBot -> True
+    _ -> False
+  TUnknown -> case b of
+    TUnknown -> True
+    _ -> False
+  TForall _ vs bs t -> case b of
+    TForall _ vs2 bs2 t2 -> let
+      rvs = all (\p -> fst p == snd p) (zip vs vs2)
+      rbs = all (\p -> equivBound (fst p) (snd p)) (zip bs bs2)
+      in rvs && rbs && equivType t t2
 
 data Import =
   ImportClosed (Map String Ann) String String
@@ -86,7 +113,7 @@ data Import =
 dataConName = \dc -> case dc of DataCon _ n ts -> n
 dataConNames = \d -> case d of Data _ n ps cs -> map dataConName cs
 getExports = \m -> case m of
-  Module _ is ds _ _ vs -> concat (concatMap dataConNames ds) (map fst vs)
+  Module _ _ is ds _ _ vs -> concat (concatMap dataConNames ds) (map fst vs)
   
 setType t e = case e of
   Var ann v -> Var (setAnnType t ann) v

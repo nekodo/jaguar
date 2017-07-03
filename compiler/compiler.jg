@@ -4,15 +4,16 @@ import * from '//compiler/ast.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileExpr, compileModule, combineModules} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {inferType, newCtx, inferTypeModule, getTypedExports, generalize, emptyEnv} from '//compiler/typer.jg'
+import {newCtx, inferTypeModule, getTypedExports, generalize, emptyEnv} from '//compiler/typer.jg'
 import {dfs} from '//compiler/graph.jg'
 import {ArgBool, ArgString, parseArgs, getPositional, getString, getBool} from '//compiler/args.jg'
 import {declassModule} from '//compiler/declasser.jg'
 import {normalizeImports} from '//compiler/importNormalizer.jg'
 import {uniquify} from '//compiler/uniquifier.jg'
+import {mergeModules} from '//compiler/moduleMerger.jg'
 
-compile s = case (parseModule s) of
-  Success m (ParserState ts p li ri) -> case (p == length ts) of
+compile s fn = case (parseModule s fn) of
+  Success m (ParserState ts p li ri _) -> case (p == length ts) of
     True -> m
     False -> error ('failed to parse all tokens, stopped at ' ++ jsonStringify (getIx p ts)) 
   e -> error e
@@ -24,9 +25,9 @@ findImports m =
       ImportOpen _ f ns -> f
       ImportClosed _ f n -> f
   in case m of
-    Module _ is ds cs ins vs -> map importFileName is
+    Module _ _ is ds cs ins vs -> map importFileName is
 
-parseT s = case (parseType s) of
+parseT s = case (parseType s '') of
   Success t ps -> t
   e -> error e
 
@@ -47,7 +48,7 @@ instrument m = let
     ImportOpen ann './builtins.js' syms -> ImportOpen ann './builtins.js' (push (Pair 'perfTime' 'perfTime') syms)
     _ -> i
   in case m of
-    Module ann is ds cs ins vs -> Module ann (map addImport is) ds cs ins (map instrumentDef vs)
+    Module ann fn is ds cs ins vs -> Module ann fn (map addImport is) ds cs ins (map instrumentDef vs)
 
 builtinsPathArg = ArgString 'builtins' Nothing
 outPathArg = ArgString 'out' Nothing
@@ -69,8 +70,7 @@ main argv = let
   builtinsExports = loadJSExports builtinsPath
   
   // Compile all the srcs and construct a map of file -> imports.
-  srcs = foldl (\ss s -> set ('//' ++ s) (readFile s) ss) empty srcFiles
-  compiled = mapRecord compile srcs
+  compiled = foldl (\ss s -> let n =  '//' ++ s in set n (compile (readFile s) n) ss) empty srcFiles
   imports = mapRecord findImports compiled
   
   // Run a depth-first search from the main file to determine the order of
@@ -79,20 +79,19 @@ main argv = let
   
   // Type each modul, get its exports and transpile it to JS.
   exports = set './builtins.js' (parseExports builtinsExports) empty
-  toJs er n = case er of
+  perModulePasses er n = case er of
     Pair exports result -> let
       m = get n compiled
       normalized = uniquify exports (normalizeImports exports m)
       typed = inferTypeModule exports normalized
       e = getTypedExports typed
-      //_ = debug (case e of ModuleInterface bs _ _ -> mapRecord printType bs)
       declassed = declassModule exports typed
-      transpiled = case profile of
-        True -> compileModule exports (instrument declassed)
-        False -> compileModule exports declassed
-      in Pair (set n e exports) (push (Pair n transpiled) result)
-  jsms = snd (foldr toJs (Pair exports emptyArray) ordered)
-  
+      in Pair (set n e exports) (push declassed result)
+  modules = snd (foldr perModulePasses (Pair exports emptyArray) ordered)
+  merged = mergeModules modules
+  rawjs = case profile of
+    True -> compileModule exports (instrument merged)
+    False -> compileModule exports merged
   // Combine the JS modules into a single file and write it out.
-  js = combineModules mainName builtinsPath jsms
+  js = combineModules mainName builtinsPath (arr1 $ Pair mainName rawjs)
   in writeFile js outPath

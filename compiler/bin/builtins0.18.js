@@ -20,6 +20,12 @@ builtins.$mul = function(a) {
     }
 }
 
+builtins.jsLt = function(a) {
+    return function(b) {
+        return a < b
+    }
+}
+
 builtins.$lt = function(a) {
     return function(b) {
         return a < b
@@ -32,15 +38,21 @@ builtins.$gt = function(a) {
     }
 }
 
+builtins.jsEq = function(a) {
+    return function(b) {
+        return a === b
+    }
+}
+
 builtins.$eq = function(a) {
     return function(b) {
-        return a == b
+        return a === b
     }
 }
 
 builtins.$neq = function(a) {
     return function(b) {
-        return a != b
+        return a !== b
     }
 }
 
@@ -66,7 +78,12 @@ builtins.empty = {}
 
 builtins.get = function(f) {
     return function(r) {
-        return r[f]
+        const v = r[f];
+        if (v !== undefined) {
+          return v
+        } else {
+          //throw Error(`no key ${f} in ${r}`)
+        }
     }
 }
 
@@ -400,6 +417,15 @@ builtins.strHashCode = function(s) {
   return hash;
 };
 
+builtins.stringReplaceChar = a => b => s => {
+  const r = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    r.push(c == a ? b : c);
+  }
+  return r.join('');
+}
+
 builtins.$TYPE = {
     'writeFile': 'String -> String -> Bool',
     'readFile': 'String -> String',
@@ -409,10 +435,12 @@ builtins.$TYPE = {
     '+': 'Number -> Number -> Number',
     '-': 'Number -> Number -> Number',
     '*': 'Number -> Number -> Number',
+    'jsLt': 'a -> a -> Bool',
     '<': 'a -> a -> Bool',
     '>': 'a -> a -> Bool',
     '==': 'a -> a -> Bool',
     '/=': 'a -> a -> Bool',
+    'jsEq': 'a -> a -> Bool',
     '&&': 'Bool -> Bool -> Bool',
     '||': 'Bool -> Bool -> Bool',
     '++': 'String -> String -> String',
@@ -461,6 +489,7 @@ builtins.$TYPE = {
     bitShiftLeft: 'Number -> Number -> Number',
     strHashCode: 'String -> Number',
     bitNot: 'Number -> Number',
+    stringReplaceChar: 'String -> String -> String -> String',
 };
 
 module.exports = builtins;
