@@ -11,4 +11,4 @@ mergeInto a b = case a of
 
 importAsBindings i = case i of
   ImportOpen _ './builtins.js' _ -> emptyArray
-  ImportOpen _ _ ns -> map (\p -> case p of Pair nf nt -> Pair nt (Var emptyAnn nf)) ns
+  ImportOpen _ _ ns -> map (\p -> case p of Pair nf nt -> Pair nt (Var emptyAnn nf)) (filter (\p -> fst p /= snd p) ns)

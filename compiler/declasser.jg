@@ -19,9 +19,13 @@ declassModule ms m = case m of
     dataFuns = concatMap conTypes dt2
     env = foldl (\env b -> case b of Pair v e -> set v (getType e) env) (importsToTypeEnv ms is) (concat classFuns ds)
     env2 = merge env (toRecord dataFuns)
-    ds2 = map (\d -> Pair (fst d) (rewriteExpr availableInstances env2 (snd d))) ds
+    splitData d = case (lookup 'data' (annOf (snd d))) of
+      Nothing -> Right d
+      Just _ -> Left d
+    sds = splitEither (map splitData ds)
+    ds2 = map (\d -> Pair (fst d) (rewriteExpr availableInstances env2 (snd d))) (snd sds)
     instancesAsDefs = map (\p -> case p of Pair n i -> rewriteInstance availableInstances env2 n i) (zipWithIndex ins)
-    in Module ann fn is2 dt2 cs ins (concat classFuns (concat instancesAsDefs ds2))
+    in Module ann fn is2 dt2 cs ins (concat (fst sds) (concat classFuns (concat instancesAsDefs ds2)))
 
 rewriteImportedInstances ms isi ixi = case isi of
   Pair is ibs -> case ixi of
@@ -49,9 +53,10 @@ rewriteClassToData c = case c of
 rewriteClassToFun c = case c of
   Class _ _ _ bs -> let
     name = className2 c
-    bsForPat = map (\b -> PVar emptyAnn (fst b)) (sort bs)
+    bsForPat = map (\b -> PVar emptyAnn (fst b ++ '_')) (sort bs)
+    v = 'x_' ++ name
     rewrite b = case b of
-      Pair n t -> Pair n (setType t (Lam emptyAnn 'x' (Case emptyAnn (Var emptyAnn 'x') (arr1 (Pair (PData emptyAnn name bsForPat) (Var emptyAnn n))))))
+      Pair n t -> Pair n (setType t (Lam emptyAnn v (Case emptyAnn (Var emptyAnn v) (arr1 (Pair (PData emptyAnn name bsForPat) (Var emptyAnn (n ++ '_')))))))
     in map rewrite (classToBindings c)
 
 // instantiate the data type with the lambdas in the correct positions

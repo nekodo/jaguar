@@ -116,7 +116,9 @@ hasBinding n env = case env of
   IEnv bs _ _ -> has n bs
 
 addBinding n t env = case env of
-  IEnv bs ts fvs -> IEnv (set n t bs) ts (setUnion fvs (freeTVars t))
+  IEnv bs ts fvs -> let
+    u = (setUnion fvs (freeTVars t))
+    in IEnv (set n t bs) ts u
 
 addBindings nbs env = case env of
   IEnv bs ts fvs -> IEnv (merge bs nbs) ts (foldRecord (\fvs _ t -> setUnion fvs (freeTVars t)) fvs nbs)
@@ -168,7 +170,9 @@ applySubs subs t = case t of
 applySubsBound subs b = case b of
   TCBound ann n t -> TCBound ann n (applySubs subs t)
 
-unifyM a b = gets >>= \ctx -> getErrorF >>= \ef -> sets (setSubs (composeSubs ef (getSubs ctx) (unify ef a b)) ctx)
+unifyM a b = gets >>= \ctx -> getErrorF >>= \ef -> let
+  ef2 s = ef ('unifying ' ++ printType a ++ ' and ' ++ printType b ++ ': ' ++ s)
+  in sets (setSubs (composeSubs ef2 (getSubs ctx) (unify ef2 a b)) ctx)
 
 unify ef a b = let
   bind n t = case t of
@@ -221,6 +225,9 @@ withLocError e f = case (getAnnCodeLoc (annOf e)) of
 infer env e = let
   setFinalType t e = case (getType e) of
     TUnknown -> ret (setType t e)
+    TForall _ _ _ _ ->
+      // TODO: check whether the inferred type is broader then the user-provided one
+      ret e
     te -> unifyM t te >> ret e
   inferCase env te p = case p of
     Pair pat e -> inferPat env te pat >>= \cb -> case cb of
@@ -271,16 +278,30 @@ infer env e = let
       env2 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env ds
       in infer env2 e >>= \e ->
         setFinalType (getType e) (Let ann ds e)
+    New ann (Just tag) es -> mapM (infer env) es >>= \es -> case (hasBinding tag env) of
+      False -> error ('unknown data constructor ' ++ tag)
+      True -> (getBindingM tag env >>= instantiate) >>= \t ->
+        case (unrollDataConType t) of
+          Pair tps dt -> case (length es == length tps) of
+            False -> errorM ('number of New args does not match the number of constructor params ' ++ jsonStringify es ++ ' ' ++ printType t)
+            True -> mapM (\p -> case p of Pair t e -> unifyM t (getType e)) (zip tps es) >>
+              setFinalType dt (New ann (Just tag) es)
     _ -> error 'type inference not supported for this AST node'
 
 inferSccDefs env ds = let
-  generateTVar env d = newTVarM >>= \tv -> ret (addBinding (fst d) tv env)
+  generateTVar env d = case (getType (snd d)) of
+    TUnknown -> newTVarM >>= \tv -> ret (addBinding (fst d) tv env)
+    t -> ret (addBinding (fst d) t env)
   inferDef env d = case d of
     Pair n e -> infer env e >>= \e -> ret (Pair n e)
   unifyDef env d = case d of
-    Pair n e -> unifyM (getType e) (getBinding n env)
+    Pair n e -> case (getType e) of
+      TForall _ _ _ _ -> ret Unit
+      t -> unifyM t (getBinding n env)
   generalizeDef env d = case d of
-      Pair n e -> generalize env (getType e) >>= \t -> ret (Pair n (setType t e))
+      Pair n e -> case (getType e) of
+        TForall _ _ _ _ -> ret (debug2 (n ++ ' :: ' ++ printType (getType e)) d)
+        t -> generalize env t >>= \t -> ret (Pair n (setType (debug2 (n ++ ' :: ' ++ printType t) t) e))
   in foldM generateTVar env ds >>= \env2 ->
     mapM (inferDef env2) ds >>= \ds2 ->
       mapM (unifyDef env2) ds2 >>
@@ -365,6 +386,7 @@ freeVars e = let
     Lam _ p b -> filter (\v -> v /= p) (freeVars b)
     Case _ e ps -> foldl mergeSet (freeVars e) (map freeVarsInPat ps)
     Let _ ds e -> filter (\v -> not (contains v (map fst ds))) (foldl mergeSet (freeVars e) (map (\d -> freeVars (snd d)) ds))
+    New _ _ es -> foldl mergeSet emptyArray (map freeVars es)
 
 inferInstance env cs i = let
   inferE e = case (runState newCtx $ infer env e) of

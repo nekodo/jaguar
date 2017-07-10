@@ -1,14 +1,12 @@
 import * from '//compiler/prelude.jg'
-import {jaguarExprToJsExpr, moduleToJs} from '//compiler/js/jaguarToJs.jg'
+import {moduleToJs} from '//compiler/js/jaguarToJs.jg'
 import {jsExprToString, jsStmtToString} from '//compiler/js/printer.jg'
 import {rewriteStmt} from '//compiler/js/deadCode.jg'
 import {addPrefix} from '//compiler/uniquifier.jg'
 
-compileExpr = \e -> jsExprToString (jaguarExprToJsExpr e)
-
 compileModule = \importSymbols m -> join
-  (map jsStmtToString
-    (map rewriteStmt (moduleToJs importSymbols m)))
+  (map (jsStmtToString 0)
+    (concatMap rewriteStmt (moduleToJs importSymbols m)))
   ';\n'
 
 combineModules mainName builtinsPath ms = let 

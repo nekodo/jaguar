@@ -170,6 +170,12 @@ zip xs ys = case ((length xs == 0) || (length ys == 0)) of
 
 concatMap = \f a -> foldl concat emptyArray (map f a)
 
+mapJust f xs = let
+  g r x = case (f x) of
+    Nothing -> r
+    Just x -> push x r
+  in foldl g emptyArray xs
+
 head = getIx 0
 tail = slice 1
 last l = getIx (length l - 1) l
@@ -299,6 +305,10 @@ insert k v t = let
         _ -> BitmapIndexed bitmap2 (mapIx (f (depth + 1)) ix entries)
   in f 0 t
 
+updateOrSet k f d m = case (lookup k m) of
+  Nothing -> insert k d m
+  Just x -> insert k (f x) m
+
 remove k t = let
   hash = hashCode k
   f depth t = case t of
@@ -393,3 +403,5 @@ setIntersection a b = let
     False -> r
     True -> setAdd v r
   in foldTrie f emptySet a
+
+debug2 p x = snd (Pair (debug p) x)

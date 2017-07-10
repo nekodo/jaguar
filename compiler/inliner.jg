@@ -1,0 +1,135 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import {reallyPrintExpr} from '//compiler/printer.jg'
+import {rewriteExpr as renameExpr} from '//compiler/uniquifier.jg'
+
+inline preserve m = case m of
+  Module ann fn is ds cs ins bs -> let
+    bs2 = evalState 0 (loopPasses 3 (pass preserve) bs)
+    useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs2)
+    ds2 = processData useCount ds
+    is2 = processImports useCount is
+    in Module ann fn is2 ds2 cs ins bs2
+
+getCount e = case (getAnn 'useCount' (annOf e)) of
+  Just (AnnUseCount c) -> c
+mergeCount a b = foldTrie (\a k v -> insert k (v + (justOr 0 (lookup k a))) a) a b
+
+annWithUseCount e = let
+  dropCount n c = remove n c
+  countCase pe = case pe of
+    Pair p e -> countPat (getCount e) p
+  countPat c p = case p of
+    PVar _ n -> dropCount n c
+    PData _ n ps -> foldl countPat (insert n (1 + justOr 0 (lookup n c)) c) ps
+    _ -> c
+  countExpr e = case e of
+    Var _ n -> insert n 1 Empty
+    App _ f e -> mergeCount (getCount f) (getCount e)
+    Lam _ p e -> dropCount p (getCount e)
+    Let _ bs e -> foldl (\c n -> dropCount n c) (foldl (\c e -> mergeCount c (getCount e)) (getCount e) (map snd bs)) (map fst bs)
+    Case _ e ps -> foldl mergeCount (getCount e) (map countCase ps)
+    Const _ _ -> Empty
+    New _ _ es -> foldl mergeCount Empty (map getCount es)
+  in up (\a e -> Pair a $ withAnn (setAnn 'useCount' (AnnUseCount $ countExpr e) (annOf e)) e) Unit e
+
+mapBindings f bs = map (\b -> case b of Pair n e -> Pair n (f e)) bs
+mapBindingsM f bs = mapM (\b -> case b of Pair n e -> f n e >>= \e -> ret (Pair n e)) bs
+
+loopPasses n p bs = case n of
+  0 -> ret bs
+  _ -> p bs >>= loopPasses (n - 1) p
+
+pass preserve bs = let
+  bs2 = mapBindings (\e -> snd $ annWithUseCount e) bs
+  useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs2)
+  bs3 = mapBindings deadCode (dropDeadBindings preserve useCount bs2)
+  always = chooseForInlining Empty bs3
+  in mapBindingsM (\n e -> inlineCode (remove n always) e) bs3 >>= \bs ->
+    ret (mapBindings betaReduction bs)
+
+processImports useCount is = is
+processData useCount ds = let
+  f d = case d of
+    Data ann n vs ds -> let
+      ds2 = filter (\d -> case d of DataCon _ n _ -> isJust (lookup n useCount)) ds
+      in case (length ds2) of
+        0 -> Nothing
+        _ -> Just (Data ann n vs ds2)
+  in mapJust f ds
+
+deadCode e = let
+  f e = case e of
+    Let ann bs e -> let
+      useCount = foldl mergeCount (getCount e) (map (\b -> getCount (snd b)) bs)
+      bs2 = dropDeadBindings emptyArray useCount bs
+      in Let ann bs2 e
+    _ -> e
+  in snd (down (\a e -> Pair a (f e)) Unit e)
+
+exprSize e = case e of
+  Var _ _ -> 1
+  Const _ _ -> 1
+  App _ f a -> 1 + exprSize f + exprSize a
+  Lam _ _ e -> 1 + exprSize e
+  Case _ e ps -> 1 + foldl (\c p -> case p of Pair pat e -> c + patSize pat + exprSize e) (exprSize e) ps
+  Let _ bs e -> 1 + foldl (\c b -> c + exprSize (snd b)) (exprSize e) bs
+  New _ _ es -> foldl (\c e -> c + exprSize e) 1 es
+
+patSize p = case p of
+  PVar _ _ -> 1
+  PConst _ _ -> 1
+  PData _ _ ps -> foldl (\c p -> c + patSize p) 1 ps
+
+chooseForInlining baseCount bs = let
+  useCount = foldl mergeCount baseCount (map (\b -> getCount (snd b)) bs)
+  f r b = case b of
+    Pair n e -> case e of
+      Var _ _ -> insert n e r
+      Const _ _ -> insert n e r
+      Lam _ _ _ -> case ((exprSize e < 10) || (1 == justOr 0 (lookup n useCount))) of
+        False -> r
+        True -> insert n e r
+      New _ _ _ -> case (1 == justOr 0 (lookup n useCount)) of
+        False -> r
+        True -> insert n e r
+      _ -> r
+  in foldl f Empty bs
+
+betaReduction e = let
+  f e = case e of
+    App ann (Lam _ p a) (Var ann2 v) -> case (p == v) of
+      True -> a
+      False -> Let ann (arr1 (Pair p (Var ann2 v))) a
+    App ann (Lam _ p a) b -> Let ann (arr1 (Pair p b)) a
+    _ -> e
+  in snd (down (\a e -> Pair a (f e)) Unit e)
+
+inlineCode always e = let
+  inlineExpr e = case e of
+    Var _ v -> case (lookup v always) of
+      Nothing -> ret (Left e)
+      Just e -> fmap Left (renameExpr '$inl$' empty e)
+    Let ann bs e -> let
+      always2 = mergeTrie always (chooseForInlining (getCount e) bs)
+      in mapBindingsM (\n e -> inlineCode (remove n always2) e) bs >>= \bs ->
+        inlineCode always2 e >>= \e -> case (length bs) of
+          0 -> ret (Right e)
+          _ -> ret (Right (Let ann bs e))
+    Case ann e ps -> ret (Left (Case ann e (map (\p -> case p of Pair pat e -> Pair (inlinePat pat) e) ps)))
+    _ -> ret (Left e)
+  inlinePat p = case p of
+    PData ann n ps -> case (lookup n always) of
+      Just (Var _ v) -> PData ann v (map inlinePat ps)
+      _ -> PData ann n (map inlinePat ps)
+    _ -> p 
+  in breakableDownM inlineExpr e
+
+dropDeadBindings preserve useCount bs = let
+  f b = case b of
+    Pair n e -> let
+      totalCount = justOr 0 (lookup n useCount)
+      recursiveCount = justOr 0 (lookup n (getCount e))
+      keep = contains n preserve || ((totalCount - recursiveCount) > 0)
+      in keep
+  in filter f bs

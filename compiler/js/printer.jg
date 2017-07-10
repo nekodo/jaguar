@@ -1,69 +1,72 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/js/ast.jg'
 
-jsExprToString = \e -> case e of
-  JSNull -> 'null'
-  JSUndefined -> 'undefined'
-  JSBool (True) -> 'true'
-  JSBool (False) -> 'false'
-  JSNum n -> jsonStringify n
-  JSString s -> jsonStringify s
-  JSRef '+' -> '$add'
-  JSRef '-' -> '$del'
-  JSRef '*' -> '$mul'
-  JSRef '<' -> '$lt'
-  JSRef '>' -> '$gt'
-  JSRef '==' -> '$eq'
-  JSRef '/=' -> '$neq'
-  JSRef '&&' -> '$and'
-  JSRef '||' -> '$or'
-  JSRef '++' -> '$concat'
-  JSRef v -> v
-  JSIndex xs (JSString i) -> case (match '^[a-zA-Z_$][a-zA-Z0-9_$]*$' i) of
-    '' -> jsExprToParenString xs ++ '[' ++ i ++ ']'
-    i -> jsExprToParenString xs ++ '.' ++ i
-  JSIndex xs i -> jsExprToParenString xs ++ '[' ++ jsExprToString i ++ ']'
-  JSUnOp op e -> op ++ jsExprToParenString e
-  JSBinOp op a b -> jsExprToParenString a ++ op ++ jsExprToParenString b
-  JSCall f xs -> jsExprToParenString f
-    ++ paren (intercalate ',' (map jsExprToString xs))
-  JSNew c xs -> 'new ' ++ jsExprToParenString c
-    ++ paren (intercalate ',' (map jsExprToString xs))
-  JSFun ps bs -> 'function(' ++ intercalate ',' ps ++ '){\n'
-    ++ (intercalate ';' (map jsStmtToString bs)) ++ '}'
-  JSTernary b x y -> jsExprToParenString b ++ '?'
-    ++ jsExprToParenString x ++ ':'
-    ++ jsExprToParenString y
-  JSObject kvs -> '{' ++ intercalate ',' (map keyValueToString kvs) ++ '}'
-  JSInstanceOf x c -> jsExprToParenString x ++ ' instanceof '
-    ++ jsExprToParenString c
-  JSSeq es -> intercalate ',' (map jsExprToString es)
-  e -> error e
+jsExprToString indent e = let 
+  print e = jsExprToString indent e
+  printParen e = jsExprToParenString indent e
+  in  case e of
+    JSNull -> 'null'
+    JSUndefined -> 'undefined'
+    JSBool (True) -> 'true'
+    JSBool (False) -> 'false'
+    JSNum n -> jsonStringify n
+    JSString s -> jsonStringify s
+    JSRef v -> v
+    JSIndex xs (JSString i) -> case (match '^[a-zA-Z_$][a-zA-Z0-9_$]*$' i) of
+      '' -> printParen xs ++ '[' ++ i ++ ']'
+      i -> printParen xs ++ '.' ++ i
+    JSIndex xs i -> printParen xs ++ '[' ++ print i ++ ']'
+    JSUnOp op e -> op ++ printParen e
+    JSBinOp op a b -> printParen a ++ op ++ printParen b
+    JSCall f xs -> printParen f
+      ++ paren (intercalate ',' (map print xs))
+    JSNew c xs -> 'new ' ++ printParen c
+      ++ paren (intercalate ',' (map print xs))
+    JSFun ps bs -> 'function(' ++ intercalate ',' ps ++ '){\n'
+      ++ printIndent (indent + 1) ++  (intercalate (';\n' ++ printIndent (indent + 1)) (map (jsStmtToString (indent + 1)) bs)) ++ '\n' ++ printIndent indent ++ '}'
+    JSTernary b x y -> printParen b ++ '?'
+      ++ printParen x ++ ':'
+      ++ printParen y
+    JSObject kvs -> '{' ++ intercalate ',' (map (keyValueToString indent) kvs) ++ '}'
+    JSInstanceOf x c -> printParen x ++ ' instanceof ' ++ printParen c
+    JSSeq es -> intercalate ',' (map print es)
+    e -> error e
 
-jsExprToParenString = \e -> case e of
-  JSRef r -> jsExprToString e
-  JSNum n -> jsExprToString e
-  JSString s -> jsExprToString e
-  JSBool b -> jsExprToString e
-  JSIndex xs i -> jsExprToString e
-  JSNew c xs -> jsExprToString e
-  JSObject kvs -> jsExprToString e
-  e -> paren (jsExprToString e)
+jsExprToParenString indent e = case e of
+  JSRef r -> jsExprToString indent e
+  JSNum n -> jsExprToString indent e
+  JSString s -> jsExprToString indent e
+  JSBool b -> jsExprToString indent e
+  JSIndex xs i -> jsExprToString indent e
+  JSNew c xs -> jsExprToString indent e
+  JSObject kvs -> jsExprToString indent e
+  e -> paren (jsExprToString indent e)
 
-keyValueToString = \kv -> case kv of
-  Pair k v -> k ++ ':' ++ jsExprToString v
+keyValueToString indent kv = case kv of
+  Pair k v -> k ++ ':' ++ jsExprToString indent v
 
-jsStmtToString = \s -> case s of
-  JSExpr e -> jsExprToString e
-  JSReturn e -> 'return ' ++ jsExprToString e
-  JSVar v e -> 'var ' ++ v ++ ' = ' ++ jsExprToString e
+jsStmtToString indent s = case s of
+  JSExpr e -> jsExprToString indent e
+  JSReturn e -> 'return ' ++ jsExprToString indent e
+  JSVar v e -> 'var ' ++ v ++ ' = ' ++ jsExprToString indent e
   JSBreak -> 'break'
-  JSSwitch e cs -> 'switch' ++ paren (jsExprToString e) ++ '{'
-    ++ intercalate ';\n' (map caseToString cs) ++ '}'
-  JSAssign l r -> jsExprToParenString l ++ ' = ' ++ jsExprToParenString r
+  JSSwitch e cs -> 'switch' ++ paren (jsExprToString indent e) ++ '{\n' ++ printIndent (indent + 1)
+    ++ intercalate (';\n' ++ printIndent (indent + 1)) (map (caseToString (indent + 1)) cs) ++ '\n' ++ printIndent indent ++ '}'
+  JSAssign l r -> jsExprToParenString indent l ++ ' = ' ++ jsExprToParenString indent r
+  JSIf p ts es -> let
+    els = case (length es) of
+      1 -> jsStmtToString indent (getIx 0 es)
+      _ -> '{\n' ++ printIndent (indent + 1) ++
+        (intercalate (';\n' ++ printIndent (indent + 1)) (map (jsStmtToString (indent + 1)) es)) ++ '\n' ++ printIndent indent ++ '}'
+    in 'if(' ++ jsExprToString indent p ++ '){\n'++ printIndent (indent + 1) ++
+      (intercalate (';\n' ++ printIndent (indent + 1)) (map (jsStmtToString (indent + 1)) ts)) ++ '\n' ++ printIndent indent ++ '} else ' ++ els
 
-caseToString = \c -> case c of
-  Pair m ss -> 'case ' ++ paren (jsExprToString m) ++ ':\n  '
-    ++ intercalate ';' (map jsStmtToString ss)
+caseToString indent c = case c of
+  Pair m ss -> 'case ' ++ paren (jsExprToString indent m) ++ ':\n' ++ printIndent (indent + 1)
+    ++ intercalate (';\n' ++ printIndent (indent + 1)) (map (jsStmtToString indent) ss)
+
+printIndent indent = case indent of
+  0 -> ''
+  n -> '  ' ++ printIndent (n - 1)
 
 paren = \s -> '(' ++ s ++ ')'

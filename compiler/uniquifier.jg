@@ -3,10 +3,8 @@ import * from '//compiler/ast.jg'
 
 newIdent n = gets >>= \i -> sets (i + 1) >> ret (n ++ '_$u$' ++ intToString i)
 
-rewriteExpr env e = let
-  rename n = case (has n env) of
-    False -> ret n
-    True -> newIdent n
+rewriteExpr pre env e = let
+  rename n = fmap ((++) pre) (newIdent n)
   renamePat p = case p of
     PConst _ _ -> ret (Pair p empty)
     PVar ann v -> rename v >>= \n -> ret (Pair (PVar ann n) (set v n empty))
@@ -14,31 +12,35 @@ rewriteExpr env e = let
       case (has n env) of
         False -> ret (Pair (PData ann n (map fst ps)) (foldl merge empty (map snd ps)))
         True -> ret (Pair (PData ann (get n env) (map fst ps)) (foldl merge empty (map snd ps)))
-  rewritePat p = case p of Pair pat e -> renamePat pat >>= \pe -> case pe of Pair pat penv -> rewriteExpr (merge env penv) e >>= \e -> ret (Pair pat e)
+  rewritePat p = case p of Pair pat e -> renamePat pat >>= \pe -> case pe of Pair pat penv -> rewriteExpr pre (merge env penv) e >>= \e -> ret (Pair pat e)
   f e = case e of
-    Lam ann p e -> rename p >>= \n -> rewriteExpr (set p n env) e >>= \e -> ret (Right (Lam ann n e))
+    Lam ann p e -> rename p >>= \n -> rewriteExpr pre (set p n env) e >>= \e -> ret (Right (Lam ann n e))
     Let ann bs e -> let
       ns = map fst bs
       ns2 = mapM rename ns
       in ns2 >>= \ns -> let
         env2 = merge env (toRecord (zip (map fst bs) ns))
-        bs2 = mapM (rewriteExpr env2) (map snd bs)
-        e2 = rewriteExpr env2 e
+        bs2 = mapM (rewriteExpr pre env2) (map snd bs)
+        e2 = rewriteExpr pre env2 e
         in bs2 >>= \bs -> e2 >>= \e -> ret (Right (Let ann (zip ns bs) e))
-    Case ann e ps -> rewriteExpr env e >>= \e -> mapM rewritePat ps >>= \ps -> ret (Right (Case ann e ps))
+    Case ann e ps -> rewriteExpr pre env e >>= \e -> mapM rewritePat ps >>= \ps -> ret (Right (Case ann e ps))
     Var ann v -> case (has v env) of
       True -> ret (Left (Var ann (get v env)))
+      False -> ret (Left e)
+    New _ (Nothing) _ -> ret (Left e)
+    New ann (Just tag) es -> case (has tag env) of
+      True -> ret (Left (New ann (Just (get tag env)) es))
       False -> ret (Left e)
     _ -> ret (Left e)
   in breakableDownM f e
 
-rewriteInstance env i = case i of
-  Instance ann n t bs -> rewriteBindingsNoPrefix env bs >>= \bs -> ret (Instance ann n t bs)
+rewriteInstance pre env i = case i of
+  Instance ann n t bs -> rewriteBindingsNoPrefix pre env bs >>= \bs -> ret (Instance ann n t bs)
 
-rewriteBindings fn env bs = mapM (\d -> case d of Pair n e -> rewriteExpr env e >>= \e -> ret (Pair (addPrefix fn n) e)) bs
-rewriteBindingsNoPrefix env bs = mapM (\d -> case d of Pair n e -> rewriteExpr env e >>= \e -> ret (Pair n e)) bs
+rewriteBindings pre fn env bs = mapM (\d -> case d of Pair n e -> rewriteExpr pre env e >>= \e -> ret (Pair (addPrefix fn n) e)) bs
+rewriteBindingsNoPrefix pre env bs = mapM (\d -> case d of Pair n e -> rewriteExpr pre env e >>= \e -> ret (Pair n e)) bs
 
-rewriteModule ms m = case m of
+rewriteModule pre ms m = case m of
   Module ann fn is ds cs ins bs -> let
     addBindings env bs = foldl (\env b -> set (fst b) (addPrefix fn $ fst b) env) env bs
     addBindingsNoPrefix env bs = foldl (\env b -> set (fst b) (fst b) env) env bs
@@ -50,8 +52,8 @@ rewriteModule ms m = case m of
     ds2 = map (renameData fn) ds
     is2 = map (renameImport fn) is
     env = foldl addImport (foldl addClass (addBindings (toRecord (concatMap (\d -> map (\n -> Pair n (addPrefix fn n)) (dataConNames d)) ds)) bs) cs) is
-    bs2 = rewriteBindings fn env bs
-    ins2 = mapM (rewriteInstance env) ins
+    bs2 = rewriteBindings pre fn env bs
+    ins2 = mapM (rewriteInstance pre env) ins
     in bs2 >>= \bs -> ins2 >>= \ins -> ret (Module ann fn is2 ds2 cs ins bs)
 
 addPrefix fn n = stringReplaceChar '/' '$' (stringReplaceChar '.' '_' fn) ++ '$$' ++ n
@@ -63,4 +65,4 @@ renameImport fn i = case i of
   ImportOpen _ './builtins.js' _ -> i 
   ImportOpen ann f ns -> ImportOpen ann f (map (\p -> case p of Pair nf nt -> Pair nf (addPrefix fn nt)) ns) 
 
-uniquify ms m = evalState 0 (rewriteModule ms m)
+uniquify pre ms m = evalState 0 (rewriteModule pre ms m)

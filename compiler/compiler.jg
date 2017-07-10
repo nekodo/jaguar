@@ -2,7 +2,7 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/parsers.jg'
 import * from '//compiler/ast.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
-import {compileExpr, compileModule, combineModules} from '//compiler/js/backend.jg'
+import {compileModule, combineModules} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
 import {newCtx, inferTypeModule, getTypedExports, generalize, emptyEnv} from '//compiler/typer.jg'
 import {dfs} from '//compiler/graph.jg'
@@ -11,6 +11,8 @@ import {declassModule} from '//compiler/declasser.jg'
 import {normalizeImports} from '//compiler/importNormalizer.jg'
 import {uniquify} from '//compiler/uniquifier.jg'
 import {mergeModules} from '//compiler/moduleMerger.jg'
+import {inline} from '//compiler/inliner.jg'
+import {translateAdts} from '//compiler/adt.jg'
 
 compile s fn = case (parseModule s fn) of
   Success m (ParserState ts p li ri _) -> case (p == length ts) of
@@ -79,19 +81,22 @@ main argv = let
   
   // Type each modul, get its exports and transpile it to JS.
   exports = set './builtins.js' (parseExports builtinsExports) empty
-  perModulePasses er n = case er of
-    Pair exports result -> let
-      m = get n compiled
-      normalized = uniquify exports (normalizeImports exports m)
-      typed = inferTypeModule exports normalized
-      e = getTypedExports typed
-      declassed = declassModule exports typed
-      in Pair (set n e exports) (push declassed result)
-  modules = snd (foldr perModulePasses (Pair exports emptyArray) ordered)
+  perModulePasses er ixn = case er of
+    Pair exports result -> case ixn of
+      Pair ix n -> let
+        m = get n compiled
+        normalized = uniquify ('_' ++ intToString ix ++ '_') exports (normalizeImports exports (translateAdts m))
+        typed = inferTypeModule exports normalized
+        e = getTypedExports typed
+        declassed = declassModule exports typed
+        in Pair (set n e exports) (push declassed result)
+  modules = snd (foldr perModulePasses (Pair exports emptyArray) (zipWithIndex ordered))
+  external = case (last modules) of Module _ _ _ ds _ _ bs -> concat (map fst bs) (concatMap dataConNames ds)
   merged = mergeModules modules
+  optimized = inline external merged
   rawjs = case profile of
-    True -> compileModule exports (instrument merged)
-    False -> compileModule exports merged
+    True -> compileModule exports (instrument optimized)
+    False -> compileModule exports optimized
   // Combine the JS modules into a single file and write it out.
   js = combineModules mainName builtinsPath (arr1 $ Pair mainName rawjs)
   in writeFile js outPath

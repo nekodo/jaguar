@@ -3,6 +3,8 @@ import * from '//compiler/prelude.jg'
 data Ann =
   AnnType Type
   | AnnCodeLoc String Number Number // file, line col
+  | AnnUseCount (Map String Number)
+  | AnnData String
 emptyAnn = Empty
 
 getAnn name ann = lookup name ann
@@ -26,6 +28,7 @@ data Expr =
   | Lam (Map String Ann) String Expr
   | Case (Map String Ann) Expr (Array (Pair Pat Expr))
   | Let (Map String Ann) (Array (Pair String Expr)) Expr
+  | New (Map String Ann) (Maybe String) (Array Expr)
 
 data CVal =
   CNum Number
@@ -122,6 +125,7 @@ setType t e = case e of
   Lam ann p b -> Lam (setAnnType t ann) p b
   Case ann e ps -> Case (setAnnType t ann) e ps
   Let ann ds e -> Let (setAnnType t ann) ds e
+  New ann tag es -> New (setAnnType t ann) tag es
 
 annOf e = case e of
   Var ann v -> ann
@@ -130,6 +134,16 @@ annOf e = case e of
   Lam ann p b -> ann
   Case ann e ps -> ann
   Let ann ds e -> ann
+  New ann _ _ -> ann
+
+withAnn ann e = case e of
+  Var _ v -> Var ann v
+  Const _ c -> Const ann c
+  App _ f a -> App ann f a
+  Lam _ p b -> Lam ann p b
+  Case _ e ps -> Case ann e ps
+  Let _ ds e -> Let ann ds e
+  New _ tag es -> New ann tag es
 
 getType e = getAnnType $ annOf e
 
@@ -151,6 +165,12 @@ breakableDownAndUp down up a e = let
         Let ann bs e -> case (gos a2 bs) of
           Pair a bs -> case (go a e) of
             Pair a e -> Pair a (Let ann bs e)
+        New ann tag es -> let
+          f aes e = case aes of
+            Pair a es -> case (go a e) of
+              Pair a e -> Pair a (push e es)
+          in case (foldl f (Pair a emptyArray) es) of
+            Pair a es -> Pair a (New ann tag es)
         _ -> Pair a2 e2
       in case ae of
         Pair a e -> up a e
@@ -171,6 +191,7 @@ breakableDownAndUpM down up e = let
       App ann f x -> go f >>= \f -> go x >>= \x -> up (App ann f x)
       Case ann e ps -> go e >>= \e -> gos ps >>= \ps -> up (Case ann e ps)
       Let ann bs e -> gos bs >>= \bs -> go e >>= \e -> up (Let ann bs e)
+      New ann tag es -> mapM go es >>= \es -> up (New ann tag es)
       _ -> up e
 
 downAndUpM down up = breakableDownAndUpM (\e -> down e >>= \e -> ret (Left e)) up
