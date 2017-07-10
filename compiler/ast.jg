@@ -4,7 +4,8 @@ data Ann =
   AnnType Type
   | AnnCodeLoc String Number Number // file, line col
   | AnnUseCount (Map String Number)
-  | AnnData String
+  | AnnData (Maybe Number)
+  | AnnTag
 emptyAnn = Empty
 
 getAnn name ann = lookup name ann
@@ -28,7 +29,7 @@ data Expr =
   | Lam (Map String Ann) String Expr
   | Case (Map String Ann) Expr (Array (Pair Pat Expr))
   | Let (Map String Ann) (Array (Pair String Expr)) Expr
-  | New (Map String Ann) (Maybe String) (Array Expr)
+  | New (Map String Ann) String (Array Expr)
 
 data CVal =
   CNum Number
@@ -115,8 +116,6 @@ data Import =
 
 dataConName = \dc -> case dc of DataCon _ n ts -> n
 dataConNames = \d -> case d of Data _ n ps cs -> map dataConName cs
-getExports = \m -> case m of
-  Module _ _ is ds _ _ vs -> concat (concatMap dataConNames ds) (map fst vs)
   
 setType t e = case e of
   Var ann v -> Var (setAnnType t ann) v

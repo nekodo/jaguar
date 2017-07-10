@@ -7,7 +7,7 @@ normalizeImports ms m = case m of
     getFromDefs ds = foldl mergeSet emptyArray (map (\v -> freeVars (snd v)) ds)
     freeVarsInDefs = getFromDefs vs
     freeVarsInIns = foldl mergeSet emptyArray (map (\i -> case i of Instance _ _ _ ds -> getFromDefs ds) ins)
-    topLevelNames = emptyArray //concat (concatMap dataConNames ds) (concat (map fst vs) (concatMap (\i -> case i of Instance _ _ _ ds -> map fst ds) ins))
+    topLevelNames = concat (map fst vs) (concatMap (\i -> case i of Instance _ _ _ ds -> map fst ds) ins)
     fvs = filter (\v -> not (contains v topLevelNames)) (mergeSet freeVarsInDefs freeVarsInIns)
     is2 = map (normalize ms fvs) (enqueue (ImportAll emptyAnn './builtins.js') is)
     in Module ann fn is2 ds cs ins vs

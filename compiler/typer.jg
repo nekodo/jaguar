@@ -278,14 +278,14 @@ infer env e = let
       env2 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env ds
       in infer env2 e >>= \e ->
         setFinalType (getType e) (Let ann ds e)
-    New ann (Just tag) es -> mapM (infer env) es >>= \es -> case (hasBinding tag env) of
+    New ann tag es -> mapM (infer env) es >>= \es -> case (hasBinding tag env) of
       False -> error ('unknown data constructor ' ++ tag)
       True -> (getBindingM tag env >>= instantiate) >>= \t ->
         case (unrollDataConType t) of
           Pair tps dt -> case (length es == length tps) of
             False -> errorM ('number of New args does not match the number of constructor params ' ++ jsonStringify es ++ ' ' ++ printType t)
             True -> mapM (\p -> case p of Pair t e -> unifyM t (getType e)) (zip tps es) >>
-              setFinalType dt (New ann (Just tag) es)
+              setFinalType dt (New ann tag es)
     _ -> error 'type inference not supported for this AST node'
 
 inferSccDefs env ds = let
@@ -300,8 +300,8 @@ inferSccDefs env ds = let
       t -> unifyM t (getBinding n env)
   generalizeDef env d = case d of
       Pair n e -> case (getType e) of
-        TForall _ _ _ _ -> ret (debug2 (n ++ ' :: ' ++ printType (getType e)) d)
-        t -> generalize env t >>= \t -> ret (Pair n (setType (debug2 (n ++ ' :: ' ++ printType t) t) e))
+        TForall _ _ _ _ -> ret d
+        t -> generalize env t >>= \t -> ret (Pair n (setType t e))
   in foldM generateTVar env ds >>= \env2 ->
     mapM (inferDef env2) ds >>= \ds2 ->
       mapM (unifyDef env2) ds2 >>
@@ -422,7 +422,6 @@ inferTypeModule ms m = let
       env3 = foldl addClass env2 cs
       env4 = foldl (\env i -> addInstance i env) env3 is
       in env4
-  addTypes env dt = foldl (\env c -> case c of Pair n t -> addBinding n t env) env (conTypes dt)
   addClass env c = foldl (\env b -> addBinding (fst b) (snd b) env) env (classToBindings c)
   addIns env i = addInstance (instanceToTypeBound i) env
   checkForUnsatisfiedBounds d = case (getType (snd d)) of
@@ -434,31 +433,20 @@ inferTypeModule ms m = let
     _ -> d
   in case m of
     Module ann fn is ts cs ins ds -> let
-      //ds = let _ = debug $ intercalate '\n' (map (\d -> case d of Pair n e -> n ++ ' = ' ++ reallyPrintExpr False e) _ds) in _ds
       env = emptyEnv
       env2 = foldl addImports env is
-      env3 = foldl addTypes env2 ts
-      env4 = foldl addClass env3 cs
-      env5 = foldl addIns env4 ins
-      //_ = debugEnv env5
-      ds2 = evalState newCtx (inferDefs env5 ds)
-      //_2 = debug (map (\d -> printType (getType (snd d))) ds2)
+      env3 = foldl addClass env2 cs
+      env4 = foldl addIns env3 ins
+      ds2 = evalState newCtx (inferDefs env4 ds)
       ds3 = map checkForUnsatisfiedBounds ds2
-      env6 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env5 ds3
-      ins2 = map (inferInstance env6 (concat cs (concatMap (\i -> case (getSafe (getFile i) ms) of ModuleInterface _ cs _ -> cs) is))) ins
+      env5 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env4 ds3
+      ins2 = map (inferInstance env5 (concat cs (concatMap (\i -> case (getSafe (getFile i) ms) of ModuleInterface _ cs _ -> cs) is))) ins
       in Module ann fn is ts cs ins2 ds3
 
-conTypes d = case d of
-  Data _ n vs cs -> map (conType n vs) cs
-
-conType dn tvs c = case c of
-  DataCon _ n ts -> Pair n (mkTForall emptyAnn tvs emptyArray (foldr (\b a -> f1 a b) (foldl (\r v -> TApp emptyAnn r (TVar emptyAnn v)) (TConst emptyAnn dn) tvs) ts))
-
 getTypedExports m = case m of
-  Module _ _ _ ts cs ins ds -> let
-    et = concatMap conTypes ts
+  Module _ _ _ _ cs ins ds -> let
     ed = map (\d -> Pair (fst d) (getType (snd d))) ds
-    bs = foldl (\es e -> set (fst e) (snd e) es) empty (concat et ed)
+    bs = toRecord ed
     in ModuleInterface bs cs (map instanceToTypeBound ins)
 
 satisfies a b = case a of

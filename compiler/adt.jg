@@ -7,14 +7,19 @@ translateAdts m = case m of
 rewriteData d = case d of
   Data _ n vs cs -> let 
     dt = foldl (\r v -> TApp emptyAnn r (TVar emptyAnn v)) (TConst emptyAnn n) vs
-    rewriteCon c = case c of
-      DataCon _ n ts -> let
-        nts = map (\it -> Pair ('$_' ++ intToString (fst it)) (snd it)) (zipWithIndex ts)
-        new = setType dt (New emptyAnn (Just n) (map (\nt -> Var emptyAnn (fst nt)) nts))
-        con = foldr mkCon new nts
-        conT = TForall emptyAnn vs emptyArray (getType con)
-        ann = setAnn 'type' (AnnType conT) (setAnn 'data' (AnnData n) emptyAnn)
-        in Pair n (withAnn ann con)
-    mkCon r nt = case nt of
-      Pair n t -> setType (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') t) (getType r)) (Lam emptyAnn n r)
-    in map rewriteCon cs
+    rewriteCon c = let
+      tag = case (length cs) of
+        1 -> Nothing
+        _ -> Just (fst c)
+      in case (snd c) of DataCon _ n ts -> mkConFun tag dt vs n ts
+    in map rewriteCon (zipWithIndex cs)
+
+mkConFun tag dt vs n ts = let
+  nts = map (\it -> Pair ('$_' ++ intToString (fst it)) (snd it)) (zipWithIndex ts)
+  new = setType dt (New emptyAnn n (map (\nt -> Var emptyAnn (fst nt)) nts))
+  mkCon r nt = case nt of
+    Pair n t -> setType (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') t) (getType r)) (Lam emptyAnn n r)
+  con = foldr mkCon new nts
+  conT = TForall emptyAnn vs emptyArray (getType con)
+  ann = setAnn 'type' (AnnType conT) (setAnn 'data' (AnnData tag) emptyAnn)
+  in Pair n (withAnn ann con)

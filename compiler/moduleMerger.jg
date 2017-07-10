@@ -5,10 +5,17 @@ import {newIdent, rewriteExpr} from '//compiler/uniquifier.jg'
 mergeModules ms = foldl1 mergeInto ms
 
 mergeInto a b = case a of
-  Module ann _ is ds _ _ bs -> case b of
-    Module _ fn is2 ds2 _ _ bs2 ->
-      Module ann fn is (concat ds ds2) emptyArray emptyArray (concat bs (concat (concatMap importAsBindings is2) bs2))
+  Module ann _ is _ _ _ bs -> let
+    dataAnns = let
+      f r b = case b of
+        Pair n e -> case (getAnn 'data' (annOf e)) of
+          Nothing -> r
+          Just da -> insert n (setAnn 'data' da emptyAnn) r
+      in foldl f Empty bs
+    in case b of
+      Module _ fn is2 _ _ _ bs2 ->
+        Module ann fn is emptyArray emptyArray emptyArray (concat bs (concat (concatMap (importAsBindings dataAnns) is2) bs2))
 
-importAsBindings i = case i of
+importAsBindings dataAnns i = case i of
   ImportOpen _ './builtins.js' _ -> emptyArray
-  ImportOpen _ _ ns -> map (\p -> case p of Pair nf nt -> Pair nt (Var emptyAnn nf)) (filter (\p -> fst p /= snd p) ns)
+  ImportOpen _ _ ns -> map (\p -> case p of Pair nf nt -> Pair nt (Var (justOr emptyAnn $ lookup nf dataAnns) nf)) (filter (\p -> fst p /= snd p) ns)

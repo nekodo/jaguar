@@ -91,7 +91,7 @@ main argv = let
         declassed = declassModule exports typed
         in Pair (set n e exports) (push declassed result)
   modules = snd (foldr perModulePasses (Pair exports emptyArray) (zipWithIndex ordered))
-  external = case (last modules) of Module _ _ _ ds _ _ bs -> concat (map fst bs) (concatMap dataConNames ds)
+  external = case (last modules) of Module _ _ _ _ _ _ bs -> map fst bs
   merged = mergeModules modules
   optimized = inline external merged
   rawjs = case profile of

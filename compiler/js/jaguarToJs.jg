@@ -5,7 +5,7 @@ import * from '//compiler/js/ast.jg'
 binOp2 op a b = rewriteExpr a >>= \a -> rewriteExpr b >>= \b -> ret (JSBinOp op a b)
 
 data RewriteState = RewriteState
-  (Map String Unit)   // Constructors of single-con data types
+  (Map String (Maybe Number))   // Constructors of single-con data types
   (Map String JSExpr) // Values to inline (used in case compilation)
   (Array JSStmt)      // Preceding statements for this scope
   Number              // Unique ids
@@ -63,8 +63,10 @@ rewriteExpr e = case e of
           addStmt >> ret (JSRef phiOut)
   Let _ ds e->
     mapM (\d -> case d of Pair n e -> rewriteExpr e >>= addVar n) ds >> rewriteExpr e
-  New _ (Just tag) es -> mapM rewriteExpr es >>= \es ->
-    ret (JSObject (push (Pair '$tag' (JSString tag)) (zip (dataConFieldIds es) es)))
+  New _ tag es -> mapM rewriteExpr es >>= \es -> getCons >>= \cons -> case (lookup tag cons) of
+    Nothing -> error ('unrecognized tag in New: ' ++ tag)
+    Just (Nothing) -> ret (JSObject (zip (dataConFieldIds es) es))
+    Just (Just tag) -> ret (JSObject (push (Pair '$tag' (JSNum tag)) (zip (dataConFieldIds es) es)))
 
 assemblePatternMatch2 phiIn phiOut alt p = getCons >>= \cons -> case p of
   Pair pat e -> case (processPattern cons phiIn pat) of
@@ -87,9 +89,10 @@ processPattern cons pm p = case p of
   PData _ 'True' ps -> Pair pm (Pair emptyArray emptyArray)
   PData _ 'False' ps -> Pair (JSUnOp '!' pm) (Pair emptyArray emptyArray)
   PData _ t ps ->let
-    tagCheck = case (setContains t cons) of
-      True -> JSBool True
-      False -> JSBinOp '==' (JSIndex pm (JSString '$tag')) (JSString t)
+    tagCheck = case (lookup t cons) of
+      Just (Nothing) -> JSBool True
+      Just (Just tag) -> JSBinOp '==' (JSIndex pm (JSString '$tag')) (JSNum tag)
+      _ -> error ('unknown data type in code gen: ' ++ t)
     in foldl
       (\a b -> case a of
         Pair fa (Pair na va) -> case b of
@@ -114,32 +117,23 @@ importToJs i = case i of
 dataConFieldIds = \ts ->
   map (\p -> '$' ++ intToString (fst p)) (zipWithIndex ts)
 
-dataConToJs = \dc -> case dc of
-  DataCon _ n ts -> let
-    conName = '$' ++ n
-    in arr3
-      (JSVar conName (JSFun (dataConFieldIds ts) (push (JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString '$tag')) (JSString n))) (map (\f -> JSExpr (JSBinOp '=' (JSIndex (JSRef 'this') (JSString f)) (checkUndefined 'con' $ JSRef f))) (dataConFieldIds ts)))))
-      (JSVar n (foldr (\b f -> JSFun (arr1 f) (arr1 (JSReturn b))) (JSNew (JSRef conName) (map JSRef (dataConFieldIds ts))) (dataConFieldIds ts)))
-      (JSAssign (JSIndex (JSRef n) (JSString '$tag')) (JSString n))
-
-dataToJs = \d -> case d of
-  Data _ n ps cs -> concatMap dataConToJs cs
-
-exportObject = \m -> JSObject (map (\n -> Pair (opName n) (JSRef (opName n))) (getExports m))
+exportObject bs = JSObject (map (\n -> Pair (opName n) (JSRef (opName n))) (map fst bs))
 
 moduleToJs importSymbols m = case m of
-  Module _ _ is ds cs ins vs -> let
+  Module _ _ is _ _ _ vs -> let
     imports = concatMap importToJs is
-    dataDefs = concatMap dataToJs ds
-    cons = let
-      f d = case d of
-        Data _ n _ cs -> case (length cs) of
-          1 -> Just (case (getIx 0 cs) of DataCon _ n _ -> n)
-          _ -> Nothing
-      in setAddAll (mapJust f ds) Empty
-    defs = foldl1 concat $ evalState (RewriteState cons Empty emptyArray 0) (mapM (\v -> case v of Pair n e -> rewriteExprToStmts (JSVar (opName n)) e) vs)
-    exportDef = JSVar 'exports' (exportObject m)
-    in push exportDef (concat imports (concat dataDefs defs))
+    gatherCons m d = case d of
+      Pair n e -> case (getAnn 'data' (annOf e)) of
+        Nothing -> m
+        Just (AnnData tag) -> insert n tag m
+    cons = foldl gatherCons Empty vs
+    vs2 = let
+      f p = case p of
+        Pair n e -> not (isJust (getAnn 'dead' (annOf e)))
+      in filter f vs
+    defs = foldl1 concat $ evalState (RewriteState cons Empty emptyArray 0) (mapM (\v -> case v of Pair n e -> rewriteExprToStmts (JSVar (opName n)) e) vs2)
+    exportDef = JSVar 'exports' (exportObject vs2)
+    in push exportDef (concat imports defs)
 
 opName = \op -> case op of
   '+' -> '$add'

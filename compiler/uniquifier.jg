@@ -27,9 +27,8 @@ rewriteExpr pre env e = let
     Var ann v -> case (has v env) of
       True -> ret (Left (Var ann (get v env)))
       False -> ret (Left e)
-    New _ (Nothing) _ -> ret (Left e)
-    New ann (Just tag) es -> case (has tag env) of
-      True -> ret (Left (New ann (Just (get tag env)) es))
+    New ann tag es -> case (has tag env) of
+      True -> ret (Left (New ann (get tag env) es))
       False -> ret (Left e)
     _ -> ret (Left e)
   in breakableDownM f e
@@ -49,17 +48,13 @@ rewriteModule pre ms m = case m of
     addImport env i = case i of
       ImportOpen _ './builtins.js' ns -> addBindingsNoPrefix (foldl addClass env (case (get './builtins.js' ms) of ModuleInterface _ cs _ -> cs)) (map (\n -> Pair (snd n) (fst n)) ns)
       ImportOpen _ f ns -> addBindings (foldl addClass env (case (get f ms) of ModuleInterface _ cs _ -> cs)) (map (\n -> Pair (snd n) (fst n)) ns)
-    ds2 = map (renameData fn) ds
     is2 = map (renameImport fn) is
-    env = foldl addImport (foldl addClass (addBindings (toRecord (concatMap (\d -> map (\n -> Pair n (addPrefix fn n)) (dataConNames d)) ds)) bs) cs) is
+    env = foldl addImport (foldl addClass (addBindings empty bs) cs) is
     bs2 = rewriteBindings pre fn env bs
     ins2 = mapM (rewriteInstance pre env) ins
-    in bs2 >>= \bs -> ins2 >>= \ins -> ret (Module ann fn is2 ds2 cs ins bs)
+    in bs2 >>= \bs -> ins2 >>= \ins -> ret (Module ann fn is2 ds cs ins bs)
 
 addPrefix fn n = stringReplaceChar '/' '$' (stringReplaceChar '.' '_' fn) ++ '$$' ++ n
-
-renameData fn d = case d of
-  Data ann n tvs cs -> Data ann n tvs (map (\c -> case c of DataCon ann n ts -> DataCon ann (addPrefix fn n) ts) cs)
 
 renameImport fn i = case i of
   ImportOpen _ './builtins.js' _ -> i 

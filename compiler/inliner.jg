@@ -6,14 +6,21 @@ import {rewriteExpr as renameExpr} from '//compiler/uniquifier.jg'
 inline preserve m = case m of
   Module ann fn is ds cs ins bs -> let
     bs2 = evalState 0 (loopPasses 3 (pass preserve) bs)
-    useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs2)
-    ds2 = processData useCount ds
+    bs3 = mapBindings (\e -> snd $ annWithUseCount e) bs2
+    useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs3)
     is2 = processImports useCount is
-    in Module ann fn is2 ds2 cs ins bs2
+    in Module ann fn is2 ds cs ins bs3
 
 getCount e = case (getAnn 'useCount' (annOf e)) of
   Just (AnnUseCount c) -> c
 mergeCount a b = foldTrie (\a k v -> insert k (v + (justOr 0 (lookup k a))) a) a b
+
+markDead preserve useCount b = case b of
+  Pair n e -> case (justOr 0 $ lookup n useCount) of
+    0 -> case (contains n preserve) of
+      False -> debug2 ('would mark dead: ' ++ n) b
+      True -> b
+    _ -> b
 
 annWithUseCount e = let
   dropCount n c = remove n c
@@ -21,7 +28,7 @@ annWithUseCount e = let
     Pair p e -> countPat (getCount e) p
   countPat c p = case p of
     PVar _ n -> dropCount n c
-    PData _ n ps -> foldl countPat (insert n (1 + justOr 0 (lookup n c)) c) ps
+    PData _ n ps -> foldl countPat c ps
     _ -> c
   countExpr e = case e of
     Var _ n -> insert n 1 Empty
@@ -49,14 +56,6 @@ pass preserve bs = let
     ret (mapBindings betaReduction bs)
 
 processImports useCount is = is
-processData useCount ds = let
-  f d = case d of
-    Data ann n vs ds -> let
-      ds2 = filter (\d -> case d of DataCon _ n _ -> isJust (lookup n useCount)) ds
-      in case (length ds2) of
-        0 -> Nothing
-        _ -> Just (Data ann n vs ds2)
-  in mapJust f ds
 
 deadCode e = let
   f e = case e of
@@ -131,5 +130,9 @@ dropDeadBindings preserve useCount bs = let
       totalCount = justOr 0 (lookup n useCount)
       recursiveCount = justOr 0 (lookup n (getCount e))
       keep = contains n preserve || ((totalCount - recursiveCount) > 0)
-      in keep
-  in filter f bs
+      in case keep of
+        True -> Just (Pair n e)
+        False -> let ann = annOf e in case (getAnn 'data' ann) of
+          Nothing -> Nothing
+          Just _ -> Just (Pair n (withAnn (setAnn 'dead' AnnTag ann) e))
+  in mapJust f bs
