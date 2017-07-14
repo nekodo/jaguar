@@ -28,6 +28,7 @@ jsExprToString indent e = let
       ++ printParen x ++ ':'
       ++ printParen y
     JSObject kvs -> '{' ++ intercalate ',' (map (keyValueToString indent) kvs) ++ '}'
+    JSArray vs -> '[' ++ intercalate ',' (map print vs) ++ ']'
     JSInstanceOf x c -> printParen x ++ ' instanceof ' ++ printParen c
     JSSeq es -> intercalate ',' (map print es)
     e -> error e

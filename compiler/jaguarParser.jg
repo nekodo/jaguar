@@ -64,7 +64,7 @@ locP = let
 
 (|->) pa pb = pure (\_ b -> b) <*> pa <*-> pb
 
-reserved = push 'as' (push 'class' (push 'where' (push 'instance' (push 'let' (push 'in' (push 'from' (push 'import' (push 'case' (push 'of' (push 'data' emptyArray))))))))))
+reserved = ['as', 'class', 'where', 'instance', 'let', 'in', 'from', 'import', 'case', 'of', 'data']
 
 symP s = parseToken (\t -> case t of
   Token (SymTok) v i c -> case (v == s) of
@@ -131,7 +131,10 @@ constP = cstrP <|> cnumP
 
 exprP = Parser (\s -> applyParser opP s)
 
-simpleExprP = varP <|> constP <|> parenP exprP
+arrayLitP = pure (\ann xs -> New ann 'Array' xs) <*>
+  locP <*> (symP '[' |> sepBy exprP (symP ',') <| symP ']')
+
+simpleExprP = varP <|> constP <|> arrayLitP <|> parenP exprP
 
 appP = pure (foldl (\f a -> App (withLocOf f) f a)) <*>
   (varP <|> parenP exprP) <*-> many simpleExprP
@@ -174,7 +177,7 @@ defP = pure (\l n ps e -> Pair n (foldr (\e p -> Lam l p e) e ps)) <*>
 letP = pure Let <*>
   locP <*> (reservedP 'let' |-> some defP) <*> (reservedP 'in' |-> exprP)
 
-primaryExprP = appP <|> constP <|> lamP <|> caseP <|> letP
+primaryExprP = appP <|> constP <|> lamP <|> caseP <|> letP <|> arrayLitP
 
 opP = pure (\e oes -> foldl (\a lob -> case lob of Pair l (Pair op b) -> App l (App l (Var l op) a) b) e oes) <*>
   primaryExprP <*-> many (pure (\l op e -> Pair l (Pair op e)) <*> locP <*> anyOpP <*> primaryExprP)
@@ -197,13 +200,13 @@ tfunP = pure (\t ts -> foldr1 (\b a -> TApp emptyAnn (TApp emptyAnn (TConst empt
 
 // ------------ type classes ---------------
 
-classP = pure (\name tv maybeDefs -> Class emptyAnn name tv (justOr emptyArray maybeDefs)) <*>
+classP = pure (\name tv maybeDefs -> Class emptyAnn name tv (justOr [] maybeDefs)) <*>
   (reservedP 'class' |-> upperCaseId) <*-> notUpperCaseId <*-> opt (reservedP 'where' |> some classMemberP)
 
 classMemberP = pure Pair <*>
   notUpperCaseId <*-> (operatorP '::' |> typeP)
 
-instanceP = pure (\name t maybeDefs -> Instance emptyAnn name t (justOr emptyArray maybeDefs)) <*>
+instanceP = pure (\name t maybeDefs -> Instance emptyAnn name t (justOr [] maybeDefs)) <*>
   (reservedP 'instance' |-> upperCaseId) <*-> simpleTypeP <*-> opt (reservedP 'where' |> some defP)
 
 // --------------- module ------------------

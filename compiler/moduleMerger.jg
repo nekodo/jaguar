@@ -14,8 +14,8 @@ mergeInto a b = case a of
       in foldl f Empty bs
     in case b of
       Module _ fn is2 _ _ _ bs2 ->
-        Module ann fn is emptyArray emptyArray emptyArray (concat bs (concat (concatMap (importAsBindings dataAnns) is2) bs2))
+        Module ann fn is [] [] [] (concat bs (concat (concatMap (importAsBindings dataAnns) is2) bs2))
 
 importAsBindings dataAnns i = case i of
-  ImportOpen _ './builtins.js' _ -> emptyArray
+  ImportOpen _ './builtins.js' _ -> []
   ImportOpen _ _ ns -> map (\p -> case p of Pair nf nt -> Pair nt (Var (justOr emptyAnn $ lookup nf dataAnns) nf)) (filter (\p -> fst p /= snd p) ns)

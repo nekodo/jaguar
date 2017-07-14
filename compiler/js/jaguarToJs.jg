@@ -19,7 +19,7 @@ newPhi = gets >>= \s -> case s of
   RewriteState cons rep stmts i -> sets (RewriteState cons rep stmts (i + 1)) >> ret ('$phi$' ++ intToString i)
 
 rewriteExprToStmts w e = gets >>= \s -> case s of
-  RewriteState cons rep stmts i -> sets (RewriteState cons rep emptyArray i) >>
+  RewriteState cons rep stmts i -> sets (RewriteState cons rep [] i) >>
     rewriteExpr e >>= \e -> gets >>= \s -> case s of
       RewriteState cons rep2 stmts2 i2 -> sets (RewriteState cons rep2 stmts i2) >> ret (push (w e) stmts2)
 
@@ -52,17 +52,18 @@ rewriteExpr e = case e of
   App _ (App _ (Var _ 'bitShiftLeft') a) b -> binOp2 '<<' a b
   App _ (App _ (Var _ 'bitShiftRight') a) b -> binOp2 '>>>' a b
   App _ f a -> rewriteExpr f >>= \f -> 
-    rewriteExpr a >>= \a -> ret (JSCall f (arr1 a))
-  Lam _ p e -> rewriteExprToStmts JSReturn e >>= \stmts -> ret (JSFun (arr1 p) stmts)
+    rewriteExpr a >>= \a -> ret (JSCall f [a])
+  Lam _ p e -> rewriteExprToStmts JSReturn e >>= \stmts -> ret (JSFun [p] stmts)
   Case _ e ps -> newPhi >>= \phiOut ->
     rewriteExpr e >>= \e -> (case e of
       JSRef _ -> ret e
       JSIndex _ _ -> ret e
       _ -> newPhi >>= \p -> addVar p e >> ret (JSRef p)) >>= \phiIn ->
-        foldM (assemblePatternMatch2 phiIn phiOut) (JSExpr (JSCall (JSRef 'error') (arr2 (JSString 'pattern match fail') phiIn))) (reverse ps) >>=
+        foldM (assemblePatternMatch2 phiIn phiOut) (JSExpr (JSCall (JSRef 'error') [JSString 'pattern match fail', phiIn])) (reverse ps) >>=
           addStmt >> ret (JSRef phiOut)
   Let _ ds e->
     mapM (\d -> case d of Pair n e -> rewriteExpr e >>= addVar n) ds >> rewriteExpr e
+  New _ 'Array' es -> mapM rewriteExpr es >>= \es -> ret (JSArray es)
   New _ tag es -> mapM rewriteExpr es >>= \es -> getCons >>= \cons -> case (lookup tag cons) of
     Nothing -> error ('unrecognized tag in New: ' ++ tag)
     Just (Nothing) -> ret (JSObject (zip (dataConFieldIds es) es))
@@ -72,22 +73,22 @@ assemblePatternMatch2 phiIn phiOut alt p = getCons >>= \cons -> case p of
   Pair pat e -> case (processPattern cons phiIn pat) of
     Pair f (Pair ns vs) -> let
       rep = foldl (\r p -> insert (fst p) (snd p) r) Empty (zip ns vs)
-      in withRep rep (rewriteExprToStmts (JSVar phiOut) e) >>= \stmts -> ret (JSIf f stmts (arr1 alt))
+      in withRep rep (rewriteExprToStmts (JSVar phiOut) e) >>= \stmts -> ret (JSIf f stmts [alt])
 
 checkUndefined label expr =
-  JSTernary (JSBinOp '===' expr JSUndefined) (JSCall (JSRef 'error') (arr1 (JSString label))) expr
+  JSTernary (JSBinOp '===' expr JSUndefined) (JSCall (JSRef 'error') [JSString label]) expr
 
 processPattern cons pm p = case p of
-  PVar _ '_' -> Pair (JSBool True) (Pair emptyArray emptyArray)
-  PVar _ v -> Pair (JSBool True) (Pair (arr1 (opName v)) (arr1 pm))
+  PVar _ '_' -> Pair (JSBool True) (Pair [] [])
+  PVar _ v -> Pair (JSBool True) (Pair [opName v] [pm])
   PConst _ (CNum n) -> Pair
     (JSBinOp '==' (JSNum n) pm)
-    (Pair emptyArray emptyArray)
+    (Pair [] [])
   PConst _ (CStr s) -> Pair
     (JSBinOp '==' (JSString s) pm)
-    (Pair emptyArray emptyArray)
-  PData _ 'True' ps -> Pair pm (Pair emptyArray emptyArray)
-  PData _ 'False' ps -> Pair (JSUnOp '!' pm) (Pair emptyArray emptyArray)
+    (Pair [] [])
+  PData _ 'True' ps -> Pair pm (Pair [] [])
+  PData _ 'False' ps -> Pair (JSUnOp '!' pm) (Pair [] [])
   PData _ t ps ->let
     tagCheck = case (lookup t cons) of
       Just (Nothing) -> JSBool True
@@ -98,7 +99,7 @@ processPattern cons pm p = case p of
         Pair fa (Pair na va) -> case b of
           Pair fb (Pair nb vb) ->
             Pair (JSBinOp '&&' fa fb) (Pair (concat na nb) (concat va vb)))
-      (Pair tagCheck (Pair emptyArray emptyArray))
+      (Pair tagCheck (Pair [] []))
       (map
         (\p -> case p of
           Pair n pat ->
@@ -106,7 +107,7 @@ processPattern cons pm p = case p of
         (zipWithIndex ps))
   z -> error 'failure to match pattern during processing'
 
-requireExpr = \f -> JSCall (JSRef '_require') (arr1 (JSString f))
+requireExpr = \f -> JSCall (JSRef '_require') [JSString f]
 
 buildImports = \f ns ->
   map (\n -> case n of Pair n a -> JSVar (opName a) (JSIndex (requireExpr f) (JSString (opName n)))) ns
@@ -131,7 +132,7 @@ moduleToJs importSymbols m = case m of
       f p = case p of
         Pair n e -> not (isJust (getAnn 'dead' (annOf e)))
       in filter f vs
-    defs = foldl1 concat $ evalState (RewriteState cons Empty emptyArray 0) (mapM (\v -> case v of Pair n e -> rewriteExprToStmts (JSVar (opName n)) e) vs2)
+    defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM (\v -> case v of Pair n e -> rewriteExprToStmts (JSVar (opName n)) e) vs2)
     exportDef = JSVar 'exports' (exportObject vs2)
     in push exportDef (concat imports defs)
 

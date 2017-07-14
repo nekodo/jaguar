@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
-import * from '//compiler/parsers.jg'
 import * from '//compiler/ast.jg'
+import {Success} from '//compiler/parsers.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileModule, combineModules} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
@@ -13,19 +13,30 @@ import {uniquify} from '//compiler/uniquifier.jg'
 import {mergeModules} from '//compiler/moduleMerger.jg'
 import {inline} from '//compiler/inliner.jg'
 import {translateAdts} from '//compiler/adt.jg'
+import * from '//compiler/pass.jg'
 
-compile s fn = case (parseModule s fn) of
+moduleFile m = case m of
+  Module _ n _ _ _ _ _ -> n
+
+parse fn = case (parseModule (readFile fn) ('//' ++ fn)) of
   Success m (ParserState ts p li ri _) -> case (p == length ts) of
     True -> m
     False -> error ('failed to parse all tokens, stopped at ' ++ jsonStringify (getIx p ts)) 
   e -> error e
 
-findImports m =
-  let
-    importFileName i = case i of
-      ImportAll _ f -> f
-      ImportOpen _ f ns -> f
-      ImportClosed _ f n -> f
+// Run a depth-first search from the main file to determine the order of
+// compilation. Also means we'll ignore any extra files that are not needed.
+depSort mainName ms = let
+  modules = foldl (\r m -> set (moduleFile m) m r) empty ms
+  imports = mapRecord findImports modules
+  ordered = dfs imports [] mainName
+  in reverse $ map (\n -> get n modules) ordered
+
+findImports m = let
+  importFileName i = case i of
+    ImportAll _ f -> f
+    ImportOpen _ f ns -> f
+    ImportClosed _ f n -> f
   in case m of
     Module _ _ is ds cs ins vs -> map importFileName is
 
@@ -35,7 +46,7 @@ parseT s = case (parseType s '') of
 
 parseExports e = let
   bs = mapRecord (\s -> evalState newCtx (generalize emptyEnv (parseT s))) e
-  in ModuleInterface bs emptyArray emptyArray
+  in ModuleInterface bs [] []
 
 instrument m = let
   instrumentDef d = case d of
@@ -57,7 +68,23 @@ outPathArg = ArgString 'out' Nothing
 mainArg = ArgString 'main' Nothing
 profileArg = ArgBool 'profile' (Just False)
 
-argDefs = push builtinsPathArg (push outPathArg (push mainArg (push profileArg emptyArray)))
+argDefs = push builtinsPathArg (push outPathArg (push mainArg (push profileArg [])))
+
+liftPass p a = ret (p a)
+
+normalizeImportsPass ixm = getExports >>= \es ->
+  ret (mapSnd (normalizeImports es) ixm)
+
+uniquifyPass ixm = getExports >>= \es -> case ixm of
+  Pair ix m -> ret (uniquify ('_' ++ intToString ix ++ '_') es m)
+
+typerPass m = getExports >>= \es -> let
+  typed = inferTypeModule es m
+  e = getTypedExports typed
+  in setExports (set (moduleFile m) e es) >> ret typed
+
+declasserPass m = getExports >>= \es ->
+  ret (declassModule es m)
 
 main argv = let
   // Read args.
@@ -69,28 +96,25 @@ main argv = let
   profile = getBool args profileArg
   
   // Load builtin exports from file.
-  builtinsExports = loadJSExports builtinsPath
+  baseExports = set './builtins.js' (parseExports (loadJSExports builtinsPath)) empty
+  
+  passes = perModule (
+             liftPass parse) >=>
+           liftPass (depSort mainName) >=>
+           perModule (
+             liftPass translateAdts) >=>
+           liftPass zipWithIndex >=>
+           perModule (
+             normalizeImportsPass >=>
+               uniquifyPass >=>
+               typerPass >=>
+               declasserPass)
   
   // Compile all the srcs and construct a map of file -> imports.
-  compiled = foldl (\ss s -> let n =  '//' ++ s in set n (compile (readFile s) n) ss) empty srcFiles
-  imports = mapRecord findImports compiled
-  
-  // Run a depth-first search from the main file to determine the order of
-  // compilation. Also means we'll ignore any extra files that are not needed.
-  ordered = dfs imports emptyArray mainName
-  
-  // Type each modul, get its exports and transpile it to JS.
-  exports = set './builtins.js' (parseExports builtinsExports) empty
-  perModulePasses er ixn = case er of
-    Pair exports result -> case ixn of
-      Pair ix n -> let
-        m = get n compiled
-        normalized = uniquify ('_' ++ intToString ix ++ '_') exports (normalizeImports exports (translateAdts m))
-        typed = inferTypeModule exports normalized
-        e = getTypedExports typed
-        declassed = declassModule exports typed
-        in Pair (set n e exports) (push declassed result)
-  modules = snd (foldr perModulePasses (Pair exports emptyArray) (zipWithIndex ordered))
+  result = runState (CompilerState baseExports 0) (passes srcFiles)
+  modules = snd result
+  exports = case (fst result) of CompilerState es _ -> es
+
   external = case (last modules) of Module _ _ _ _ _ _ bs -> map fst bs
   merged = mergeModules modules
   optimized = inline external merged
@@ -98,5 +122,5 @@ main argv = let
     True -> compileModule exports (instrument optimized)
     False -> compileModule exports optimized
   // Combine the JS modules into a single file and write it out.
-  js = combineModules mainName builtinsPath (arr1 $ Pair mainName rawjs)
+  js = combineModules mainName builtinsPath [Pair mainName rawjs]
   in writeFile js outPath

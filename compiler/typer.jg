@@ -70,7 +70,7 @@ newTVarM = gets >>= \ctx -> case ctx of
     n = '$' ++ intToString i
     in sets (ICtx subs bs (i + 1) e) >> ret (TVar emptyAnn n)
 
-newCtx = ICtx emptySubs emptyArray 1 (\s -> 'unknown error context: ' ++ s)
+newCtx = ICtx emptySubs [] 1 (\s -> 'unknown error context: ' ++ s)
 
 getSubs ctx = case ctx of
   ICtx subs _ _ _ -> subs
@@ -102,7 +102,7 @@ getErrorF = gets >>= \ctx -> case ctx of
 
 data InferenceEnvironment = IEnv (Record Type) (Array TypeBound) (Map String Unit)
 
-emptyEnv = IEnv empty emptyArray emptySet
+emptyEnv = IEnv empty [] emptySet
 
 getBinding n env = case env of
   IEnv bs _ _ -> getSafe n bs
@@ -140,7 +140,7 @@ mkTForall ann vs bs t = let
   f bs b = case (exists (equivBound b) bs) of
     True -> bs
     False -> push b bs
-  in TForall ann vs (foldl f emptyArray bs) t
+  in TForall ann vs (foldl f [] bs) t
 
 instantiate t = gets >>= \ctx -> let
   mkvar cs v = case cs of
@@ -246,7 +246,7 @@ infer env e = let
         case (unrollDataConType t) of
           Pair tps dt -> case (length ps == length tps) of
             False -> errorM 'number of pattern params does not match the number of constructor params'
-            True -> foldM (inferSubPat env) (Pair empty emptyArray) (zip ps tps) >>= \bps -> case bps of
+            True -> foldM (inferSubPat env) (Pair empty []) (zip ps tps) >>= \bps -> case bps of
               Pair bs ps ->
                 unifyM te dt >>
                   (ret $ Pair bs (PData ann n ps))
@@ -278,6 +278,10 @@ infer env e = let
       env2 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env ds
       in infer env2 e >>= \e ->
         setFinalType (getType e) (Let ann ds e)
+    New ann 'Array' es -> mapM (infer env) es >>= \es ->
+      newTVarM >>= \tv ->
+        mapM (\e -> unifyM tv (getType e)) es >>
+          setFinalType (TApp emptyAnn (TConst emptyAnn 'Array') tv) (New ann 'Array' es)
     New ann tag es -> mapM (infer env) es >>= \es -> case (hasBinding tag env) of
       False -> error ('unknown data constructor ' ++ tag)
       True -> (getBindingM tag env >>= instantiate) >>= \t ->
@@ -320,7 +324,7 @@ inferDefs env ds = let
   g = foldl (\g d -> case d of Pair n e -> set n (filter (\v -> contains v ns && (v /= n)) (freeVars e)) g) empty ds
   ccs = sccSorted g
   infer rs cc = fmap (concat rs) (inferSccDefs (foldl (\env r -> addBinding (fst r) (getType (snd r)) env) env rs) (filter (\d -> contains (fst d) cc) ds))
-  in foldM infer emptyArray ccs
+  in foldM infer [] ccs
 
 generalize env t = gets >>= \ctx -> let
   subs = getSubs ctx
@@ -328,7 +332,7 @@ generalize env t = gets >>= \ctx -> let
   nonFree = case subs of Subs _ unsat ->
     foldTrie (\s v _ -> setUnion s (justOr Empty (fmap freeTVars (lookup v unsat)))) envTVars envTVars
   vs = setDiff (freeTVars t) nonFree
-  vbb = foldl processBounds (Pair emptySet (Pair emptyArray emptyArray)) (getBounds ctx)
+  vbb = foldl processBounds (Pair emptySet (Pair [] [])) (getBounds ctx)
   processBounds vbb b = case vbb of
     Pair bvs (Pair rbs obs) -> let
       boundVars = freeTVarsInBound b
@@ -355,7 +359,7 @@ generalize env t = gets >>= \ctx -> let
 unrollDataConType t = case t of
   TApp _ (TApp _ (TConst _ '->') a) b -> case (unrollDataConType b) of
     Pair ps t -> Pair (enqueue a ps) t
-  _ -> Pair emptyArray t
+  _ -> Pair [] t
 
 applySubsDef d = case d of
   Pair n e -> gets >>= \ctx -> ret $ Pair n (applySubsE (getSubs ctx) e)
@@ -373,20 +377,20 @@ freeVars e = let
         (filter (\v -> not (contains v (namesInPat pat))) (freeVars e))
         (freeVarsInPData pat)
   freeVarsInPData p = case p of
-    PData _ n ps -> foldl mergeSet (arr1 n) (map freeVarsInPData ps)
-    _ -> emptyArray
+    PData _ n ps -> foldl mergeSet [n] (map freeVarsInPData ps)
+    _ -> []
   namesInPat p = case p of
-    PVar _ v -> arr1 v
-    PConst _ c -> emptyArray
-    PData _ n ps -> foldl mergeSet emptyArray (map namesInPat ps)
+    PVar _ v -> [v]
+    PConst _ c -> []
+    PData _ n ps -> foldl mergeSet [] (map namesInPat ps)
   in case e of
-    Var _ v -> arr1 v
-    Const _ c -> emptyArray
+    Var _ v -> [v]
+    Const _ c -> []
     App _ f x -> mergeSet (freeVars f) (freeVars x)
     Lam _ p b -> filter (\v -> v /= p) (freeVars b)
     Case _ e ps -> foldl mergeSet (freeVars e) (map freeVarsInPat ps)
     Let _ ds e -> filter (\v -> not (contains v (map fst ds))) (foldl mergeSet (freeVars e) (map (\d -> freeVars (snd d)) ds))
-    New _ _ es -> foldl mergeSet emptyArray (map freeVars es)
+    New _ _ es -> foldl mergeSet [] (map freeVars es)
 
 inferInstance env cs i = let
   inferE e = case (runState newCtx $ infer env e) of
@@ -409,7 +413,7 @@ classToBindings c = case c of
         ftv = freeTVars t
         in case (setContains tv ftv) of
           False -> error ('invalid clas definition ' ++ n ++ ', binding ' ++ v)
-          True -> Pair v (mkTForall emptyAnn (setToArray ftv) (arr1 (TCBound emptyAnn n (TVar emptyAnn tv))) t)
+          True -> Pair v (mkTForall emptyAnn (setToArray ftv) [TCBound emptyAnn n (TVar emptyAnn tv)] t)
     in map process bs
 
 inferTypeModule ms m = let

@@ -37,7 +37,7 @@ printTypeBound b = case b of
 
 printExprTyped typed e = 
   let
-    printParen e = sameLine3 (arr1 '(') (printExpr e) (arr1 ')')
+    printParen e = sameLine3 ['('] (printExpr e) [')']
     sameLine xs ys =
       concat (init xs) (enqueue (last xs ++ head ys) (tail ys))
     sameLine3 a b c = sameLine a (sameLine b c)
@@ -52,16 +52,16 @@ printExprTyped typed e =
       PConst _ (CStr s) -> jsonStringify s
       PData _ n ps -> n ++ ' (' ++ join (map printPat ps) ') (' ++ ')'
     printE e = case e of
-      Var _ n -> arr1 n
-      Const _ (CNum n) -> arr1 (jsonStringify n)
-      Const _ (CStr s) -> arr1 (jsonStringify s)
+      Var _ n -> [n]
+      Const _ (CNum n) -> [jsonStringify n]
+      Const _ (CStr s) -> [jsonStringify s]
       App _ f a ->
-        sameLine3 (printParen f) (arr1 ' ') (printParen a)
+        sameLine3 (printParen f) [' '] (printParen a)
       Lam _ v e ->
         enqueue ('\\' ++ v ++ ' ->') (indent (printExpr e))
       Case _ e ps ->
         concat
-          (sameLine3 (arr1 'case ') (printParen e) (arr1 ' of'))
+          (sameLine3 ['case '] (printParen e) [' of'])
           (indent (concatMap printCasePat ps))
       Let _ ds e ->
         concat
@@ -76,7 +76,7 @@ printExprTyped typed e =
       in printType t
     printExpr e = case typed of
       False -> printE e
-      True -> sameLine3 (arr1 '(') (printE e) (arr1 (' :: ' ++ printT e ++ ' )'))
+      True -> sameLine3 ['('] (printE e) [' :: ' ++ printT e ++ ' )']
     pe = printE e
   in printExpr e
 

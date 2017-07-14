@@ -17,17 +17,18 @@ rewriteDCE = \e -> case e of
   JSObject kvs -> JSObject (map (\kv -> case kv of Pair k v -> Pair k (rewriteDCE v)) kvs)
   JSInstanceOf x c -> JSInstanceOf (rewriteDCE x) (rewriteDCE c)
   JSNew c xs -> JSNew (rewriteDCE c) (map rewriteDCE xs)
+  JSArray xs -> JSArray (map rewriteDCE xs)
   e -> e
   
 rewriteStmt = \s -> case s of
-  JSExpr e -> arr1 (JSExpr (rewriteDCE e))
-  JSReturn e -> arr1 (JSReturn (rewriteDCE e))
-  JSVar n v -> arr1 (JSVar n (rewriteDCE v))
-  JSAssign l r -> arr1 (JSAssign (rewriteDCE l) (rewriteDCE r))
+  JSExpr e -> [JSExpr (rewriteDCE e)]
+  JSReturn e -> [JSReturn (rewriteDCE e)]
+  JSVar n v -> [JSVar n (rewriteDCE v)]
+  JSAssign l r -> [JSAssign (rewriteDCE l) (rewriteDCE r)]
   JSIf (JSBool (True)) ts es -> concatMap rewriteStmt ts
   JSIf (JSBool (False)) ts es -> concatMap rewriteStmt es
   JSIf p ts es -> case (rewriteDCE p) of
     JSBool (True) -> concatMap rewriteStmt ts
     JSBool (False) -> concatMap rewriteStmt es
-    p ->  arr1 (JSIf p (concatMap rewriteStmt ts) (concatMap rewriteStmt es))
-  s -> arr1 s
+    p ->  [JSIf p (concatMap rewriteStmt ts) (concatMap rewriteStmt es)]
+  s -> [s]

@@ -5,36 +5,36 @@ dfs g visited v = let
     True -> r
     False -> concat (dfs g (push v (concat r visited)) e) r
   es = filter (\v -> not (contains v visited)) (get v g)
-  r = foldr visit emptyArray es
+  r = foldr visit [] es
   in enqueue v r
 
 fullDfs g = let
   visit result v _ = case (contains v result) of
     True -> result
     False -> concat (dfs g result v) result
-  result = foldRecord visit emptyArray g
+  result = foldRecord visit [] g
   in result
 
 scc g = let
   invertedG = let
     invertEdge v ig e = case (has e ig) of
       True -> set e (push v (get e ig)) ig
-      False -> set e (arr1 v) ig
+      False -> set e [v] ig
     invert ig v es = let
       ig2 = case (has v ig) of
         True -> ig
-        False -> set v emptyArray ig
+        False -> set v [] ig
       in foldl (invertEdge v) ig2 es
     in foldRecord invert empty g
   assembleCc gs v = case gs of
     Pair ig ccs -> case (exists (contains v) ccs) of
       True -> Pair ig ccs
       False -> let
-        cc = dfs ig emptyArray v
+        cc = dfs ig [] v
         ig2 = foldl (\g v -> del v (mapRecord (filter (\w -> w /= v)) g)) ig cc
         in Pair ig2 (push cc ccs)
   firstDfs = fullDfs g
-  ccs = snd (foldl assembleCc (Pair invertedG emptyArray) firstDfs)
+  ccs = snd (foldl assembleCc (Pair invertedG []) firstDfs)
   in ccs
 
 sccSorted g = let

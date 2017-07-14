@@ -5,7 +5,7 @@ import {rewriteExpr as renameExpr} from '//compiler/uniquifier.jg'
 
 inline preserve m = case m of
   Module ann fn is ds cs ins bs -> let
-    bs2 = evalState 0 (loopPasses 3 (pass preserve) bs)
+    bs2 = evalState 0 (loopPasses 10 (pass preserve) bs)
     bs3 = mapBindings (\e -> snd $ annWithUseCount e) bs2
     useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs3)
     is2 = processImports useCount is
@@ -61,7 +61,7 @@ deadCode e = let
   f e = case e of
     Let ann bs e -> let
       useCount = foldl mergeCount (getCount e) (map (\b -> getCount (snd b)) bs)
-      bs2 = dropDeadBindings emptyArray useCount bs
+      bs2 = dropDeadBindings [] useCount bs
       in Let ann bs2 e
     _ -> e
   in snd (down (\a e -> Pair a (f e)) Unit e)
@@ -97,10 +97,11 @@ chooseForInlining baseCount bs = let
 
 betaReduction e = let
   f e = case e of
-    App ann (Lam _ p a) (Var ann2 v) -> case (p == v) of
-      True -> a
-      False -> Let ann (arr1 (Pair p (Var ann2 v))) a
-    App ann (Lam _ p a) b -> Let ann (arr1 (Pair p b)) a
+    App ann (Lam _ p a) b -> case b of
+      Var ann2 v -> case (p == v) of
+        True -> a
+        False -> Let ann [Pair p (Var ann2 v)] a
+      _ -> Let ann [Pair p b] a
     _ -> e
   in snd (down (\a e -> Pair a (f e)) Unit e)
 
@@ -116,6 +117,10 @@ inlineCode always e = let
           0 -> ret (Right e)
           _ -> ret (Right (Let ann bs e))
     Case ann e ps -> ret (Left (Case ann e (map (\p -> case p of Pair pat e -> Pair (inlinePat pat) e) ps)))
+    //App _ (App _ (Var _ 'push') x) (New ann 'Array' xs) -> ret (Left (New ann 'Array' (push x xs)))
+    //App _ (App _ (Var _ 'enqueue') _) (New _ 'Array' _) -> debug2 ('could fold enqueue') (ret (Left e))
+    //App _ (Var _ 'length') (New _ 'Array' _) -> debug2 ('could fold length') (ret (Left e))
+    //App _ (App _ (Var _ 'getIx') _) (New _ 'Array' _) -> debug2 ('could fold getIx') (ret (Left e))
     _ -> ret (Left e)
   inlinePat p = case p of
     PData ann n ps -> case (lookup n always) of

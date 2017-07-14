@@ -23,7 +23,7 @@ parseArgs defs argv = let
         in case (contains name (map argName defs)) of
           False -> error ('unrecognized argument ' ++ arg)
           True -> Pair positional (set name value args)
-  in case (foldl parse (Pair emptyArray empty) argv) of
+  in case (foldl parse (Pair [] empty) argv) of
     Pair pos args -> ParsedArgs pos args defs
 
 getPositional p = case p of

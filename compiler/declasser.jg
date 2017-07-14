@@ -7,7 +7,7 @@ import {mkConFun} from '//compiler/adt.jg'
 declassModule ms m = case m of
   Module ann fn is dt cs ins ds -> let 
     //_ = debug '============== declassing ==================='
-    isi = foldl (rewriteImportedInstances ms) (Pair emptyArray emptyArray) (zipWithIndex is)
+    isi = foldl (rewriteImportedInstances ms) (Pair [] []) (zipWithIndex is)
     is2 = fst isi
     importedInstances = snd isi
     classesAsData = map rewriteClassToData cs
@@ -23,12 +23,12 @@ declassModule ms m = case m of
     sds = splitEither (map splitData ds)
     ds2 = map (\d -> Pair (fst d) (rewriteExpr availableInstances env (snd d))) (snd sds)
     instancesAsDefs = map (\p -> case p of Pair n i -> rewriteInstance availableInstances env n i) (zipWithIndex ins)
-    in Module ann fn is2 dt emptyArray emptyArray (concat (fst sds) (concat classFuns (concat instancesAsDefs ds2)))
+    in Module ann fn is2 dt [] [] (concat (fst sds) (concat classFuns (concat instancesAsDefs ds2)))
 
 rewriteImportedInstances ms isi ixi = case isi of
   Pair is ibs -> case ixi of
     Pair imix (ImportOpen ann f ns) -> case (get f ms) of
-      ModuleInterface _ cs bs -> case (foldl (rewriteImportedBound imix) (Pair emptyArray emptyArray) (zipWithIndex bs)) of
+      ModuleInterface _ cs bs -> case (foldl (rewriteImportedBound imix) (Pair [] []) (zipWithIndex bs)) of
         Pair nas nbs -> let
           cns = map (\n -> Pair n n) (concatMap (\c -> case c of Class _ n _ bs -> enqueue (className n) (map fst bs)) cs)
           in Pair (push (ImportOpen ann f (concat ns (concat nas cns))) is) (concat ibs nbs)
@@ -46,15 +46,17 @@ rewriteClassToData c = case c of
     name = className n
     ps = map snd (sort (classToBindings c))
     t = TApp emptyAnn (TConst emptyAnn n) (TVar emptyAnn v)
-    in mkConFun Nothing t (arr1 v) name ps
+    in mkConFun Nothing t [v] name ps
 
 rewriteClassToFun c = case c of
   Class _ _ _ bs -> let
     name = className2 c
-    bsForPat = map (\b -> PVar emptyAnn (fst b ++ '_')) (sort bs)
+    bsForPat = let
+      f b = PVar emptyAnn (fst b ++ '_')
+      in map f (sort bs)
     v = 'x_' ++ name
     rewrite b = case b of
-      Pair n t -> Pair n (setType t (Lam emptyAnn v (Case emptyAnn (Var emptyAnn v) (arr1 (Pair (PData emptyAnn name bsForPat) (Var emptyAnn (n ++ '_')))))))
+      Pair n t -> Pair n (setType t (Lam emptyAnn v (Case emptyAnn (Var emptyAnn v) [Pair (PData emptyAnn name bsForPat) (Var emptyAnn (n ++ '_'))])))
     in map rewrite (classToBindings c)
 
 // instantiate the data type with the lambdas in the correct positions
@@ -98,7 +100,7 @@ rewriteExpr is env e = let
     TForall _ _ bs t -> let
       subs = unify (\s -> 'declasser: ' ++ s) tv t
       in map (applySubsBound subs) bs
-    _ -> emptyArray
+    _ -> []
   rewriteBounds a e = case (getType e) of
     TForall _ _ bs t -> case (length bs > 0) of
       False -> Pair a e
@@ -121,7 +123,7 @@ rewriteExpr is env e = let
         in Pair a e2
     Lam _ p _ -> Pair (dropInstance p a) e
     _ -> Pair a e
-  in snd (breakableDownAndUpWithEnv getEnv setEnv (\a e -> Left (rewriteBounds a e)) rewriteVar (S (arr1 env) is 0) e)
+  in snd (breakableDownAndUpWithEnv getEnv setEnv (\a e -> Left (rewriteBounds a e)) rewriteVar (S [env] is 0) e)
 
 addPrefix p t = case t of
   TForall ann vs bs t -> let
@@ -149,7 +151,7 @@ breakableDownAndUpWithEnv getEnv setEnv down up a e = let
         ts = foldl (\ts b -> case b of Pair n e -> set n (getType e) ts) empty bs
         in Left (Pair (enterScope ts a) e)
       Case ann e ps -> case (go a e) of
-        Pair a e -> case (foldl processPat (Pair a emptyArray) ps) of
+        Pair a e -> case (foldl processPat (Pair a []) ps) of
           Pair a ps -> Right (Pair a (Case ann e ps))
       _ -> Left (Pair a e)
   processPat ar pat = case ar of

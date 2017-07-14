@@ -50,16 +50,16 @@ fx = f 41
 letF = let g y z = y + z + 1
        in g 10 2
 
-scc1 = sortedScc (set 'a' (arr1 'b') (set 'b' (arr1 'a') (set 'c' (arr1 'a') empty)))
+scc1 = sortedScc (set 'a' ['b'] (set 'b' ['a'] (set 'c' ['a'] empty)))
 
 scc2 =
   sort (scc
-    (set '//compiler/e2e/basic_module_test.jg' (arr2 '//compiler/prelude.jg' '//compiler/jaguarParser.jg')
-      (set '//compiler/prelude.jg' emptyArray
-        (set '//compiler/ast.jg' (arr1 '//compiler/prelude.jg')
-          (set '//compiler/parsers.jg'(arr1 '//compiler/prelude.jg')
-            (set '//compiler/jaguarLexer.jg' (arr2 '//compiler/prelude.jg' '//compiler/parsers.jg')
-              (set '//compiler/jaguarParser.jg' (arr4 '//compiler/prelude.jg' '//compiler/ast.jg' '//compiler/parsers.jg' '//compiler/jaguarLexer.jg')
+    (set '//compiler/e2e/basic_module_test.jg' ['//compiler/prelude.jg', '//compiler/jaguarParser.jg']
+      (set '//compiler/prelude.jg' []
+        (set '//compiler/ast.jg' ['//compiler/prelude.jg']
+          (set '//compiler/parsers.jg' ['//compiler/prelude.jg']
+            (set '//compiler/jaguarLexer.jg' ['//compiler/prelude.jg', '//compiler/parsers.jg']
+              (set '//compiler/jaguarParser.jg' ['//compiler/prelude.jg', '//compiler/ast.jg', '//compiler/parsers.jg', '//compiler/jaguarLexer.jg']
                 empty)))))))
 
 class Foo a where
@@ -125,3 +125,6 @@ hamtTestData = insert 'fluttershy' 13 $ insert 'applejack' 42 Empty
 hamtTest3 = justOr 0 (pure (+) <*> lookup 'applejack' hamtTestData <*> lookup 'fluttershy' hamtTestData)
 hamtTest4 = size hamtTestData
 hamtTest5 = justOr 0 $ lookup 'fluttershy' (remove 'applejack' hamtTestData)
+
+arrayTest = contains 'a' (concat ['a', 'b'] [])
+arrayTest2 = [1,2,3]

@@ -10,6 +10,7 @@ data JSExpr =
   | JSString String
   | JSBool Bool
   | JSObject (Array (Pair String JSExpr))
+  | JSArray (Array JSExpr)
   | JSNull
   | JSUndefined
   | JSInstanceOf JSExpr JSExpr

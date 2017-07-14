@@ -41,7 +41,7 @@ instance Alternative (Parser i) where
 many p = let
   manyIterate s = let
     r = iterate
-      (Left (Success emptyArray s))
+      (Left (Success [] s))
       (\r -> case r of
         Left s -> False
         Right s -> True)
@@ -60,6 +60,9 @@ success a = Parser (Success a)
 
 sepBy1 p sp = pure enqueue <*>
   p <*> many (sp |> p)
+
+sepBy p sp = pure (justOr []) <*>
+  opt (sepBy1 p sp)
 
 opt a = (pure Just <*> a) <|> success Nothing
 

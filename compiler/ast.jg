@@ -148,7 +148,7 @@ getType e = getAnnType $ annOf e
 
 breakableDownAndUp down up a e = let
   go = breakableDownAndUp down up
-  gos a = foldl (\ar p -> case (go (fst ar) (snd p)) of Pair a2 e -> Pair a2 (push (Pair (fst p) e) (snd ar))) (Pair a emptyArray)
+  gos a = foldl (\ar p -> case (go (fst ar) (snd p)) of Pair a2 e -> Pair a2 (push (Pair (fst p) e) (snd ar))) (Pair a [])
   in case (down a e) of
     Right ae -> ae
     Left (Pair a2 e2) -> let
@@ -168,7 +168,7 @@ breakableDownAndUp down up a e = let
           f aes e = case aes of
             Pair a es -> case (go a e) of
               Pair a e -> Pair a (push e es)
-          in case (foldl f (Pair a emptyArray) es) of
+          in case (foldl f (Pair a []) es) of
             Pair a es -> Pair a (New ann tag es)
         _ -> Pair a2 e2
       in case ae of
