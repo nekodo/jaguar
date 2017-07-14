@@ -5,13 +5,17 @@ data CompilerState = CompilerState
   (Record ModuleInterface) // exports
   Number // uid counter
 
-freshCompilerState = CompilerState empty 0
-
 getExports = gets >>= \s -> case s of
   CompilerState ex _ -> ret ex
 
 setExports ex = gets >>= \s -> case s of
   CompilerState _ uid -> sets (CompilerState ex uid)
+
+getUid = gets >>= \s -> case s of
+  CompilerState _ uid -> ret uid
+
+setUid uid = gets >>= \s -> case s of
+  CompilerState ex _ -> sets (CompilerState ex uid)
 
 data Pass a b = Pass (Array a -> State CompilerState (Array b))
 

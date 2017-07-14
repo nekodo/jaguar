@@ -72,11 +72,8 @@ argDefs = push builtinsPathArg (push outPathArg (push mainArg (push profileArg [
 
 liftPass p a = ret (p a)
 
-normalizeImportsPass ixm = getExports >>= \es ->
-  ret (mapSnd (normalizeImports es) ixm)
-
-uniquifyPass ixm = getExports >>= \es -> case ixm of
-  Pair ix m -> ret (uniquify ('_' ++ intToString ix ++ '_') es m)
+normalizeImportsPass m = getExports >>= \es ->
+  ret (normalizeImports es m)
 
 typerPass m = getExports >>= \es -> let
   typed = inferTypeModule es m
@@ -105,15 +102,13 @@ main argv = let
   passes = perModule (liftPass parse) >=>
            liftPass (depSort mainName) >=>
            perModule (
-             liftPass translateAdts) >=>
-           liftPass zipWithIndex >=>
-           perModule (
-             normalizeImportsPass >=>
-               uniquifyPass >=>
+             liftPass translateAdts >=>
+               normalizeImportsPass >=>
+               uniquify >=>
                typerPass >=>
                declasserPass) >=>
            liftPass mergeModules >=>
-           liftPass inline >=>
+           inline >=>
            instrumentPass profile >=>
            liftPass (generateJs builtinsPath)
   

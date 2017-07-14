@@ -2,14 +2,17 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {reallyPrintExpr} from '//compiler/printer.jg'
 import {rewriteExpr as renameExpr} from '//compiler/uniquifier.jg'
+import {getUid, setUid} from '//compiler/pass.jg'
 
-inline m = case m of
+inline m = getUid >>= \uid -> case m of
   Module ann fn is ds cs ins bs -> let
-    bs2 = evalState 0 (loopPasses 10 pass bs)
+    r = runState uid (loopPasses 10 pass bs)
+    bs2 = snd r
+    uid2 = fst r
     bs3 = mapBindings (\e -> snd $ annWithUseCount e) bs2
     useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs3)
     is2 = processImports useCount is
-    in Module ann fn is2 ds cs ins bs3
+    in setUid uid2 >> ret (Module ann fn is2 ds cs ins bs3)
 
 getCount e = case (getAnn 'useCount' (annOf e)) of
   Just (AnnUseCount c) -> c
@@ -103,7 +106,7 @@ inlineCode always e = let
   inlineExpr e = case e of
     Var ann v -> case (lookup v always) of
       Nothing -> ret (Left e)
-      Just e -> fmap (\e -> Left (withAnnCopy ann e)) (renameExpr '$inl$' empty e)
+      Just e -> fmap (\e -> Left (withAnnCopy ann e)) (renameExpr empty e)
     Let ann bs e -> let
       always2 = mergeTrie always (chooseForInlining (getCount e) bs)
       in mapBindingsM (\n e -> inlineCode (remove n always2) e) bs >>= \bs ->
