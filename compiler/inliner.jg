@@ -3,9 +3,9 @@ import * from '//compiler/ast.jg'
 import {reallyPrintExpr} from '//compiler/printer.jg'
 import {rewriteExpr as renameExpr} from '//compiler/uniquifier.jg'
 
-inline preserve m = case m of
+inline m = case m of
   Module ann fn is ds cs ins bs -> let
-    bs2 = evalState 0 (loopPasses 10 (pass preserve) bs)
+    bs2 = evalState 0 (loopPasses 10 pass bs)
     bs3 = mapBindings (\e -> snd $ annWithUseCount e) bs2
     useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs3)
     is2 = processImports useCount is
@@ -14,13 +14,6 @@ inline preserve m = case m of
 getCount e = case (getAnn 'useCount' (annOf e)) of
   Just (AnnUseCount c) -> c
 mergeCount a b = foldTrie (\a k v -> insert k (v + (justOr 0 (lookup k a))) a) a b
-
-markDead preserve useCount b = case b of
-  Pair n e -> case (justOr 0 $ lookup n useCount) of
-    0 -> case (contains n preserve) of
-      False -> debug2 ('would mark dead: ' ++ n) b
-      True -> b
-    _ -> b
 
 annWithUseCount e = let
   dropCount n c = remove n c
@@ -47,10 +40,10 @@ loopPasses n p bs = case n of
   0 -> ret bs
   _ -> p bs >>= loopPasses (n - 1) p
 
-pass preserve bs = let
+pass bs = let
   bs2 = mapBindings (\e -> snd $ annWithUseCount e) bs
   useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs2)
-  bs3 = mapBindings deadCode (dropDeadBindings preserve useCount bs2)
+  bs3 = mapBindings deadCode (dropDeadBindings useCount bs2)
   always = chooseForInlining Empty bs3
   in mapBindingsM (\n e -> inlineCode (remove n always) e) bs3 >>= \bs ->
     ret (mapBindings betaReduction bs)
@@ -61,7 +54,7 @@ deadCode e = let
   f e = case e of
     Let ann bs e -> let
       useCount = foldl mergeCount (getCount e) (map (\b -> getCount (snd b)) bs)
-      bs2 = dropDeadBindings [] useCount bs
+      bs2 = dropDeadBindings useCount bs
       in Let ann bs2 e
     _ -> e
   in snd (down (\a e -> Pair a (f e)) Unit e)
@@ -106,15 +99,16 @@ betaReduction e = let
   in snd (down (\a e -> Pair a (f e)) Unit e)
 
 inlineCode always e = let
+  withAnnCopy ann e = withAnn (mergeTrie (remove 'export' (annOf e)) (copyAnn ['export'] ann)) e
   inlineExpr e = case e of
-    Var _ v -> case (lookup v always) of
+    Var ann v -> case (lookup v always) of
       Nothing -> ret (Left e)
-      Just e -> fmap Left (renameExpr '$inl$' empty e)
+      Just e -> fmap (\e -> Left (withAnnCopy ann e)) (renameExpr '$inl$' empty e)
     Let ann bs e -> let
       always2 = mergeTrie always (chooseForInlining (getCount e) bs)
       in mapBindingsM (\n e -> inlineCode (remove n always2) e) bs >>= \bs ->
         inlineCode always2 e >>= \e -> case (length bs) of
-          0 -> ret (Right e)
+          0 -> ret (Right (withAnnCopy ann e))
           _ -> ret (Right (Let ann bs e))
     Case ann e ps -> ret (Left (Case ann e (map (\p -> case p of Pair pat e -> Pair (inlinePat pat) e) ps)))
     //App _ (App _ (Var _ 'push') x) (New ann 'Array' xs) -> ret (Left (New ann 'Array' (push x xs)))
@@ -129,12 +123,13 @@ inlineCode always e = let
     _ -> p 
   in breakableDownM inlineExpr e
 
-dropDeadBindings preserve useCount bs = let
+dropDeadBindings useCount bs = let
+  isExport e = isJust (getAnn 'export' (annOf e))
   f b = case b of
     Pair n e -> let
       totalCount = justOr 0 (lookup n useCount)
       recursiveCount = justOr 0 (lookup n (getCount e))
-      keep = contains n preserve || ((totalCount - recursiveCount) > 0)
+      keep = isExport e || ((totalCount - recursiveCount) > 0)
       in case keep of
         True -> Just (Pair n e)
         False -> let ann = annOf e in case (getAnn 'data' ann) of

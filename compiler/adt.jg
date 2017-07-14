@@ -21,5 +21,5 @@ mkConFun tag dt vs n ts = let
     Pair n t -> setType (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') t) (getType r)) (Lam emptyAnn n r)
   con = foldr mkCon new nts
   conT = TForall emptyAnn vs [] (getType con)
-  ann = setAnn 'type' (AnnType conT) (setAnn 'data' (AnnData tag) emptyAnn)
+  ann = setAnn 'export' (AnnExport n) (setAnn 'type' (AnnType conT) (setAnn 'data' (AnnData tag) emptyAnn))
   in Pair n (withAnn ann con)

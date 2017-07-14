@@ -56,7 +56,7 @@ rewriteClassToFun c = case c of
       in map f (sort bs)
     v = 'x_' ++ name
     rewrite b = case b of
-      Pair n t -> Pair n (setType t (Lam emptyAnn v (Case emptyAnn (Var emptyAnn v) [Pair (PData emptyAnn name bsForPat) (Var emptyAnn (n ++ '_'))])))
+      Pair n t -> Pair n (setType t (Lam (setAnn 'export' (AnnExport n) emptyAnn) v (Case emptyAnn (Var emptyAnn v) [Pair (PData emptyAnn name bsForPat) (Var emptyAnn (n ++ '_'))])))
     in map rewrite (classToBindings c)
 
 // instantiate the data type with the lambdas in the correct positions
@@ -64,7 +64,8 @@ rewriteInstance is env ix i = case i of
   Instance _ n _ bs -> let
     name = instanceName ix i
     args = map (rewriteExpr is env) (map snd (sort bs))
-    in Pair name (foldl (App emptyAnn) (Var emptyAnn (className n)) args)
+    e = foldl (App emptyAnn) (Var emptyAnn (className n)) args
+    in Pair name (withAnn (setAnn 'export' (AnnExport name) emptyAnn) e)
 
 data State = S (Array (Record Type)) (Array (Pair String TypeBound)) Number
 getEnv s = case s of
@@ -104,7 +105,9 @@ rewriteExpr is env e = let
   rewriteBounds a e = case (getType e) of
     TForall _ _ bs t -> case (length bs > 0) of
       False -> Pair a e
-      True -> foldr rewriteBound (Pair a (setType t e)) (zipWithIndex bs)
+      True -> let
+        rewritten = foldr rewriteBound (Pair a (setType t e)) (zipWithIndex bs)
+        in mapSnd (\re -> withAnn (copyAnn ['export'] (annOf e)) re) rewritten
     _ -> Pair a e
   rewriteBound ae ib = case ib of
     Pair ix b -> case ae of

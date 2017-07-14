@@ -14,12 +14,10 @@ normalizeImports ms m = case m of
 
 normalize ms freeVars i = case i of
   ImportClosed _ _ _ -> error 'closed imports not supported'
-  ImportOpen ann f ns -> ImportOpen ann f (map (\p -> case p of Pair n m -> Pair (addPrefix f n) m) ns)
+  ImportOpen _ _ _ -> i
   ImportAll ann './builtins.js' -> case (get './builtins.js' ms) of
     ModuleInterface bs _ _ -> ImportOpen ann './builtins.js' (map (\n -> Pair n n) (keys bs))
   ImportAll ann f -> case (has f ms) of
     True -> case (get f ms) of
-      ModuleInterface bs _ _ -> ImportOpen ann f (map (\n -> Pair n (drop (length f + 2) n)) (keys bs))
+      ModuleInterface bs _ _ -> ImportOpen ann f (map (\n -> Pair n n) (keys bs))
     False -> error ('no mod ' ++ f ++ ' in ' ++ jsonStringify (keys ms))
-
-addPrefix fn n = stringReplaceChar '/' '$' (stringReplaceChar '.' '_' fn) ++ '$$' ++ n

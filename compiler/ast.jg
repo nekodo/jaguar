@@ -2,14 +2,20 @@ import * from '//compiler/prelude.jg'
 
 data Ann =
   AnnType Type
-  | AnnCodeLoc String Number Number // file, line col
-  | AnnUseCount (Map String Number)
-  | AnnData (Maybe Number)
-  | AnnTag
+  | AnnCodeLoc String Number Number // codeLoc: file, line col
+  | AnnUseCount (Map String Number) // useCount
+  | AnnData (Maybe Number)          // data
+  | AnnTag                          // dead
+  | AnnExport String                // export
 emptyAnn = Empty
 
 getAnn name ann = lookup name ann
 setAnn name val ann = insert name val ann
+copyAnn names ann = let
+  f r n = case (getAnn n ann) of
+    Nothing -> r
+    Just a -> setAnn n a r
+  in foldl f Empty names
 
 getAnnType ann = case (getAnn 'type' ann) of
   Just (AnnType t) -> t

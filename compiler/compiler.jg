@@ -2,7 +2,7 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {Success} from '//compiler/parsers.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
-import {compileModule, combineModules} from '//compiler/js/backend.jg'
+import {compileModule as generateJs} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
 import {newCtx, inferTypeModule, getTypedExports, generalize, emptyEnv} from '//compiler/typer.jg'
 import {dfs} from '//compiler/graph.jg'
@@ -86,6 +86,10 @@ typerPass m = getExports >>= \es -> let
 declasserPass m = getExports >>= \es ->
   ret (declassModule es m)
 
+instrumentPass profile m = case profile of
+  False -> ret m
+  True -> ret (instrument m)
+
 main argv = let
   // Read args.
   args = parseArgs argDefs (slice 2 argv)
@@ -98,8 +102,7 @@ main argv = let
   // Load builtin exports from file.
   baseExports = set './builtins.js' (parseExports (loadJSExports builtinsPath)) empty
   
-  passes = perModule (
-             liftPass parse) >=>
+  passes = perModule (liftPass parse) >=>
            liftPass (depSort mainName) >=>
            perModule (
              liftPass translateAdts) >=>
@@ -108,19 +111,11 @@ main argv = let
              normalizeImportsPass >=>
                uniquifyPass >=>
                typerPass >=>
-               declasserPass)
+               declasserPass) >=>
+           liftPass mergeModules >=>
+           liftPass inline >=>
+           instrumentPass profile >=>
+           liftPass (generateJs builtinsPath)
   
-  // Compile all the srcs and construct a map of file -> imports.
-  result = runState (CompilerState baseExports 0) (passes srcFiles)
-  modules = snd result
-  exports = case (fst result) of CompilerState es _ -> es
-
-  external = case (last modules) of Module _ _ _ _ _ _ bs -> map fst bs
-  merged = mergeModules modules
-  optimized = inline external merged
-  rawjs = case profile of
-    True -> compileModule exports (instrument optimized)
-    False -> compileModule exports optimized
-  // Combine the JS modules into a single file and write it out.
-  js = combineModules mainName builtinsPath [Pair mainName rawjs]
+  js = evalState (CompilerState baseExports 0) (passes srcFiles)
   in writeFile js outPath

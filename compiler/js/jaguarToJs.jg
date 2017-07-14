@@ -118,9 +118,14 @@ importToJs i = case i of
 dataConFieldIds = \ts ->
   map (\p -> '$' ++ intToString (fst p)) (zipWithIndex ts)
 
-exportObject bs = JSObject (map (\n -> Pair (opName n) (JSRef (opName n))) (map fst bs))
+exportObject bs = let
+  f b = case b of
+    Pair n e -> case (getAnn 'export' (annOf e)) of
+      Nothing -> Nothing
+      Just (AnnExport en) -> Just (Pair (opName en) (JSRef (opName n)))
+  in JSObject (mapJust f bs)
 
-moduleToJs importSymbols m = case m of
+moduleToJs m = case m of
   Module _ _ is _ _ _ vs -> let
     imports = concatMap importToJs is
     gatherCons m d = case d of

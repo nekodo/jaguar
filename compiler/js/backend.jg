@@ -2,21 +2,17 @@ import * from '//compiler/prelude.jg'
 import {moduleToJs} from '//compiler/js/jaguarToJs.jg'
 import {jsExprToString, jsStmtToString} from '//compiler/js/printer.jg'
 import {rewriteStmt} from '//compiler/js/deadCode.jg'
-import {addPrefix} from '//compiler/uniquifier.jg'
 
-compileModule = \importSymbols m -> join
-  (map (jsStmtToString 0)
-    (concatMap rewriteStmt (moduleToJs importSymbols m)))
-  ';\n'
-
-combineModules mainName builtinsPath ms = let 
-  wrapModule nm = case nm of
-    Pair n m -> 'cache["' ++ n ++ '"] = (function() {' ++ m ++ '\nreturn exports;})();'
+compileModule builtinsPath m = let
+  js = join
+    (map (jsStmtToString 0)
+      (concatMap rewriteStmt (moduleToJs m)))
+    ';\n'
+  wrapModule m =
+    '(function() {' ++ js ++ '\nmodule.exports = exports;})();'
   requireFun = 'var cache = {}\n' ++
       'function _require(f) {\n' ++
         '  return cache[f] || require(f == "./builtins.js" ? process.cwd() + "/" + "' ++ builtinsPath ++ '" : f);\n' ++
           '}\n'
-  exportStmt = 'module.exports = cache["' ++ mainName ++ '"]\n'
-  mainFun = addPrefix mainName 'main'
-  runStmt = 'if (module.exports.' ++ mainFun ++ ')module.exports.' ++ mainFun ++ '(process.argv)'
-  in requireFun ++ intercalate '\n' (map wrapModule ms) ++ exportStmt ++ runStmt
+  runStmt = 'if (module.exports.main)module.exports.main(process.argv)'
+  in requireFun ++ wrapModule m ++ runStmt

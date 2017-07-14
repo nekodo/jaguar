@@ -449,8 +449,12 @@ inferTypeModule ms m = let
 
 getTypedExports m = case m of
   Module _ _ _ _ cs ins ds -> let
-    ed = map (\d -> Pair (fst d) (getType (snd d))) ds
-    bs = toRecord ed
+    collectExports es b = let
+      e = snd b
+      in case (getAnn 'export' (annOf e)) of
+        Nothing -> es
+        Just (AnnExport n) -> set n (getType e) es
+    bs = foldl collectExports empty ds
     in ModuleInterface bs cs (map instanceToTypeBound ins)
 
 satisfies a b = case a of

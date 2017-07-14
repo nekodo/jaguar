@@ -2,10 +2,17 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {newIdent, rewriteExpr} from '//compiler/uniquifier.jg'
 
-mergeModules ms = foldl1 mergeInto ms
+mergeModules ms = evalState Empty (foldM mergeInto (head ms) (tail ms))
+
+dropExport f b = case b of
+  Pair n e -> case (getAnn 'export' (annOf e)) of
+    Nothing -> ret b
+    Just (AnnExport en) -> gets >>= \ns ->
+      sets (insert (f ++ '#' ++ en) n ns) >> 
+        ret (Pair n (withAnn (remove 'export' (annOf e)) e))
 
 mergeInto a b = case a of
-  Module ann _ is _ _ _ bs -> let
+  Module ann fn is _ _ _ bs -> mapM (dropExport fn) bs >>= \bs -> gets >>= \ns -> let
     dataAnns = let
       f r b = case b of
         Pair n e -> case (getAnn 'data' (annOf e)) of
@@ -14,8 +21,13 @@ mergeInto a b = case a of
       in foldl f Empty bs
     in case b of
       Module _ fn is2 _ _ _ bs2 ->
-        Module ann fn is [] [] [] (concat bs (concat (concatMap (importAsBindings dataAnns) is2) bs2))
+        ret (Module ann fn is [] [] [] (concat bs (concat (concatMap (importAsBindings ns dataAnns) is2) bs2)))
 
-importAsBindings dataAnns i = case i of
+importAsBindings ens dataAnns i = case i of
   ImportOpen _ './builtins.js' _ -> []
-  ImportOpen _ _ ns -> map (\p -> case p of Pair nf nt -> Pair nt (Var (justOr emptyAnn $ lookup nf dataAnns) nf)) (filter (\p -> fst p /= snd p) ns)
+  ImportOpen _ fn ns -> let
+    f p = case p of
+      Pair nf nt -> case (lookup (fn ++ '#' ++ nf) ens) of
+        Just nf -> Pair nt (Var (justOr emptyAnn $ lookup nf dataAnns) nf)
+        Nothing -> error ('mod merger encountered unknown import ' ++ fn ++ '#' ++ nf)
+    in map f (filter (\p -> fst p /= snd p) ns)

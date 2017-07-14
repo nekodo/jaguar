@@ -236,7 +236,11 @@ splitFourWay e = case (splitEither e) of
   Pair a b -> Pair (splitEither a) (splitEither b)
 
 eitherP a b = Parser $ \s -> applyParser ((pure Left <*> a) <|> (pure Right <*> b)) s
-topLevelP = eitherP (eitherP dataP defP) (eitherP classP instanceP)
+topLevelDef = let
+  addExportAnn d = case d of
+    Pair n e -> Pair n (withAnn (setAnn 'export' (AnnExport n) (annOf e)) e)
+  in pure addExportAnn <*> defP
+topLevelP = eitherP (eitherP dataP topLevelDef) (eitherP classP instanceP)
   
 parseModule = runParser moduleP
 parseImports = runParser (many importP)
