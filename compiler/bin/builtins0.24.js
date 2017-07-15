@@ -230,6 +230,18 @@ builtins.splice = start => del => newItems => arr => {
   return r;
 };
 
+builtins.arrDel = ix => len => arr => {
+  const r = arr.slice(0);
+  r.splice(ix, len);
+  return r;
+};
+
+builtins.arrIns = ix => x => arr => {
+  const r = arr.slice(0);
+  r.splice(ix, 0, x);
+  return r;
+};
+
 builtins.concat = function(a) {
     return function(b) {
         return a.concat(b)
@@ -428,6 +440,11 @@ builtins.stringReplaceChar = a => b => s => {
   return r.join('');
 }
 
+builtins.currentTimeMs = unused => {
+  const [secs, nanos] = process.hrtime();
+  return secs * 1000 + nanos / 1000000;
+}
+
 builtins.$TYPE = {
     'writeFile': 'String -> String -> Bool',
     'readFile': 'String -> String',
@@ -468,6 +485,8 @@ builtins.$TYPE = {
     slice: 'Number -> Array a -> Array a',
     slice2: 'Number -> Number -> Array a -> Array a',
     splice: 'Number -> Number -> Array a -> Array a -> Array a',
+    arrDel: 'Number -> Number -> Array a -> Array a',
+    arrIns: 'Number -> a -> Array a -> Array a',
     concat: 'Array a -> Array a -> Array a',
     map: '(a -> b) -> Array a -> Array b',
     filter: '(a -> Bool) -> Array a -> Array a',
@@ -490,6 +509,7 @@ builtins.$TYPE = {
     strHashCode: 'String -> Number',
     bitNot: 'Number -> Number',
     stringReplaceChar: 'String -> String -> String -> String',
+    currentTimeMs: 'Unit -> Number',
 };
 
 module.exports = builtins;

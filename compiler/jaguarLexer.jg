@@ -57,7 +57,7 @@ symbolP = mkTok SymTok <*> charP '()[]{},\\'
 identP = mkTok IdTok <*> (pure (++) <*> charP (letters ++ '_') <*> manyStr (charP (letters ++ digits ++ '_')))
 opIdentP = mkTok IdTok <*> (charP '(' |> someStr (charP '-+*/=:&|<>^$') <| charP ')')
 
-opP = mkTok OpTok <*> someStr (charP '-+*/=:&|<>^$')
+opP = mkTok OpTok <*> someStr (charP '-+*/=:&|<>^$~')
 
 jaguarTokenP = many (stringP <|> whitespaceP <|> numP <|> lineCommentP <|> identP <|> opIdentP <|> opP <|> symbolP)
 

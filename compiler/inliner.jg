@@ -6,7 +6,7 @@ import {getUid, setUid} from '//compiler/pass.jg'
 
 inline m = getUid >>= \uid -> case m of
   Module ann fn is ds cs ins bs -> let
-    r = runState uid (loopPasses 10 pass bs)
+    r = runState uid (loopPasses 0 pass bs)
     bs2 = snd r
     uid2 = fst r
     bs3 = mapBindings (\e -> snd $ annWithUseCount e) bs2

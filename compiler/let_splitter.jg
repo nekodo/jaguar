@@ -1,0 +1,42 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import {sccSorted} from '//compiler/graph.jg'
+
+addRef n = gets >>= \ns -> sets (setAdd n ns)
+delRef n = gets >>= \ns -> sets (setRemove n ns)
+getRefs = gets
+
+splitExpr e = let 
+  split e = case e of
+    Var _ n -> addRef n >> ret e
+    Case _ _ ps -> mapM (\p -> splitPat (fst p)) ps >> ret e
+    Lam _ p _ -> delRef p >> ret e
+    _ -> ret e
+  splitPat p = case p of
+    PConst _ _ -> ret Unit
+    PVar _ n -> delRef n
+    PData _ n ps -> mapM splitPat ps >> addRef n
+  handleLet e = case e of
+    Let ann bs e -> splitExpr e >>= \e -> 
+      splitBindings bs >>= \gbs -> let
+        l = foldr (\e bs -> Let emptyAnn bs e) e gbs
+        in ret (Right (withAnn ann l))
+    _ -> ret (Left e)
+  in breakableDownAndUpM handleLet split e
+
+splitBindings bs = let
+  ns = map fst bs
+  processBinding gbs b = case gbs of
+    Pair g bs -> case b of
+      Pair n e -> splitExpr e >>= \e ->
+        getRefs >>= \refs -> let
+          uses = filter (\n -> setContains n refs) ns
+          in mapM delRef uses >>
+            ret (Pair (set n (filter ((/=) n) uses) g) (push (Pair n e) bs))
+  in foldM processBinding (Pair empty []) bs >>= \gbs -> case gbs of
+    Pair g bs -> let
+      bsm = toRecord bs
+      ccs = sccSorted g
+      in ret (map (map (\n -> Pair n (get n bsm))) ccs)
+
+splitLetsPass m = ret m

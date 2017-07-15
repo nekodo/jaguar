@@ -4,19 +4,40 @@ import * from '//compiler/ast.jg'
 data CompilerState = CompilerState
   (Record ModuleInterface) // exports
   Number // uid counter
+  (Map String (Array Number)) // 
 
 getExports = gets >>= \s -> case s of
-  CompilerState ex _ -> ret ex
+  CompilerState ex _ _ -> ret ex
 
 setExports ex = gets >>= \s -> case s of
-  CompilerState _ uid -> sets (CompilerState ex uid)
+  CompilerState _ uid ts -> sets (CompilerState ex uid ts)
 
 getUid = gets >>= \s -> case s of
-  CompilerState _ uid -> ret uid
+  CompilerState _ uid _ -> ret uid
 
 setUid uid = gets >>= \s -> case s of
-  CompilerState ex _ -> sets (CompilerState ex uid)
-
-data Pass a b = Pass (Array a -> State CompilerState (Array b))
+  CompilerState ex _ ts -> sets (CompilerState ex uid ts)
 
 perModule = mapM
+
+timingStart n = gets >>= \s -> case s of
+  CompilerState ex uid ts -> let 
+    nts = justOr [] (lookup n ts)
+    in sets (CompilerState ex uid (insert n (push (currentTimeMs Unit) nts) ts))
+      
+timingEnd n = gets >>= \s -> case s of
+  CompilerState ex uid ts -> let 
+    nts = justOr [] (lookup n ts)
+    start = last nts
+    in sets (CompilerState ex uid (insert n (push (currentTimeMs Unit - start) (init nts)) ts))
+
+timed n p i = timingStart n >> p i >>= \o -> timingEnd n >> ret o
+
+reportTimes i = gets >>= \s -> case s of
+  CompilerState ex uid ts -> let
+    report i n ts = let
+      count = length ts
+      total = foldl (+) 0 ts
+      msg = '# pass <' ++ n ++ '> executed ' ++ intToString count ++ ' times, total runtime ' ++ intToString total ++ 'ms'
+      in debug2 msg i
+    in ret (foldTrie report i ts)

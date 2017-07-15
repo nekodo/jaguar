@@ -14,6 +14,7 @@ import {mergeModules} from '//compiler/moduleMerger.jg'
 import {inline} from '//compiler/inliner.jg'
 import {translateAdts} from '//compiler/adt.jg'
 import * from '//compiler/pass.jg'
+import {splitLetsPass} from '//compiler/let_splitter.jg'
 
 moduleFile m = case m of
   Module _ n _ _ _ _ _ -> n
@@ -99,18 +100,24 @@ main argv = let
   // Load builtin exports from file.
   baseExports = set './builtins.js' (parseExports (loadJSExports builtinsPath)) empty
   
-  passes = perModule (liftPass parse) >=>
-           liftPass (depSort mainName) >=>
+  passes = perModule (timed 'parse' $ liftPass parse) >=>
+           timed 'dep-sort' (liftPass (depSort mainName)) >=>
            perModule (
-             liftPass translateAdts >=>
-               normalizeImportsPass >=>
-               uniquify >=>
-               typerPass >=>
-               declasserPass) >=>
-           liftPass mergeModules >=>
-           inline >=>
-           instrumentPass profile >=>
-           liftPass (generateJs builtinsPath)
+             // Normalization passes.
+             timed 'translate-adts' (liftPass translateAdts) >=>
+               timed 'normalize-imports' normalizeImportsPass >=>
+               timed 'uniquify' uniquify >=>
+               timed 'split-lets' splitLetsPass >=>
+               // Typing and type clas handling.
+               timed 'typer' typerPass >=>
+               timed 'declasser' declasserPass) >=>
+           // Optimization passes.
+           timed 'merge-modules' (liftPass mergeModules) >=>
+           timed 'opt' inline >=>
+           // Code generation.
+           timed 'instrument' (instrumentPass profile) >=>
+           timed 'generate-js' (liftPass (generateJs builtinsPath)) >=>
+           reportTimes
   
-  js = evalState (CompilerState baseExports 0) (passes srcFiles)
+  js = evalState (CompilerState baseExports 0 Empty) (passes srcFiles)
   in writeFile js outPath
