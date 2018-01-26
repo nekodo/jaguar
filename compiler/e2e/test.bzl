@@ -106,10 +106,33 @@ def compiler_diff_test(name, expected, actual):
       expected = expected,
   )
   
+  jaguar_js_library(
+      name = "%s_actual_opt" % name,
+      main = actual,
+      srcs = [
+        actual,
+        "//compiler:prelude.jg",
+        "//compiler:ast.jg",
+        "//compiler:parsers.jg",
+        "//compiler:jaguarLexer.jg",
+        "//compiler:jaguarParser.jg",
+        "//compiler:graph.jg",
+      ],
+      compiler = "//compiler:stage2",
+      args = ["--opt"],
+  )
+  
+  module_diff_test(
+      name = "%s_opt" % name,
+      actual = ":%s_actual_opt" % name,
+      expected = expected,
+  )
+  
   native.test_suite(
       name = name,
       tests = [
           "%s_stage1" % name,
           "%s_stage2" % name,
+          "%s_opt" % name,
       ],
   )

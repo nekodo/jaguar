@@ -158,6 +158,7 @@ applySubs subs t = case t of
     Nothing -> t
     Just subT -> subT
   TApp ann f a -> TApp ann (applySubs subs f) (applySubs subs a)
+  TRow ann ms r -> TRow ann (map (\m -> case m of Pair k v -> Pair (applySubs subs k) (applySubs subs v)) ms) (fmap (applySubs subs) r)
   _ -> t
 
 applySubsBound subs b = case b of
@@ -197,6 +198,11 @@ unify ef a b = let
         xsubs = unify ef (applySubs fsubs xa) (applySubs fsubs xb)
         in composeSubs ef fsubs xsubs
       _ -> err a b
+    TRow _ _ (Nothing) -> err a b
+    TRow _ ms _ -> case b of
+      TVar _ v -> bind v a
+      TRow _ ms2 (Nothing) -> err a b
+      _ -> err a b
     _ -> err a b
 
 freeTVars t = case t of
@@ -207,6 +213,7 @@ freeTVars t = case t of
   TForall _ vs bs t -> 
     foldl (\s v -> setRemove v s) (foldl setUnion (freeTVars t) (map freeTVarsInBound bs)) vs
   TApp _ f a -> setUnion (freeTVars f) (freeTVars a)
+  TRow _ ms r -> foldl setUnion (justOr emptySet $ fmap freeTVars r) (map (\m -> setUnion (freeTVars (fst m)) (freeTVars (snd m))) ms)
 
 freeTVarsInBound b = case b of
   TCBound _ _ t -> freeTVars t

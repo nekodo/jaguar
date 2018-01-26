@@ -79,3 +79,54 @@ data $Class$Foo a = $Class$Foo (a -> Bool)
 $Foo$Number = $Class$Foo (\x -> x == 0)
 baz = (case $Foo$Number of $Class$Foo bar -> bar) 77
 boz = \$instance$Foo -> \y -> (case $instance$Foo of $Class$Foo bar -> bar) y
+
+
+# Heterogenous records
+
+TRow (Array (Pair Type (Maybe Type))) (Maybe Type)
+TLabel String
+
+r :: Record {foo :: Number | a}
+
+get :: k -> Rec { k :: v | r } -> v
+set :: k -> v -> Rec r -> Rec { k :: v | r }
+del :: k -> Rec { k :: v | r } -> Rec r
+
+{a: b} = {c: d} => a = c, b = d
+{a: b | r} = {c: d} => a = c, b = d
+
+{a: b | r} = {c: d | r2} => (r2 = {a: b | r3}, r = {c: d | r3})
+
+
+{a: b | r} = {c: d, e: f} => (a = c, b = d, r = {e: f}) or (a = e, b = f, r = {c: d})
+
+foo k1 k2 v2 k3 v3 = get k1 {k2: v2, k3: v3}
+
+Solvable:
+{a: b} = {c: d}
+{a: b | r} = {c: d | r2}
+
+Unsolvable:
+{a: b, c: d} = {e: f, g: h}
+{a: b}
+
+update :: k -> v -> {k :: v2 | r} -> {k :: v | r}
+insert :: 
+
+Non-polymorphic keys only, no insert or delete
+
+{r ~ a, b, c}
+
+set :: k -> v -> {k :: v2 | r} -> {k :: v | r}
+get :: k -> {k :: v | r} -> v
+del :: k -> {k :: v | r} -> r
+add :: k -> v -> {r} -> {k :: v | r}
+
+{a: b | r} = {"c": d | r2}
+
+Cases we can solve:
+ 1. when there are no row vars and:
+    1. cardinality of both sides is 1
+    2. cardinality of both sides is equal and there is only one tvar as key
+ 2. when there are row vars and:
+    1. there are no tvars as keys

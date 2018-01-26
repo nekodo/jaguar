@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {Success} from '//compiler/parsers.jg'
+import {Success, Error} from '//compiler/parsers.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileModule as generateJs} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
@@ -22,8 +22,8 @@ moduleFile m = case m of
 parse fn = case (parseModule (readFile fn) ('//' ++ fn)) of
   Success m (ParserState ts p li ri _) -> case (p == length ts) of
     True -> m
-    False -> error ('failed to parse all tokens, stopped at ' ++ jsonStringify (getIx p ts)) 
-  e -> error e
+    False -> error (fn ++ ': failed to parse all tokens, stopped at ' ++ jsonStringify (getIx p ts)) 
+  Error e -> error (fn ++ ': ' ++ e)
 
 // Run a depth-first search from the main file to determine the order of
 // compilation. Also means we'll ignore any extra files that are not needed.
@@ -68,8 +68,9 @@ builtinsPathArg = ArgString 'builtins' Nothing
 outPathArg = ArgString 'out' Nothing
 mainArg = ArgString 'main' Nothing
 profileArg = ArgBool 'profile' (Just False)
+optArg = ArgBool 'opt' (Just False)
 
-argDefs = push builtinsPathArg (push outPathArg (push mainArg (push profileArg [])))
+argDefs = [builtinsPathArg, outPathArg, mainArg, profileArg, optArg]
 
 liftPass p a = ret (p a)
 
@@ -96,6 +97,7 @@ main argv = let
   mainName = '//' ++ getString args mainArg
   srcFiles = getPositional args
   profile = getBool args profileArg
+  opt = getBool args optArg
   
   // Load builtin exports from file.
   baseExports = set './builtins.js' (parseExports (loadJSExports builtinsPath)) empty
@@ -113,7 +115,7 @@ main argv = let
                timed 'declasser' declasserPass) >=>
            // Optimization passes.
            timed 'merge-modules' (liftPass mergeModules) >=>
-           timed 'opt' inline >=>
+           timed 'opt' (inline opt) >=>
            // Code generation.
            timed 'instrument' (instrumentPass profile) >=>
            timed 'generate-js' (liftPass (generateJs builtinsPath)) >=>

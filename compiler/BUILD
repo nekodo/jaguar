@@ -1,4 +1,4 @@
-load("//compiler:jaguar.bzl", "jaguar_js_library", "jaguar_compiler")
+load("//compiler:jaguar.bzl", "jaguar_js_library", "jaguar_compiler", "jaguar_binary")
 
 jaguar_js_library(
     name = "stage1_lib",
@@ -29,10 +29,40 @@ jaguar_compiler(
 )
 
 jaguar_js_library(
-    name = "stage3_lib",
+    name = "opt_lib",
     main = "compiler.jg",
     srcs = glob(["*.jg", "js/*.jg"]),
     compiler = ":stage2",
+    args = ["--opt"],
+)
+
+jaguar_compiler(
+    name = "opt",
+    jaguar = ":opt_lib",
+    builtins =  "builtins.js",
+    visibility = ["//visibility:public"],
+)
+
+jaguar_js_library(
+    name = "opt_opt_lib",
+    main = "compiler.jg",
+    srcs = glob(["*.jg", "js/*.jg"]),
+    compiler = ":opt",
+    args = ["--opt"],
+)
+
+jaguar_js_library(
+    name = "test_stage1",
+    main = "test.jg",
+    srcs = glob(["*.jg", "js/*.jg"]),
+    compiler = ":stage1",
+)
+
+jaguar_binary(
+    name = "jbin",
+    main = "test.jg",
+    srcs = ["test.jg", "prelude.jg"],
+    compiler = ":stage1",
 )
 
 exports_files(

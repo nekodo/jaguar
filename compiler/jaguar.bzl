@@ -1,16 +1,19 @@
 # Extensions!
+load("//compiler:node.bzl", "node_binary", "action_node_binary")
 
 CompilerInfo = provider()
+  
 
 def _js_library_impl(ctx):
   main = ctx.file.main
   srcs = ctx.files.srcs
   out = ctx.outputs.out
   compiler = ctx.executable.compiler
-  if ctx.file.builtins:
-    print("*** has builtins")
+  
+  print("compiler builtins: " + ctx.attr.compiler[CompilerInfo].builtins.path + " for " + out.path)
   
   inputs = [main, compiler] + srcs + list(ctx.attr.compiler.default_runfiles.files)
+  print("inputs: " + ", ".join(inputs))
   args = (["--out=" + out.path, "--main=" + main.path] +
           [src.path for src in srcs] +
           ctx.attr.args)
@@ -23,7 +26,7 @@ def _js_library_impl(ctx):
       executable=compiler,
   )
   runfiles = ctx.runfiles(files=[ctx.attr.compiler[CompilerInfo].builtins])
-  return [DefaultInfo(runfiles=runfiles)]
+  return [DefaultInfo(runfiles=runfiles)]bazel --versio
 
 jaguar_js_library = rule(
     implementation=_js_library_impl,
@@ -34,7 +37,9 @@ jaguar_js_library = rule(
             single_file = True,
             allow_files = True,
             executable = True,
-            cfg = "host",
+            # Bit of a hack, we really mean "host" but Jaguar output is platform
+            # agnostic at the moment and "target" avoids duplicate builds.
+            cfg = "target",
             providers = [CompilerInfo],
         ),
         "builtins": attr.label(allow_single_file=True),
@@ -45,39 +50,70 @@ jaguar_js_library = rule(
     },
 )
 
-def _compiler_impl(ctx):
-  node = ctx.executable._node
-  
+def _cp_tag_impl(ctx):
   runfiles = ctx.runfiles(files=[
-      ctx.file.jaguar,
-      node,
       ctx.file.builtins,
   ]).merge(
-      ctx.attr.jaguar.default_runfiles,
-  ).merge(
-      ctx.attr.builtins.default_runfiles,
-  ).merge(
-      ctx.attr._node.default_runfiles,
+      ctx.attr.binary.default_runfiles,
   )
-  
-  ctx.file_action(
-      output=ctx.outputs.executable,
-      content="""
-      #!/bin/bash
-      
-      NODE=%s
-      JG_MAIN=%s
-      BUILTINS=%s
-      $NODE --use_strict --harmony $JG_MAIN --builtins=$BUILTINS $@
-      """ % (
-          node.path,
-          ctx.file.jaguar.path,
-          ctx.file.builtins.path,
-      ),
-      executable=True,
+
+  ctx.action(
+      inputs=[ctx.file.binary],
+      outputs=[ctx.outputs.executable],
+      command="cp $1 $2",
+      arguments=[ctx.file.binary.path, ctx.outputs.executable.path]
   )
-  
   return [DefaultInfo(runfiles=runfiles), CompilerInfo(builtins=ctx.file.builtins)]
+
+cp_tag = rule(
+    implementation=_cp_tag_impl,
+    attrs={
+        "builtins": attr.label(allow_single_file=True),
+        "binary": attr.label(
+            single_file = True,
+            allow_files = True,
+            executable = True,
+            cfg = "host",
+        ),
+    },
+    executable = True,
+)
+
+def jaguar_binary(name, main, srcs, compiler="//compiler/bin:latest", args=[]):
+    jaguar_js_library(
+        name = name + "_lib",
+        main = main,
+        srcs = srcs,
+        compiler = compiler,
+    )
+    
+    node_binary(
+        name = name,
+        main = ":" + name + "_lib",
+        args = args,
+    )
+
+def _jaguar_compiler(name, builtins, jaguar):
+    node_binary(
+        name = name + "_bin",
+        main = jaguar,
+        args = ["--builtins="],
+    )
+
+def _compiler_impl(ctx):
+  print(ctx.file.jaguar.path)
+  binary_runfiles = action_node_binary(
+    ctx, ctx.attr._node, ctx.attr.jaguar, ctx.outputs.executable, ["--builtins=%s" % (ctx.file.builtins.path)])
+  
+  runfiles = ctx.runfiles(files=[
+      ctx.file.builtins,
+  ]).merge(
+      binary_runfiles,
+  )
+
+  return [DefaultInfo(runfiles=runfiles), CompilerInfo(builtins=ctx.file.builtins)]
+
+
 
 jaguar_compiler = rule(
     implementation=_compiler_impl,

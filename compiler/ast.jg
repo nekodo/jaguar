@@ -89,6 +89,7 @@ data Type =
   TConst (Map String Ann) String
   | TVar (Map String Ann) String
   | TApp (Map String Ann) Type Type
+  | TRow (Map String Ann) (Array (Pair Type Type)) (Maybe Type)
   | TBot
   | TForall (Map String Ann) (Array String) (Array TypeBound) Type
   | TUnknown
@@ -109,11 +110,13 @@ equivType a b = case a of
   TUnknown -> case b of
     TUnknown -> True
     _ -> False
+  TRow _ ms r -> error 'no support for TRow in equivType yet'
   TForall _ vs bs t -> case b of
     TForall _ vs2 bs2 t2 -> let
       rvs = all (\p -> fst p == snd p) (zip vs vs2)
       rbs = all (\p -> equivBound (fst p) (snd p)) (zip bs bs2)
       in rvs && rbs && equivType t t2
+    _ -> False
 
 data Import =
   ImportClosed (Map String Ann) String String

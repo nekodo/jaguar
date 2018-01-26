@@ -428,3 +428,7 @@ mapFst f p = case p of
 
 mapSnd f p = case p of
   Pair a b -> Pair a (f b)
+
+assert s b = case b of
+  True -> True
+  False -> error s

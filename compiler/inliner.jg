@@ -4,9 +4,12 @@ import {reallyPrintExpr} from '//compiler/printer.jg'
 import {rewriteExpr as renameExpr} from '//compiler/uniquifier.jg'
 import {getUid, setUid} from '//compiler/pass.jg'
 
-inline m = getUid >>= \uid -> case m of
+inline enable m = getUid >>= \uid -> case m of
   Module ann fn is ds cs ins bs -> let
-    r = runState uid (loopPasses 0 pass bs)
+    iterCount = case enable of
+      True -> 10
+      False -> 0
+    r = runState uid (loopPasses iterCount pass bs)
     bs2 = snd r
     uid2 = fst r
     bs3 = mapBindings (\e -> snd $ annWithUseCount e) bs2
