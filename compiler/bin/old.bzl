@@ -1,12 +1,9 @@
 load("//compiler:jaguar.bzl", "CompilerInfo")
 
 def _old_compiler_impl(ctx):
-  node = ctx.executable._node
-  
   runfiles = ctx.runfiles(files=[
       ctx.file.js_wrapper,
       ctx.file.jaguar,
-      node,
       ctx.file.builtins,
   ]).merge(
       ctx.attr.js_wrapper.default_runfiles,
@@ -14,8 +11,6 @@ def _old_compiler_impl(ctx):
       ctx.attr.jaguar.default_runfiles,
   ).merge(
       ctx.attr.builtins.default_runfiles,
-  ).merge(
-      ctx.attr._node.default_runfiles,
   )
   
   ctx.file_action(
@@ -23,17 +18,15 @@ def _old_compiler_impl(ctx):
       content="""
       #!/bin/bash
       
-      NODE=%s
       JS_MAIN=%s
       FILE=$2
       OUT=$1
       JG_MAIN=%s
       BUILTINS=%s
       pwd
-      echo $NODE $JS_MAIN $FILE $OUT $JG_MAIN $BUILTINS
-      $NODE $JS_MAIN $FILE $OUT $JG_MAIN $BUILTINS
+      echo node $JS_MAIN $FILE $OUT $JG_MAIN $BUILTINS
+      node $JS_MAIN $FILE $OUT $JG_MAIN $BUILTINS
       """ % (
-          node.path,
           ctx.file.js_wrapper.path,
           ctx.file.jaguar.path,
           ctx.file.builtins.path,
@@ -49,24 +42,14 @@ old_jaguar_compiler = rule(
         "builtins": attr.label(allow_single_file=True),
         "jaguar": attr.label(allow_single_file=True),
         "js_wrapper": attr.label(allow_single_file=True),
-        "_node": attr.label(
-            default = Label("@org_pubref_rules_node_toolchain//:node_tool"),
-            single_file = True,
-            allow_files = True,
-            executable = True,
-            cfg = "host",
-        ),
     },
     executable = True,
 )
 
-def _compiler_impl13(ctx):
-  node = ctx.executable._node
-  
+def _compiler_impl13(ctx):  
   runfiles = ctx.runfiles(files=[
       ctx.file.js_wrapper,
       ctx.file.jaguar,
-      node,
       ctx.file.builtins,
   ]).merge(
       ctx.attr.js_wrapper.default_runfiles,
@@ -74,8 +57,6 @@ def _compiler_impl13(ctx):
       ctx.attr.jaguar.default_runfiles,
   ).merge(
       ctx.attr.builtins.default_runfiles,
-  ).merge(
-      ctx.attr._node.default_runfiles,
   )
   
   ctx.file_action(
@@ -83,14 +64,12 @@ def _compiler_impl13(ctx):
       content="""
       #!/bin/bash
       
-      NODE=%s
       JS_MAIN=%s
       JG_MAIN=%s
       BUILTINS=%s
-      echo $NODE $JS_MAIN $JG_MAIN $BUILTINS $@
-      $NODE $JS_MAIN $JG_MAIN $BUILTINS $@
+      echo node $JS_MAIN $JG_MAIN $BUILTINS $@
+      node $JS_MAIN $JG_MAIN $BUILTINS $@
       """ % (
-          node.path,
           ctx.file.js_wrapper.path,
           ctx.file.jaguar.path,
           ctx.file.builtins.path,
@@ -106,30 +85,18 @@ old_jaguar_compiler13 = rule(
         "builtins": attr.label(allow_single_file=True),
         "jaguar": attr.label(allow_single_file=True),
         "js_wrapper": attr.label(allow_single_file=True),
-        "_node": attr.label(
-            default = Label("@org_pubref_rules_node_toolchain//:node_tool"),
-            single_file = True,
-            allow_files = True,
-            executable = True,
-            cfg = "host",
-        ),
     },
     executable = True,
 )
 
 def _compiler_impl0_14(ctx):
-  node = ctx.executable._node
-  
   runfiles = ctx.runfiles(files=[
       ctx.file.jaguar,
-      node,
       ctx.file.builtins,
   ]).merge(
       ctx.attr.jaguar.default_runfiles,
   ).merge(
       ctx.attr.builtins.default_runfiles,
-  ).merge(
-      ctx.attr._node.default_runfiles,
   )
   
   ctx.file_action(
@@ -137,13 +104,11 @@ def _compiler_impl0_14(ctx):
       content="""
       #!/bin/bash
       
-      NODE=%s
       JG_MAIN=%s
       BUILTINS=%s
       pwd
-      $NODE $JG_MAIN $BUILTINS $@
+      node $JG_MAIN $BUILTINS $@
       """ % (
-          node.path,
           ctx.file.jaguar.path,
           ctx.file.builtins.path,
       ),
@@ -157,30 +122,18 @@ jaguar_compiler0_14 = rule(
     attrs={
         "builtins": attr.label(allow_single_file=True),
         "jaguar": attr.label(allow_single_file=True),
-        "_node": attr.label(
-            default = Label("@org_pubref_rules_node_toolchain//:node_tool"),
-            single_file = True,
-            allow_files = True,
-            executable = True,
-            cfg = "host",
-        ),
     },
     executable = True,
 )
 
 def _compiler_impl0_15(ctx):
-  node = ctx.executable._node
-  
   runfiles = ctx.runfiles(files=[
       ctx.file.jaguar,
-      node,
       ctx.file.builtins,
   ]).merge(
       ctx.attr.jaguar.default_runfiles,
   ).merge(
       ctx.attr.builtins.default_runfiles,
-  ).merge(
-      ctx.attr._node.default_runfiles,
   )
   
   ctx.file_action(
@@ -188,13 +141,13 @@ def _compiler_impl0_15(ctx):
       content="""
       #!/bin/bash
       
-      NODE=%s
       JG_MAIN=%s
       BUILTINS=%s
-      pwd
-      $NODE $JG_MAIN --builtins=$BUILTINS $@
+      ls compiler
+      CMD="node $JG_MAIN --builtins=$BUILTINS $@"
+      echo $CMD
+      $CMD
       """ % (
-          node.path,
           ctx.file.jaguar.path,
           ctx.file.builtins.path,
       ),
@@ -208,13 +161,6 @@ jaguar_compiler0_15 = rule(
     attrs={
         "builtins": attr.label(allow_single_file=True),
         "jaguar": attr.label(allow_single_file=True),
-        "_node": attr.label(
-            default = Label("@org_pubref_rules_node_toolchain//:node_tool"),
-            single_file = True,
-            allow_files = True,
-            executable = True,
-            cfg = "host",
-        ),
     },
     executable = True,
 )

@@ -1,7 +1,8 @@
 console.log(process.cwd())
 var cache = {}
 function _require(f) {
-  return cache[f] || require(f == "./builtins.js" ? process.cwd() + "/" + "compiler/builtins.js" : f);
+    //return cache[f] || require(f == "./builtins.js" ? process.cwd() + "/" + "compiler/builtins.js" : f);
+    return cache[f] || require(f == "./builtins.js" ? process.cwd() + "/" + process.argv[2].substring(11) : f);
 }
 (function() {var writeFile = (_require("./builtins.js")).writeFile;
 var readFile = (_require("./builtins.js")).readFile;

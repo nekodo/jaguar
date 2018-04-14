@@ -26,7 +26,7 @@ def _js_library_impl(ctx):
       executable=compiler,
   )
   runfiles = ctx.runfiles(files=[ctx.attr.compiler[CompilerInfo].builtins])
-  return [DefaultInfo(runfiles=runfiles)]bazel --versio
+  return [DefaultInfo(runfiles=runfiles)]
 
 jaguar_js_library = rule(
     implementation=_js_library_impl,
@@ -103,7 +103,7 @@ def _jaguar_compiler(name, builtins, jaguar):
 def _compiler_impl(ctx):
   print(ctx.file.jaguar.path)
   binary_runfiles = action_node_binary(
-    ctx, ctx.attr._node, ctx.attr.jaguar, ctx.outputs.executable, ["--builtins=%s" % (ctx.file.builtins.path)])
+    ctx, ctx.attr.jaguar, ctx.outputs.executable, ["--builtins=%s" % (ctx.file.builtins.path)])
   
   runfiles = ctx.runfiles(files=[
       ctx.file.builtins,
@@ -120,13 +120,6 @@ jaguar_compiler = rule(
     attrs={
         "builtins": attr.label(allow_single_file=True),
         "jaguar": attr.label(allow_single_file=True),
-        "_node": attr.label(
-            default = Label("@org_pubref_rules_node_toolchain//:node_tool"),
-            single_file = True,
-            allow_files = True,
-            executable = True,
-            cfg = "host",
-        ),
     },
     executable = True,
 )
