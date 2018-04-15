@@ -71,6 +71,8 @@ printExprTyped typed e =
               'let'
               (indent (concatMap (printDef typed) ds))))
           (indent (printExpr e))
+      New _ n xs ->
+        push n (indent (concatMap (printExprTyped typed) xs))
     printT e = let
       t = getType e
       in printType t

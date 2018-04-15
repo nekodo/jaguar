@@ -5,50 +5,112 @@ import {printType, printTypeBound, reallyPrintExpr} from '//compiler/printer.jg'
 import {mkConFun} from '//compiler/adt.jg'
 
 declassModule ms m = case m of
-  Module ann fn is dt cs ins ds -> let 
-    //_ = debug '============== declassing ==================='
-    isi = foldl (rewriteImportedInstances ms) (Pair [] []) (zipWithIndex is)
-    is2 = fst isi
-    importedInstances = snd isi
-    classesAsData = map rewriteClassToData cs
-    classFuns = concat classesAsData (concatMap rewriteClassToFun cs)
-    availableInstances = 
-      concat
-        importedInstances
-        (map (\p -> case p of Pair ix i -> Pair (instanceName ix i) (instanceToTypeBound i)) (zipWithIndex ins))
-    env = foldl (\env b -> case b of Pair v e -> set v (getType e) env) (importsToTypeEnv ms is) (concat classFuns ds)
-    splitData d = case (lookup 'data' (annOf (snd d))) of
-      Nothing -> Right d
-      Just _ -> Left d
-    sds = splitEither (map splitData ds)
-    ds2 = map (\d -> Pair (fst d) (rewriteExpr availableInstances env (snd d))) (snd sds)
-    instancesAsDefs = map (\p -> case p of Pair n i -> rewriteInstance availableInstances env n i) (zipWithIndex ins)
-    in Module ann fn is2 dt [] [] (concat (fst sds) (concat classFuns (concat instancesAsDefs ds2)))
+  Module ann fn imps dt cs ins ds -> let 
+    // Materialize instances from import modules as reified instance object imports.
+    _isi = foldl (rewriteImportedInstances ms) (Pair [] []) (zipWithIndex imps)
+    impsWithImportedInstances = fst _isi
+    importedInstances = snd _isi
 
-rewriteImportedInstances ms isi ixi = case isi of
-  Pair is ibs -> case ixi of
-    Pair imix (ImportOpen ann f ns) -> case (get f ms) of
-      ModuleInterface _ cs bs -> case (foldl (rewriteImportedBound imix) (Pair [] []) (zipWithIndex bs)) of
-        Pair nas nbs -> let
-          cns = map (\n -> Pair n n) (concatMap (\c -> case c of Class _ n _ bs -> enqueue (className n) (map fst bs)) cs)
-          in Pair (push (ImportOpen ann f (concat ns (concat nas cns))) is) (concat ibs nbs)
+    // Translate class declarations 
+    classFuns = concat
+      (map mkClassDictConstructor cs)
+      (concatMap mkClassDictAccessors cs)
 
-rewriteImportedBound imix nbs ib = case nbs of
-  Pair ns bs -> case ib of
-    Pair inix b -> let
-      symbol = instanceName2 inix b
-      alias = instanceNameFromImport imix inix b
-      in Pair (push (Pair symbol alias) ns) (push (Pair alias b) bs)
+    // Find all instances visible in this module.
+    // List of pairs of (instance name, type bound)
+    availableInstances = concat
+      importedInstances
+      (map
+        (\p -> case p of Pair ix i -> Pair (instanceName ix i) (instanceToTypeBound i))
+        (zipWithIndex ins))
 
-// data type with a field for each function
-rewriteClassToData c = case c of
-  Class _ n v _  -> let
+    // Construct the environment, i.e. map of (name -> type)
+    env = let
+      importedSymbols = importsToTypeEnv ms imps
+      localBindings = concat classFuns ds
+      in foldl
+        (\env b -> case b of Pair v e -> set v (getType e) env)
+        importedSymbols
+        localBindings
+
+    // We currently do not support type classes in ADT.
+    // Furthermore, we want the class funs to appear after ADT defs.
+    // For that reason we will separate our defs.
+    _sds = let
+      splitData d = case (lookup 'data' (annOf (snd d))) of
+        Nothing -> Right d
+        Just _ -> Left d
+      in splitEither (map splitData ds)
+    adtDs = fst _sds
+    nonAdtDs = snd _sds
+
+    // Rewrite all expressions.
+    declassedDs = map
+      (\d -> Pair (fst d) (rewriteExpr availableInstances env (snd d)))
+      nonAdtDs
+
+    // Rewrite instances as class dict instantiations.
+    instancesAsDicts = map
+      (\p -> case p of Pair n i -> rewriteInstance availableInstances env n i)
+      (zipWithIndex ins)
+
+    // Put it all together in some reasonable order and return.
+    finalDs = concat adtDs (concat classFuns (concat instancesAsDicts declassedDs))
+    in Module ann fn impsWithImportedInstances dt [] [] finalDs
+
+// Adds explicit imports for instances and classes provided by the imported module.
+// Also gathers the imported instances as (local name, type bound).
+rewriteImportedInstances ms _isi _ixi = case _isi of
+  Pair outImps outIns -> case _ixi of
+    Pair ix (ImportOpen ann f ns) -> case (get f ms) of
+      ModuleInterface _ cls bs -> let
+        _impIns = foldl (rewriteImportedBound ix) (Pair [] []) (zipWithIndex bs)
+        in case _impIns of
+          Pair importedInsNames importedBounds -> let
+            importedClassNames = map
+              (\n -> Pair n n)
+              (concatMap
+                (\c -> case c of Class _ n _ bs -> enqueue (className n) (map fst bs))
+                cls)
+            in Pair
+              (push
+                (ImportOpen ann f (concat ns (concat importedInsNames importedClassNames)))
+                outImps)
+              (concat outIns importedBounds)
+
+// Translates a specifc imported instance (a TypeBound) into a pair
+// of (external symbol + internal name for imports, internal name + bound).
+// Confusingly, we use the order of imports and order of instances in the
+// import's API to construct the names.
+// TODO(kuro): Switch to a better way. Maybe explicit names for instances in APIs
+// and unique ids for local bindings?
+rewriteImportedBound impIx _nbs _ib = case _nbs of
+  Pair outImps outIns -> case _ib of
+    Pair insIx bound -> let
+      symbol = instanceName2 insIx bound
+      alias = instanceNameFromImport impIx insIx bound
+      in Pair
+        (push (Pair symbol alias) outImps)
+        (push (Pair alias bound) outIns)
+
+// Translates the class declaration into a data type constructor function.
+// Will be used to create the class dictionaries.
+mkClassDictConstructor c = case c of
+  Class _ n tvn _  -> let
+    // Construct the class name.
     name = className n
-    ps = map snd (sort (classToBindings c))
-    t = TApp emptyAnn (TConst emptyAnn n) (TVar emptyAnn v)
-    in mkConFun Nothing t [v] name ps
+    // Get the bindings with types from the class def, sort to ensure stable
+    // mapping (because ADTs have no field labels) then get the types.
+    params = map snd (sort (classToBindings c))
+    // All classes have the form (ClassName tvar)
+    type = TApp emptyAnn (TConst emptyAnn n) (TVar emptyAnn tvn)
+    // Make the constructor function, note no tag since there is only one variant.
+    in mkConFun Nothing type [tvn] name params
 
-rewriteClassToFun c = case c of
+// Translates the class memebers into accessor functions which
+// take the class dict as the first arg, unpack the class member and return it.
+// Marks the accessors as exported as classes are implicitly.
+mkClassDictAccessors c = case c of
   Class _ _ _ bs -> let
     name = className2 c
     bsForPat = let
@@ -59,7 +121,9 @@ rewriteClassToFun c = case c of
       Pair n t -> Pair n (setType t (Lam (setAnn 'export' (AnnExport n) emptyAnn) v (Case emptyAnn (Var emptyAnn v) [Pair (PData emptyAnn name bsForPat) (Var emptyAnn (n ++ '_'))])))
     in map rewrite (classToBindings c)
 
-// instantiate the data type with the lambdas in the correct positions
+// Translates the instance into a class dict by calling the constructor.
+// We sort the bindings by name (the need to match what the constructor is doing).
+// We also mark this function as exported as all instances are implicitly exported.
 rewriteInstance is env ix i = case i of
   Instance _ n _ bs -> let
     name = instanceName ix i
@@ -67,66 +131,85 @@ rewriteInstance is env ix i = case i of
     e = foldl (App emptyAnn) (Var emptyAnn (className n)) args
     in Pair name (withAnn (setAnn 'export' (AnnExport name) emptyAnn) e)
 
+// State of the rewriter which keeps track of:
+// - environment
+// - available instance bounds
 data State = S (Array (Record Type)) (Array (Pair String TypeBound)) Number
 getEnv s = case s of
   S env _ _ -> env
 setEnv env s = case s of
   S _ is n -> S env is n
 
-rewriteTopExpr is env e = let
-  _ = debug (reallyPrintExpr True e)
-  in rewriteExpr is env e
-
 // 1. if type has a bound then wrap it in lambdas to pass the correct instances
 // 2. a reference to a var with a bound is replaced by a App of the instance
 //    dict to the var
 rewriteExpr is env e = let
-  //_ = debug ('--------- rewrite of ' ++ printType (getType e))
-  fromEnv n envs = let
-    env = head envs
-    in case (has n env) of
-      False -> error ('no ' ++ n ++ ' in env ' ++ jsonStringify (keys env))
-      True -> get n env
-  dropInstance v a = case a of
-    S env is n -> S env (filter (\p -> fst p /= v) is) n
-  addInstance b a = case a of
-    S env is n -> let
-      name = instanceNameFromBound n b
-      in Pair (S env (push (Pair name b) is) (n + 1)) name
-  findMatching b a = case a of
-    S _ is _ -> case (find (\p -> case p of Pair _ ib -> satisfiesBound ib b) is) of
-      Just (Pair n _) -> n
-      _ -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b)
-  requiredInstances tv td = case (addPrefix 'ins$' td) of
-    TForall _ _ bs t -> let
-      subs = unify (\s -> 'declasser: ' ++ s) tv t
-      in map (applySubsBound subs) bs
-    _ -> []
-  rewriteBounds a e = case (getType e) of
-    TForall _ _ bs t -> case (length bs > 0) of
-      False -> Pair a e
-      True -> let
-        rewritten = foldr rewriteBound (Pair a (setType t e)) (zipWithIndex bs)
-        in mapSnd (\re -> withAnn (copyAnn ['export'] (annOf e)) re) rewritten
-    _ -> Pair a e
-  rewriteBound ae ib = case ib of
-    Pair ix b -> case ae of
-      Pair a e -> case (addInstance b a) of
-        Pair a name -> Pair a (Lam emptyAnn name e)
+  // On the descent when we find a forall with bounds then replace the bounds
+  // with explicit lambdas and add the new locally available instances to the state.
+  boundsToLam a e = let
+    addInstance b a = case a of
+      S env is n -> let
+        name = instanceNameFromBound n b
+        in Pair (S env (push (Pair name b) is) (n + 1)) name
+    rewriteBound ae ib = case ib of
+      Pair ix b -> case ae of
+        Pair a e -> case (addInstance b a) of
+          Pair a name -> Pair a (Lam emptyAnn name e)
+    in case (getType e) of
+      TForall _ _ bs t -> case (length bs > 0) of
+        False -> Pair a e
+        True -> let
+          rewritten = foldr rewriteBound (Pair a (setType t e)) (zipWithIndex bs)
+          in mapSnd (\re -> withAnn (copyAnn ['export'] (annOf e)) re) rewritten
+      _ -> Pair a e
   rewriteVar a e = case e of
     Var _ v -> case (getType e) of
+      // Not 100% why this was added, but it seems necessary.
+      // Might be for fully polymorphic invocations of data constructors.
       TForall _ _ _ _ -> Pair a e
       tv -> let
+        // We might be dealing with a class accessor.
+        fromEnv n envs = let
+          env = head envs
+          in case (has n env) of
+            False -> error ('no ' ++ n ++ ' in env ' ++ jsonStringify (keys env))
+            True -> get n env
+        findMatching b a = case a of
+          S _ is _ -> let
+            matching = filter (\p -> case p of Pair _ ib -> satisfiesBound ib b) is
+            in case (length matching) of
+              0 -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b)
+              _ -> fst (getIx 0 matching)
+              //_ -> error ('declasser found more than 1 satisfying instance for ' ++ printTypeBound b ++ ' ::: ' ++ (
+              //        let
+              //          a = getIx 0 matching
+              //          b = getIx 1 matching
+              //          in fst a ++ ' : ' ++ printTypeBound (snd a) ++ ', ' ++ fst b ++ ' : ' ++ printTypeBound (snd b)
+              //  ))
+        requiredInstances tv td = case (addPrefix 'ins$' td) of
+          TForall _ _ bs t -> let
+            subs = unify (\s -> 'declasser: ' ++ s) tv t
+            in map (applySubsBound subs) bs
+          _ -> []
         t = fromEnv v (getEnv a)
-        //_ = debug (v ++ ' :: ' ++ printType tv ++ ' [' ++ printType t ++ ']')
         is = requiredInstances tv t
         mis = map (\b -> findMatching b a) is
-        //_2 = debug (mis)
         e2 = foldl (\e v -> App emptyAnn e (Var emptyAnn v)) e mis
         in Pair a e2
-    Lam _ p _ -> Pair (dropInstance p a) e
+    // When exiting a lambda drop the associated instance.
+    // This will be called whether a lambda is froma type bound or not.
+    // We rely on our constructed names being unique.
+    Lam _ p _ -> let
+      dropInstance v a = case a of
+        S env is n -> S env (filter (\p -> fst p /= v) is) n
+      in Pair (dropInstance p a) e
     _ -> Pair a e
-  in snd (breakableDownAndUpWithEnv getEnv setEnv (\a e -> Left (rewriteBounds a e)) rewriteVar (S [env] is 0) e)
+  in snd (breakableDownAndUpWithEnv
+    getEnv
+    setEnv
+    (\a e -> Left (boundsToLam a e))
+    rewriteVar
+    (S [env] is 0) e)
 
 addPrefix p t = case t of
   TForall ann vs bs t -> let

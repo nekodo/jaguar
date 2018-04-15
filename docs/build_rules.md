@@ -22,7 +22,7 @@ jaguar_library(
 3. Merge the typed modules from srcs.
 4. Output the combined typed IR.
 
-jaguar_js_binary(
+jaguar_js_bundle(
   srcs = [],
   deps = [],
   builtins = "", // defaults to //compiler/builtins.js
@@ -38,7 +38,7 @@ jaguar_binary(
   builtins = "", // defaults to //compiler/builtins.js
   main_module = "",
 )
-1. Pass input through jaguar_js_binary()
+1. Pass input through jaguar_js_bundle()
 2. Wrap in node_binary
 
 # Optimization
