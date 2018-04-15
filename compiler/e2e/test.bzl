@@ -1,4 +1,4 @@
-load("//compiler:jaguar.bzl", "jaguar_js_library")
+load("//compiler:jaguar.bzl", "jaguar_js_bundle")
 
 def _module_diff_test_impl(ctx):
   expected = ctx.attr.expected
@@ -50,7 +50,7 @@ module_diff_test = rule(
 
 
 def compiler_diff_test(name, expected, actual):
-  jaguar_js_library(
+  jaguar_js_bundle(
       name = "%s_actual_stage1" % name,
       main = actual,
       srcs = [
@@ -71,7 +71,7 @@ def compiler_diff_test(name, expected, actual):
       expected = expected,
   )
   
-  jaguar_js_library(
+  jaguar_js_bundle(
       name = "%s_actual_stage2" % name,
       main = actual,
       srcs = [
@@ -92,7 +92,7 @@ def compiler_diff_test(name, expected, actual):
       expected = expected,
   )
   
-  jaguar_js_library(
+  jaguar_js_bundle(
       name = "%s_actual_opt" % name,
       main = actual,
       srcs = [
@@ -105,7 +105,7 @@ def compiler_diff_test(name, expected, actual):
         "//compiler:graph.jg",
       ],
       compiler = "//compiler:stage2",
-      args = ["--opt"],
+      compiler_args = ["--opt"],
   )
   
   module_diff_test(

@@ -11,13 +11,15 @@ def action_node_binary(ctx, main_attr, output, args=[]):
       output=output,
       content="""
       #!/bin/bash
-      
-      MAIN=%s
+
+      RUNFILES=$0.runfiles/__main__
+
+      MAIN=$RUNFILES/%s
       ARGS=%s
       echo "node --use_strict --harmony $MAIN $ARGS $@"
       node --use_strict --harmony $MAIN $ARGS $@
       """ % (
-          main.path,
+          main.short_path,
           " ".join(args),
       ),
       executable=True,

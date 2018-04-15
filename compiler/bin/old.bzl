@@ -1,4 +1,4 @@
-load("//compiler:jaguar.bzl", "CompilerInfo")
+CompilerInfo = provider()
 
 def _old_compiler_impl(ctx):
   runfiles = ctx.runfiles(files=[

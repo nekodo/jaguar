@@ -1,6 +1,6 @@
 # Compiled compiler releases.
 
-load("//compiler/bin:old.bzl", "jaguar_compiler0_15")
+load("//compiler:node.bzl", "node_binary")
 
 alias(
     name = "latest",
@@ -8,8 +8,7 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-jaguar_compiler0_15(
+node_binary(
     name = "v0.33",
-    jaguar = "c0.33.jg.js",
-    builtins =  "builtins0.24.js",
+    main = "c0.33.jg.js",
 )
