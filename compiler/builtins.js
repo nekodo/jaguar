@@ -440,10 +440,14 @@ builtins.stringReplaceChar = a => b => s => {
   return r.join('');
 }
 
+builtins.stringSplit = x => s => s.split(x);
+
 builtins.currentTimeMs = unused => {
   const [secs, nanos] = process.hrtime();
   return secs * 1000 + nanos / 1000000;
 }
+
+// === INLINE CUT ===
 
 builtins.$TYPE = {
     'writeFile': 'String -> String -> Bool',
@@ -509,6 +513,7 @@ builtins.$TYPE = {
     strHashCode: 'String -> Number',
     bitNot: 'Number -> Number',
     stringReplaceChar: 'String -> String -> String -> String',
+    stringSplit: 'String -> String -> Array String',
     currentTimeMs: 'Unit -> Number',
 };
 

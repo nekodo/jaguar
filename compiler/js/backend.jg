@@ -4,15 +4,20 @@ import {jsExprToString, jsStmtToString} from '//compiler/js/printer.jg'
 import {rewriteStmt} from '//compiler/js/deadCode.jg'
 
 compileModule builtinsPath m = let
+  fullBuiltins = readFile builtinsPath
+  wrappedBuiltins =
+    'const $$builtins = (function() {\n const module = {};\n' ++
+      (fullBuiltins) ++
+        ';\n return builtins})();\n'
   js = join
     (map (jsStmtToString 0)
       (concatMap rewriteStmt (moduleToJs m)))
     ';\n'
   wrapModule m =
     '(function() {' ++ js ++ '\nmodule.exports = exports;})();'
-  requireFun = 'var cache = {}\n' ++
+  requireFun =
       'function _require(f) {\n' ++
-        '  return cache[f] || require(f == "./builtins.js" ? process.cwd() + "/" + "' ++ builtinsPath ++ '" : f);\n' ++
+        '  return f == "./builtins.js" ? $$builtins : require(f);\n' ++
           '}\n'
   runStmt = 'if (module.exports.main)module.exports.main(process.argv)'
-  in requireFun ++ wrapModule m ++ runStmt
+  in wrappedBuiltins ++ requireFun ++ wrapModule m ++ runStmt
