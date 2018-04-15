@@ -28,6 +28,10 @@ printCodeLoc l = case l of
   AnnCodeLoc file line col ->
     'in ' ++ file ++ ' at line ' ++ intToString (line + 1) ++ ', column ' ++ intToString (col + 1)
 
+exprLoc e = case (getAnnCodeLoc $ annOf e) of
+  Nothing -> 'in unknown location'
+  Just l -> printCodeLoc l
+
 data Expr =
   Var (Map String Ann) String
   | Const (Map String Ann) CVal
@@ -88,6 +92,7 @@ equivBound a b = case a of
 data Type =
   TConst (Map String Ann) String
   | TVar (Map String Ann) String
+  | TSkolem (Map String Ann) String
   | TApp (Map String Ann) Type Type
   | TRow (Map String Ann) (Array (Pair Type Type)) (Maybe Type)
   | TBot
@@ -100,6 +105,9 @@ equivType a b = case a of
     _ -> False
   TVar _ v -> case b of
     TVar _ v2 -> v == v2
+    _ -> False
+  TSkolem _ v -> case b of
+    TSkolem _ v2 -> v == v2
     _ -> False
   TApp _ f a -> case b of
     TApp _ f2 a2 -> equivType f f2 && equivType a a2

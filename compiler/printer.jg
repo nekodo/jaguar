@@ -19,6 +19,7 @@ printType t =
   in case t of
     TConst _ t -> t
     TVar _ v -> v
+    TSkolem _ v -> '~' ++ v
     TBot -> '~bottom~'
     TUnknown -> '?'
     TApp _ (TApp _ (TConst _ '->') a) b ->

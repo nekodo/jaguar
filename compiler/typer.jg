@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {printType, printTypeBound, reallyPrintExpr} from '//compiler/printer.jg'
+import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
 
 // --------------- Subs -------------------------------
@@ -110,7 +110,7 @@ getBindings env = case env of
 
 addBinding n t env = case env of
   IEnv bs ts fvs -> let
-    u = (setUnion fvs (freeTVars t))
+    u = let ftv = freeTVars t in setUnion fvs ftv
     in IEnv (insert n t bs) ts u
 
 addBindings nbs env = case env of
@@ -126,6 +126,17 @@ getInstances env = case env of
   IEnv _ ts _ -> ts
 
 // ------------ Inference Engine ----------------------
+
+freeTVars t = case t of
+  TVar _ v -> setAdd v emptySet
+  TBot -> emptySet
+  TUnknown -> emptySet
+  TConst _ c -> emptySet
+  TSkolem _ _ -> emptySet
+  TForall _ vs bs t -> 
+    foldl (\s v -> setRemove v s) (foldl setUnion (freeTVars t) (map freeTVarsInBound bs)) vs
+  TApp _ f a -> setUnion (freeTVars f) (freeTVars a)
+  TRow _ ms r -> foldl setUnion (justOr emptySet $ fmap freeTVars r) (map (\m -> setUnion (freeTVars (fst m)) (freeTVars (snd m))) ms)
 
 f1 a b = TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b
 
@@ -182,7 +193,15 @@ unify ef a b = let
   err a b = error
     (ef ('cannot unify ' ++ printType a ++ ' with ' ++ printType b))
   in case a of
-    TVar _ v -> bind v b
+    TVar _ v -> case b of
+      //TSkolem _ _ -> err a b
+      _ -> bind v b
+    TSkolem _ va -> case b of
+      TSkolem _ vb -> case (va == vb) of
+        True -> emptySubs
+        False -> err a b
+      TVar _ v -> bind v a
+      _ -> err a b
     TConst _ ca -> case b of
       TConst _ cb -> case (ca == cb) of
         True -> emptySubs
@@ -204,16 +223,6 @@ unify ef a b = let
       TRow _ ms2 (Nothing) -> err a b
       _ -> err a b
     _ -> err a b
-
-freeTVars t = case t of
-  TVar _ v -> setAdd v emptySet
-  TBot -> emptySet
-  TUnknown -> emptySet
-  TConst _ c -> emptySet
-  TForall _ vs bs t -> 
-    foldl (\s v -> setRemove v s) (foldl setUnion (freeTVars t) (map freeTVarsInBound bs)) vs
-  TApp _ f a -> setUnion (freeTVars f) (freeTVars a)
-  TRow _ ms r -> foldl setUnion (justOr emptySet $ fmap freeTVars r) (map (\m -> setUnion (freeTVars (fst m)) (freeTVars (snd m))) ms)
 
 freeTVarsInBound b = case b of
   TCBound _ _ t -> freeTVars t
@@ -305,13 +314,20 @@ inferSccDefs env ds = let
   generalizeDef env d = case d of
       Pair n e -> case (getType e) of
         TForall _ _ _ _ -> ret d
-        t -> generalize env t >>= \t -> ret (Pair n (setType (t) e))
+        t -> generalize env t >>= \t -> ret (Pair n (setType (t) (skolemize t e)))
   in foldM generateTVar env ds >>= \env2 ->
     mapM (inferDef env2) ds >>= \ds2 ->
       mapM (unifyDef env2) ds2 >>
         mapM applySubsDef ds2 >>= \ds3 ->
           dropSatisfiedBounds env >>
             mapM (generalizeDef env) ds3
+
+skolemizeSubs =
+  foldl (\subs v -> addSub (\s -> 'skolemize: ' ++ s) v (TSkolem emptyAnn v) subs) emptySubs
+
+skolemize t e = case t of
+  TForall _ vs _ _ -> applySubsE (skolemizeSubs vs) e
+  _ -> e
 
 dropSatisfiedBounds env = gets >>= \ctx -> let
   is = getInstances env
@@ -459,6 +475,9 @@ getTypedExports m = case m of
 
 satisfies a b = case a of
   TVar _ _ -> True
+  TSkolem _ va -> case b of
+    TSkolem _ vb -> va == vb
+    _ -> False
   TConst _ c -> case b of
     TConst _ c2 -> c == c2
     _ -> False

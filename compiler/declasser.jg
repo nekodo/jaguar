@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {f1, classToBindings, unify, applySubs, applySubsBound, instanceToTypeBound, satisfiesBound, emptySubs, addSub} from '//compiler/typer.jg'
+import {f1, classToBindings, unify, applySubs, applySubsBound, instanceToTypeBound, satisfiesBound, emptySubs, addSub, skolemizeSubs} from '//compiler/typer.jg'
 import {printType, printTypeBound, reallyPrintExpr} from '//compiler/printer.jg'
 import {mkConFun} from '//compiler/adt.jg'
 
@@ -155,11 +155,13 @@ rewriteExpr is env e = let
       Pair ix b -> case ae of
         Pair a e -> case (addInstance b a) of
           Pair a name -> Pair a (Lam emptyAnn name e)
+    skolemizeBound vs b = applySubsBound (skolemizeSubs vs) b
+    skolemizeType vs t = applySubs (skolemizeSubs vs) t
     in case (getType e) of
-      TForall _ _ bs t -> case (length bs > 0) of
+      TForall _ vs bs t -> case (length bs > 0) of
         False -> Pair a e
         True -> let
-          rewritten = foldr rewriteBound (Pair a (setType t e)) (zipWithIndex bs)
+          rewritten = foldr rewriteBound (Pair a (setType (skolemizeType vs t) e)) (zipWithIndex (map (skolemizeBound vs) bs))
           in mapSnd (\re -> withAnn (copyAnn ['export'] (annOf e)) re) rewritten
       _ -> Pair a e
   rewriteVar a e = case e of
@@ -178,14 +180,9 @@ rewriteExpr is env e = let
           S _ is _ -> let
             matching = filter (\p -> case p of Pair _ ib -> satisfiesBound ib b) is
             in case (length matching) of
-              0 -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b)
-              _ -> fst (getIx 0 matching)
-              //_ -> error ('declasser found more than 1 satisfying instance for ' ++ printTypeBound b ++ ' ::: ' ++ (
-              //        let
-              //          a = getIx 0 matching
-              //          b = getIx 1 matching
-              //          in fst a ++ ' : ' ++ printTypeBound (snd a) ++ ', ' ++ fst b ++ ' : ' ++ printTypeBound (snd b)
-              //  ))
+              0 -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b ++ ' ' ++ exprLoc e)
+              1 -> fst (getIx 0 matching)
+              _ -> error ('declasser found more than 1 satisfying instance for ' ++ printTypeBound b  ++ ' ' ++ exprLoc e)
         requiredInstances tv td = case (addPrefix 'ins$' td) of
           TForall _ _ bs t -> let
             subs = unify (\s -> 'declasser: ' ++ s) tv t
