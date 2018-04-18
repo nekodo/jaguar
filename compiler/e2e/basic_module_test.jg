@@ -72,7 +72,7 @@ instance Foo Number where
 
 instance Foo String where
   yay n = n
-  double n = Pair n 'foo'
+  double n = (n, 'foo')
 
 typeClass = let
   x = yay 'pon'

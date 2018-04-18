@@ -134,7 +134,18 @@ exprP = Parser (\s -> applyParser opP s)
 arrayLitP = pure (\ann xs -> New ann 'Array' xs) <*>
   locP <*> (symP '[' |> sepBy exprP (symP ',') <| symP ']')
 
-simpleExprP = varP <|> constP <|> arrayLitP <|> parenP exprP
+tupleLitP = let
+  f ann e es = let
+    cons = case (length es) of
+      1 -> 'Pair'
+      2 -> 'Tuple3'
+      3 -> 'Tuple4'
+      4 -> 'Tuple5'
+      5 -> 'Tuple6'
+    in foldl (App ann) (App ann (Var ann cons) e) es
+  in pure f <*> locP <*> (symP '(' |> (exprP <| symP ',')) <*> (sepBy1 exprP (symP ',') <| symP ')')
+
+simpleExprP = varP <|> constP <|> arrayLitP <|> tupleLitP <|> parenP exprP
 
 appP = pure (foldl (\f a -> App (withLocOf f) f a)) <*>
   (varP <|> parenP exprP) <*-> many simpleExprP
@@ -177,7 +188,7 @@ defP = pure (\l n ps e -> Pair n (foldr (\e p -> Lam l p e) e ps)) <*>
 letP = pure Let <*>
   locP <*> (reservedP 'let' |-> some defP) <*> (reservedP 'in' |-> exprP)
 
-primaryExprP = appP <|> constP <|> lamP <|> caseP <|> letP <|> arrayLitP
+primaryExprP = appP <|> constP <|> lamP <|> caseP <|> letP <|> arrayLitP <|> tupleLitP
 
 opP = pure (\e oes -> foldl (\a lob -> case lob of Pair l (Pair op b) -> App l (App l (Var l op) a) b) e oes) <*>
   primaryExprP <*-> many (pure (\l op e -> Pair l (Pair op e)) <*> locP <*> anyOpP <*> primaryExprP)
