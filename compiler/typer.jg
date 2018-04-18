@@ -109,9 +109,7 @@ getBindings env = case env of
   IEnv bs _ _ -> bs
 
 addBinding n t env = case env of
-  IEnv bs ts fvs -> let
-    u = let ftv = freeTVars t in setUnion fvs ftv
-    in IEnv (insert n t bs) ts u
+  IEnv bs ts fvs -> IEnv (insert n t bs) ts (setUnion fvs (freeTVars t))
 
 addBindings nbs env = case env of
   IEnv bs ts fvs -> IEnv (mergeTrie bs nbs) ts (foldTrie (\fvs _ t -> setUnion fvs (freeTVars t)) fvs nbs)
@@ -145,22 +143,6 @@ mkTForall ann vs bs t = let
     True -> bs
     False -> push b bs
   in TForall ann vs (foldl f [] bs) t
-
-instantiateM_ t = gets >>= \ctx -> let
-  mkvar cs v = case cs of
-    Pair ctx subs -> case (newTVar ctx) of
-      Pair ctx2 tv -> Pair ctx2 (addSub (\s -> 'instantiate: ' ++ s) v tv subs)
-  andRet t2 = let
-    _ = 9//debug ('instantiated ' ++ printType t ++ ' to ' ++ printType t2)
-    in ret t2
-  in case t of
-    TForall _ vs bs t -> case (foldl mkvar (Pair ctx emptySubs) vs) of
-      Pair ctx2 subs -> let
-        t2 = applySubs subs t
-        bs2 = map (applySubsBound subs) bs
-        ctx3 = foldl (\ctx b -> addBound b ctx) ctx2 bs2
-        in sets ctx3 >> andRet t2
-    _ -> andRet t
 
 instantiateM t = gets >>= \ctx -> case (instantiate ctx (\ctx _ -> newTVar ctx) t) of
   Pair (Pair t bs) ctx ->
