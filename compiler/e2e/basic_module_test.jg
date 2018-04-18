@@ -27,9 +27,12 @@ ponyName = getName (Pony 'pink' 'Fluttershy')
 nestedMatch = case (Pair (Kitten 'Fluffbun') 7) of
   Pair k 8 -> 2
   Pair (Pony c n) 7 -> 3
-  Pair (Kitten n) 8 -> 4
+  (Kitten n, 8) -> 4
   Pair (Kitten 'Buba') 7 -> 5
   Pair (Kitten 'Fluffbun') 7 -> 6
+
+tupleMatch = case (3, 4, (7, 6)) of
+  (a, b, (c, d)) -> ((a * b) + c) - d
 
 // Simple let.
 letExpr =

@@ -171,10 +171,21 @@ strP = parseToken (\t -> case t of
 
 pconstP = pcnumP <|> pcstrP
 
+ptupleP = let
+  f ann p ps = let
+    cons = case (length ps) of
+      1 -> 'Pair'
+      2 -> 'Tuple3'
+      3 -> 'Tuple4'
+      4 -> 'Tuple5'
+      5 -> 'Tuple6'
+    in PData ann cons (enqueue p ps)
+  in pure f <*> locP <*> (symP '(' |> (patP <| symP ',')) <*> (sepBy1 patP (symP ',') <| symP ')')
+
 pdataP = pure PData <*>
-  locP <*> upperCaseId <*-> many (pvarP <|> pconstP <|> parenP patP)
+  locP <*> upperCaseId <*-> many (pvarP <|> pconstP <|> ptupleP <|> parenP patP)
   
-allPatP = pvarP <|> pconstP <|> pdataP
+allPatP = pvarP <|> pconstP <|> pdataP <|> ptupleP
 
 ofP = pure Pair <*>
   patP <*-> (operatorP '->' |> exprP)
