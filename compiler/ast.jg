@@ -56,13 +56,13 @@ data Module = Module
   (Array Import)             // imports
   (Array Data)               // ADT definitions
   (Array Class)              // type clas definitions
-  (Array Instance)           // type clas instances
+  (Array (Pair String Instance))           // type clas instances
   (Array (Pair String Expr)) // value definitions
 
 data ModuleInterface = ModuleInterface
   (Record Type)      // exported bindings, includes ADT constructors
   (Array Class)      // exported classes
-  (Array TypeBound)  // exported clas instances
+  (Map String TypeBound)  // exported class instances
 
 data Data = Data (Map String Ann) String (Array String) (Array DataCon)
 data DataCon = DataCon (Map String Ann) String (Array Type)
@@ -75,14 +75,14 @@ data Class = Class
 
 data Instance = Instance
   (Map String Ann)
-  String     // name
+  String     // class name
   Type       // type for which we're defining the instanc
   (Array (Pair String Expr))
 
 data TypeBound =
-  TCBound  // type clas bound
+  TCBound  // type class bound
     (Map String Ann)    // annotation
-    String // name of the type clas
+    String // name of the type class
     Type   // param
 
 equivBound a b = case a of

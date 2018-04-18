@@ -113,7 +113,7 @@ processPattern cons pm p = case p of
 requireExpr = \f -> JSCall (JSRef '_require') [JSString f]
 
 buildImports = \f ns ->
-  map (\n -> case n of Pair n a -> JSVar (opName a) (JSIndex (requireExpr f) (JSString (opName n)))) ns
+  map (\n -> case n of Pair n a -> JSConst (opName a) (JSIndex (requireExpr f) (JSString (opName n)))) ns
 
 importToJs i = case i of
   ImportOpen _ f ns -> buildImports f ns
@@ -140,7 +140,7 @@ moduleToJs m = case m of
       f p = case p of
         Pair n e -> not (isJust (getAnn 'dead' (annOf e)))
       in filter f vs
-    defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM (\v -> case v of Pair n e -> rewriteExprToStmts (JSVar (opName n)) e) vs2)
+    defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM (\v -> case v of Pair n e -> rewriteExprToStmts (JSConst (opName n)) e) vs2)
     exportDef = JSConst 'exports' (exportObject vs2)
     in push exportDef (concat imports defs)
 
@@ -151,6 +151,7 @@ opName = \op -> case op of
   '&&' -> '$and'
   '||' -> '$or'
   '++' -> '$concat'
+  'new' -> '$new'
   nonOp -> foldl (\s c -> s ++ opChar c) '' (strToArray nonOp) 
 
 opChar c = case c of

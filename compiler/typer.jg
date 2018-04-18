@@ -469,10 +469,10 @@ inferTypeModule ms m = let
       env2 = case i of
         ImportOpen _ f ns -> foldl (\env n -> case n of Pair n a -> addBinding a (get n bs) env) env ns
       env3 = foldl addClass env2 cs
-      env4 = foldl (\env i -> addInstance i env) env3 is
+      env4 = foldTrie (\env _ i -> addInstance i env) env3 is
       in env4
   addClass env c = foldl (\env b -> addBinding (fst b) (snd b) env) env (classToBindings c)
-  addIns env i = addInstance (instanceToTypeBound i) env
+  addIns env i = addInstance (instanceToTypeBound (snd i)) env
   checkForUnsatisfiedBounds d = case (getType (snd d)) of
     TForall _ _ bs t -> case t of
       TApp _ (TApp _ (TConst _ '->') _) _ -> d
@@ -489,7 +489,9 @@ inferTypeModule ms m = let
       ds2 = evalState newCtx (inferDefs env4 ds)
       ds3 = map checkForUnsatisfiedBounds ds2
       env5 = foldl (\env d -> case d of Pair n e -> addBinding n (getType e) env) env4 ds3
-      ins2 = map (inferInstance env5 (concat cs (concatMap (\i -> case (get (getFile i) ms) of ModuleInterface _ cs _ -> cs) is))) ins
+      ins2 = let
+        allCls = concat cs (concatMap (\i -> case (get (getFile i) ms) of ModuleInterface _ cs _ -> cs) is)
+        in map (mapSnd (inferInstance env5 allCls)) ins
       in Module ann fn is ts cs ins2 ds3
 
 getTypedExports m = case m of
@@ -500,7 +502,7 @@ getTypedExports m = case m of
         Nothing -> es
         Just (AnnExport n) -> set n (getType e) es
     bs = foldl collectExports empty ds
-    in ModuleInterface bs cs (map instanceToTypeBound ins)
+    in ModuleInterface bs cs (foldl (\m p -> case p of (n, i) -> insert n (instanceToTypeBound i) m) Empty ins)
 
 satisfies a b = case a of
   TVar _ _ -> True

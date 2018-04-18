@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {Success, Error} from '//compiler/parsers.jg'
+ import {Success, Error} from '//compiler/parsers.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileModule as generateJs} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
@@ -47,7 +47,7 @@ parseT s = case (parseType s '') of
 
 parseExports e = let
   bs = mapRecord (\s -> skolemizeType $ evalState newCtx (generalize emptyEnv (parseT s))) e
-  in ModuleInterface bs [] []
+  in ModuleInterface bs [] Empty
 
 instrument m = let
   instrumentDef d = case d of
@@ -109,7 +109,7 @@ main argv = let
              timed 'translate-adts' (liftPass translateAdts) >=>
                timed 'normalize-imports' normalizeImportsPass >=>
                timed 'uniquify' uniquify >=>
-               timed 'split-lets' splitLetsPass >=>
+               // timed 'split-lets' splitLetsPass >=>
                // Typing and type clas handling.
                timed 'typer' typerPass >=>
                timed 'declasser' declasserPass) >=>

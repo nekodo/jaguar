@@ -7,7 +7,7 @@ import {mkConFun} from '//compiler/adt.jg'
 declassModule ms m = case m of
   Module ann fn imps dt cs ins ds -> let 
     // Materialize instances from import modules as reified instance object imports.
-    _isi = foldl (rewriteImportedInstances ms) (Pair [] []) (zipWithIndex imps)
+    _isi = foldl (rewriteImportedInstances ms) (Pair [] []) imps
     impsWithImportedInstances = fst _isi
     importedInstances = snd _isi
 
@@ -20,9 +20,7 @@ declassModule ms m = case m of
     // List of pairs of (instance name, type bound)
     availableInstances = concat
       importedInstances
-      (map
-        (\p -> case p of Pair ix i -> Pair (instanceName ix i) (instanceToTypeBound i))
-        (zipWithIndex ins))
+      (map (mapSnd instanceToTypeBound) ins)
 
     // Construct the environment, i.e. map of (name -> type)
     env = let
@@ -52,7 +50,7 @@ declassModule ms m = case m of
     // Rewrite instances as class dict instantiations.
     instancesAsDicts = map
       (\p -> case p of Pair n i -> rewriteInstance availableInstances env n i)
-      (zipWithIndex ins)
+      ins
 
     // Put it all together in some reasonable order and return.
     finalDs = concat adtDs (concat classFuns (concat instancesAsDicts declassedDs))
@@ -60,38 +58,22 @@ declassModule ms m = case m of
 
 // Adds explicit imports for instances and classes provided by the imported module.
 // Also gathers the imported instances as (local name, type bound).
-rewriteImportedInstances ms _isi _ixi = case _isi of
-  Pair outImps outIns -> case _ixi of
-    Pair ix (ImportOpen ann f ns) -> case (get f ms) of
-      ModuleInterface _ cls bs -> let
-        _impIns = foldl (rewriteImportedBound ix) (Pair [] []) (zipWithIndex bs)
-        in case _impIns of
-          Pair importedInsNames importedBounds -> let
-            importedClassNames = map
-              (\n -> Pair n n)
-              (concatMap
-                (\c -> case c of Class _ n _ bs -> enqueue (className n) (map fst bs))
-                cls)
-            in Pair
-              (push
-                (ImportOpen ann f (concat ns (concat importedInsNames importedClassNames)))
-                outImps)
-              (concat outIns importedBounds)
-
-// Translates a specifc imported instance (a TypeBound) into a pair
-// of (external symbol + internal name for imports, internal name + bound).
-// Confusingly, we use the order of imports and order of instances in the
-// import's API to construct the names.
-// TODO(kuro): Switch to a better way. Maybe explicit names for instances in APIs
-// and unique ids for local bindings?
-rewriteImportedBound impIx _nbs _ib = case _nbs of
-  Pair outImps outIns -> case _ib of
-    Pair insIx bound -> let
-      symbol = instanceName2 insIx bound
-      alias = instanceNameFromImport impIx insIx bound
-      in Pair
-        (push (Pair symbol alias) outImps)
-        (push (Pair alias bound) outIns)
+rewriteImportedInstances ms _isi imp = case _isi of
+  Pair outImps outIns -> case imp of
+    ImportOpen ann f ns -> case (get f ms) of
+      ModuleInterface _ cls ins -> let
+        importedClassNames = map
+          (\n -> Pair n n)
+          (concatMap
+            (\c -> case c of Class _ n _ bs -> enqueue (className n) (map fst bs))
+            cls)
+        importedBounds = trieEntries ins
+        importedInsNames = map (\ni -> (fst ni, fst ni)) importedBounds
+        in Pair
+          (push
+            (ImportOpen ann f (concat ns (concat importedInsNames importedClassNames)))
+            outImps)
+          (concat outIns importedBounds)
 
 // Translates the class declaration into a data type constructor function.
 // Will be used to create the class dictionaries.
@@ -124,12 +106,11 @@ mkClassDictAccessors c = case c of
 // Translates the instance into a class dict by calling the constructor.
 // We sort the bindings by name (the need to match what the constructor is doing).
 // We also mark this function as exported as all instances are implicitly exported.
-rewriteInstance is env ix i = case i of
-  Instance _ n _ bs -> let
-    name = instanceName ix i
+rewriteInstance is env n i = case i of
+  Instance _ c _ bs -> let
     args = map (rewriteExpr is env) (map snd (sort bs))
-    e = foldl (App emptyAnn) (Var emptyAnn (className n)) args
-    in Pair name (withAnn (setAnn 'export' (AnnExport name) emptyAnn) e)
+    e = foldl (App emptyAnn) (Var emptyAnn (className c)) args
+    in Pair n (withAnn (setAnn 'export' (AnnExport n) emptyAnn) e)
 
 // State of the rewriter which keeps track of:
 // - environment
@@ -254,7 +235,7 @@ importsToTypeEnv ms is = let
     ImportClosed _ f _ -> f
   addClass env c = foldl (\env b -> set (fst b) (snd b) env) env (classToBindings c)
   addImports env i = case (get (getFile i) ms) of
-    ModuleInterface bs cs is -> let
+    ModuleInterface bs cs _ -> let
       env2 = case i of
         ImportAll _ f -> merge env bs
         ImportOpen _ f ns -> foldl (\env n -> case n of Pair n a -> set a (get n bs) env) env ns
@@ -268,14 +249,5 @@ className n = '$class$' ++ n
 className2 c = case c of
   Class _ n _ _ -> className n
 
-instanceName ix i = case i of
-  Instance _ n _ _ -> '$instance$' ++ n ++ '$' ++ intToString ix
-  
 instanceNameFromBound ix b = case b of
   TCBound _ n _ -> 'local$instance$' ++ n ++ '$' ++ intToString ix
-
-instanceName2 ix i = case i of
-  TCBound _ n _ -> '$instance$' ++ n ++ '$' ++ intToString ix
-
-instanceNameFromImport imix inix b = case b of
-  TCBound _ n _ -> '$import' ++ intToString imix ++ '$instance$' ++ n ++ '$' ++ intToString inix

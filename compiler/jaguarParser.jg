@@ -251,7 +251,7 @@ importAllP = pure (ImportAll emptyAnn) <*>
 
 importP = reservedP 'import' |> (importOpenP <|> importAllP)
 
-moduleP = pure (\loc is es -> case (splitFourWay es) of Pair (Pair dts dfs) (Pair cs ins) -> Module loc (case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f) is dts cs ins dfs) <*>
+moduleP = pure (\loc is es -> case (splitFourWay es) of Pair (Pair dts dfs) (Pair cs ins) -> Module loc (case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f) is dts cs (map (Pair '') ins) dfs) <*>
   locP <*> many importP <*> some topLevelP
 
 splitFourWay e = case (splitEither e) of

@@ -29,9 +29,9 @@ rewriteExpr env e = let
   in breakableDownM f e
 
 rewriteInstance env i = case i of
-  Instance ann n t bs ->
-    mapM (\d -> case d of Pair n e -> rewriteExpr env e >>= \e -> ret (Pair n e)) bs >>= \bs ->
-      ret (Instance ann n t bs)
+  (_, Instance ann n t bs) ->
+    mapM (\d -> case d of Pair n e -> rewriteExpr env e >>= \e -> ret (Pair n e)) bs >>= \bs -> newIdent '$instance' >>= \insName ->
+      ret (insName, Instance ann n t bs)
 
 rewriteBindings env bs = let
   ns = map fst bs

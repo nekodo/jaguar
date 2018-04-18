@@ -393,6 +393,7 @@ isEmpty t = case t of
 mergeTrie a b = foldTrie (\a k v -> insert k v a) a b
 
 trieKeys m = foldTrie (\ks k _ -> push k ks) [] m
+trieEntries m = foldTrie (\es k v -> push (k, v) es) [] m
 
 emptySet = Empty
 setAdd a s = insert a Unit s
