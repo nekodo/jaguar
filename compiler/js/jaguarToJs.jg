@@ -45,6 +45,9 @@ rewriteExpr e = case e of
   App _ (App _ (Var _ '+') a) b -> binOp2 '+' a b
   App _ (App _ (Var _ '-') a) b -> binOp2 '-' a b
   App _ (App _ (Var _ '*') a) b -> binOp2 '*' a b
+  App _ (App _ (Var _ '++') a) b -> binOp2 '+' a b
+  App _ (App _ (Var _ '&&') a) b -> binOp2 '&&' a b
+  App _ (App _ (Var _ '||') a) b -> binOp2 '||' a b
   App _ (App _ (Var _ 'jsLt') a) b -> binOp2 '<' a b
   App _ (App _ (Var _ 'jsEq') a) b -> binOp2 '===' a b
   App _ (App _ (Var _ 'bitAnd') a) b -> binOp2 '&' a b
