@@ -1,5 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
+import {skolemize} from '//compiler/typer.jg'
 
 translateAdts m = case m of
   Module ann fn is ds cs ins bs -> Module ann fn is [] cs ins (concat (concatMap rewriteData ds) bs)
@@ -22,4 +23,4 @@ mkConFun tag dt vs n ts = let
   con = foldr mkCon new nts
   conT = TForall emptyAnn vs [] (getType con)
   ann = setAnn 'export' (AnnExport n) (setAnn 'type' (AnnType conT) (setAnn 'data' (AnnData tag) emptyAnn))
-  in Pair n (withAnn ann con)
+  in Pair n (skolemize (withAnn ann con))

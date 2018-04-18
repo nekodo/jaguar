@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {f1, classToBindings, unify, applySubs, applySubsBound, instanceToTypeBound, satisfiesBound, emptySubs, addSub, skolemizeSubs} from '//compiler/typer.jg'
+import {classToBindings, unify, applySubsBound, instanceToTypeBound, satisfiesBound, skolemizeSubs, instantiate} from '//compiler/typer.jg'
 import {printType, printTypeBound, reallyPrintExpr} from '//compiler/printer.jg'
 import {mkConFun} from '//compiler/adt.jg'
 
@@ -155,13 +155,11 @@ rewriteExpr is env e = let
       Pair ix b -> case ae of
         Pair a e -> case (addInstance b a) of
           Pair a name -> Pair a (Lam emptyAnn name e)
-    skolemizeBound vs b = applySubsBound (skolemizeSubs vs) b
-    skolemizeType vs t = applySubs (skolemizeSubs vs) t
     in case (getType e) of
       TForall _ vs bs t -> case (length bs > 0) of
         False -> Pair a e
         True -> let
-          rewritten = foldr rewriteBound (Pair a (setType (skolemizeType vs t) e)) (zipWithIndex (map (skolemizeBound vs) bs))
+          rewritten = foldr rewriteBound (Pair a (setType t e)) (zipWithIndex bs)
           in mapSnd (\re -> withAnn (copyAnn ['export'] (annOf e)) re) rewritten
       _ -> Pair a e
   rewriteVar a e = case e of
@@ -183,8 +181,8 @@ rewriteExpr is env e = let
               0 -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b ++ ' ' ++ exprLoc e)
               1 -> fst (getIx 0 matching)
               _ -> error ('declasser found more than 1 satisfying instance for ' ++ printTypeBound b  ++ ' ' ++ exprLoc e)
-        requiredInstances tv td = case (addPrefix 'ins$' td) of
-          TForall _ _ bs t -> let
+        requiredInstances tv td = case (instantiate Unit (\_ v -> Pair Unit $ TVar emptyAnn ('$ins$' ++ v)) td) of
+          Pair (Pair t bs) _ -> let
             subs = unify (\s -> 'declasser: ' ++ s) tv t
             in map (applySubsBound subs) bs
           _ -> []
@@ -207,12 +205,6 @@ rewriteExpr is env e = let
     (\a e -> Left (boundsToLam a e))
     rewriteVar
     (S [env] is 0) e)
-
-addPrefix p t = case t of
-  TForall ann vs bs t -> let
-    subs = foldl (\subs v -> addSub (\s -> 'declasser: ' ++ s) v (TVar emptyAnn (p ++ v)) subs) emptySubs vs
-    in applySubs subs (TForall ann (map (\v -> p ++ v) vs) bs t)
-  _ -> t
 
 breakableDownAndUpWithEnv getEnv setEnv down up a e = let
   go a e = breakableDownAndUp processDown processUp a e

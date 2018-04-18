@@ -4,7 +4,7 @@ import {Success, Error} from '//compiler/parsers.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileModule as generateJs} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {newCtx, inferTypeModule, getTypedExports, generalize, emptyEnv} from '//compiler/typer.jg'
+import {newCtx, inferTypeModule, getTypedExports, generalize, skolemizeType, emptyEnv} from '//compiler/typer.jg'
 import {dfs} from '//compiler/graph.jg'
 import {ArgBool, ArgString, parseArgs, getPositional, getString, getBool} from '//compiler/args.jg'
 import {declassModule} from '//compiler/declasser.jg'
@@ -46,7 +46,7 @@ parseT s = case (parseType s '') of
   e -> error e
 
 parseExports e = let
-  bs = mapRecord (\s -> evalState newCtx (generalize emptyEnv (parseT s))) e
+  bs = mapRecord (\s -> skolemizeType $ evalState newCtx (generalize emptyEnv (parseT s))) e
   in ModuleInterface bs [] []
 
 instrument m = let

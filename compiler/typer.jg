@@ -146,18 +146,52 @@ mkTForall ann vs bs t = let
     False -> push b bs
   in TForall ann vs (foldl f [] bs) t
 
-instantiate t = gets >>= \ctx -> let
+instantiateM_ t = gets >>= \ctx -> let
   mkvar cs v = case cs of
     Pair ctx subs -> case (newTVar ctx) of
       Pair ctx2 tv -> Pair ctx2 (addSub (\s -> 'instantiate: ' ++ s) v tv subs)
+  andRet t2 = let
+    _ = 9//debug ('instantiated ' ++ printType t ++ ' to ' ++ printType t2)
+    in ret t2
   in case t of
     TForall _ vs bs t -> case (foldl mkvar (Pair ctx emptySubs) vs) of
       Pair ctx2 subs -> let
         t2 = applySubs subs t
         bs2 = map (applySubsBound subs) bs
         ctx3 = foldl (\ctx b -> addBound b ctx) ctx2 bs2
-        in sets ctx3 >> ret t2
-    _ -> ret t
+        in sets ctx3 >> andRet t2
+    _ -> andRet t
+
+instantiateM t = gets >>= \ctx -> case (instantiate ctx (\ctx _ -> newTVar ctx) t) of
+  Pair (Pair t bs) ctx ->
+    sets (foldl (\ctx b -> addBound b ctx) ctx bs) >> ret t
+
+instantiate ctx mkvar t = case t of
+  TForall ann vs bs t -> let
+    _sc = let
+      f sc v = case sc of
+        Pair subs ctx -> case (mkvar ctx v) of
+          Pair ctx tv -> Pair (insert v tv subs) ctx
+      in foldl f (Pair Empty ctx) vs
+    subs = fst _sc
+    ctx2 = snd _sc
+    replace t = case t of
+      TConst _ _ -> t
+      TVar _ _ -> t
+      TBot -> t
+      TSkolem _ n -> case (lookup n subs) of
+        Nothing -> t
+        Just tv -> tv
+      TApp ann f a -> TApp ann (replace f) (replace a)
+      TRow ann ms r -> TRow
+        ann
+        (map (\m -> case m of Pair k v -> Pair (replace k) (replace v)) ms)
+        (fmap replace r)
+      TForall _ _ _ _ -> error 'nested universal quantification'
+    replaceBound b = case b of
+      TCBound ann n t -> TCBound ann n (replace t)
+    in Pair (Pair (replace t) (map replaceBound bs)) ctx2
+  _ -> Pair (Pair t []) ctx
 
 substitute n s t = applySubs (addSub (\s -> 'substitute: ' ++ s) n s emptySubs) t
 
@@ -251,7 +285,7 @@ infer env e = let
     PConst _ (CStr s) -> unifyM te (TConst emptyAnn 'String') >> ret (Pair Empty pat)
     PData ann n ps -> getBindingM n env >>= \bt -> case bt of
       Nothing -> error ('unknown data type ' ++ n)
-      Just t -> instantiate t >>= \t ->
+      Just t -> instantiateM t >>= \t ->
         case (unrollDataConType t) of
           Pair tps dt -> case (length ps == length tps) of
             False -> errorM 'number of pattern params does not match the number of constructor params'
@@ -268,7 +302,7 @@ infer env e = let
     Const _ (CStr s) -> setFinalType (TConst emptyAnn 'String') e
     Var _ v -> getBindingM v env >>= \vt -> case vt of
       Nothing -> errorM ('unknown identifier ' ++ v ++ ', env: ' ++ jsonStringify (trieKeys $ getBindings env))
-      Just t -> instantiate t >>= \t -> setFinalType t e
+      Just t -> instantiateM t >>= \t -> setFinalType t e
     Lam ann p a -> newTVarM >>= \tv ->
       infer (addBinding p tv env) a >>= \a ->
         setFinalType (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') tv) (getType a)) (Lam ann p a)
@@ -293,7 +327,7 @@ infer env e = let
           setFinalType (TApp emptyAnn (TConst emptyAnn 'Array') tv) (New ann 'Array' es)
     New ann tag es -> mapM (infer env) es >>= \es -> getBindingM tag env >>= \t -> case t of
       Nothing -> error ('unknown data constructor ' ++ tag)
-      Just t -> instantiate t >>= \t ->
+      Just t -> instantiateM t >>= \t ->
         case (unrollDataConType t) of
           Pair tps dt -> case (length es == length tps) of
             False -> errorM ('number of New args does not match the number of constructor params ' ++ jsonStringify es ++ ' ' ++ printType t)
@@ -314,7 +348,11 @@ inferSccDefs env ds = let
   generalizeDef env d = case d of
       Pair n e -> case (getType e) of
         TForall _ _ _ _ -> ret d
-        t -> generalize env t >>= \t -> ret (Pair n (setType (t) (skolemize t e)))
+        t -> generalize env t >>= \t -> let
+          e2 = skolemize (setType t e)
+          //_ = debug (n ++ ' :: ' ++ reallyPrintExpr True e2)
+          //_ = debug (n ++ ' :: ' ++ printType (getType e2))
+          in ret (Pair n e2)
   in foldM generateTVar env ds >>= \env2 ->
     mapM (inferDef env2) ds >>= \ds2 ->
       mapM (unifyDef env2) ds2 >>
@@ -325,8 +363,17 @@ inferSccDefs env ds = let
 skolemizeSubs =
   foldl (\subs v -> addSub (\s -> 'skolemize: ' ++ s) v (TSkolem emptyAnn v) subs) emptySubs
 
-skolemize t e = case t of
-  TForall _ vs _ _ -> applySubsE (skolemizeSubs vs) e
+skolemizeType t = case t of
+  TForall ann vs bs t -> let
+    subs = skolemizeSubs vs
+    in TForall ann vs (map (applySubsBound subs) bs) (applySubs subs t)
+  _ -> t
+
+skolemize e = case (getType e) of
+  TForall ann vs bs t -> let
+    subs = skolemizeSubs vs
+    t2 = TForall ann vs (map (applySubsBound subs) bs) (applySubs subs t)
+    in applySubsE subs (setType t2 e)
   _ -> e
 
 dropSatisfiedBounds env = gets >>= \ctx -> let
@@ -429,7 +476,7 @@ classToBindings c = case c of
         ftv = freeTVars t
         in case (setContains tv ftv) of
           False -> error ('invalid clas definition ' ++ n ++ ', binding ' ++ v)
-          True -> Pair v (mkTForall emptyAnn (setToArray ftv) [TCBound emptyAnn n (TVar emptyAnn tv)] t)
+          True -> Pair v (skolemizeType (mkTForall emptyAnn (setToArray ftv) [TCBound emptyAnn n (TVar emptyAnn tv)] t))
     in map process bs
 
 inferTypeModule ms m = let

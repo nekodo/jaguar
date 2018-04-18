@@ -17,7 +17,7 @@ def action_node_binary(ctx, main_attr, output, args=[]):
       MAIN=$RUNFILES/%s
       ARGS=%s
       echo "node --use_strict --harmony $MAIN $ARGS $@"
-      node --use_strict --harmony $MAIN $ARGS $@
+      node --use_strict --harmony --stack-size=1500 $MAIN $ARGS $@
       """ % (
           main.short_path,
           " ".join(args),
