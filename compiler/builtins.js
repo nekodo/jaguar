@@ -26,30 +26,6 @@ builtins.jsLt = function(a) {
     }
 }
 
-builtins.$lt = function(a) {
-    return function(b) {
-        return a < b
-    }
-}
-
-builtins.$gt = function(a) {
-    return function(b) {
-        return a > b
-    }
-}
-
-builtins.$eq = function(a) {
-    return function(b) {
-        return a === b
-    }
-}
-
-builtins.$neq = function(a) {
-    return function(b) {
-        return a !== b
-    }
-}
-
 builtins.jsEq = function(a) {
     return function(b) {
         return a === b
@@ -459,8 +435,6 @@ builtins.$TYPE = {
     '-': 'Number -> Number -> Number',
     '*': 'Number -> Number -> Number',
     'jsLt': 'a -> a -> Bool',
-    '<': 'a -> a -> Bool',
-    '>': 'a -> a -> Bool',
     'jsEq': 'a -> a -> Bool',
     '&&': 'Bool -> Bool -> Bool',
     '||': 'Bool -> Bool -> Bool',

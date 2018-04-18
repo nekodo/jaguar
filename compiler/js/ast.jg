@@ -21,6 +21,8 @@ data JSStmt =
   JSExpr JSExpr
   | JSReturn JSExpr
   | JSVar String JSExpr
+  | JSConst String JSExpr
+  | JSLet String (Maybe JSExpr)
   | JSSwitch JSExpr (Array (Pair JSExpr (Array JSStmt)))
   | JSBreak
   | JSAssign JSExpr JSExpr

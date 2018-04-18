@@ -13,7 +13,7 @@ data RewriteState = RewriteState
 addStmt stmt = gets >>= \s -> case s of
   RewriteState cons rep stmts i -> sets (RewriteState cons rep (push stmt stmts) i)
 
-addVar n e = addStmt (JSVar (opName n) e)
+addConst n e = addStmt (JSConst (opName n) e)
 
 newPhi = gets >>= \s -> case s of
   RewriteState cons rep stmts i -> sets (RewriteState cons rep stmts (i + 1)) >> ret ('$phi$' ++ intToString i)
@@ -58,14 +58,14 @@ rewriteExpr e = case e of
     rewriteExpr a >>= \a -> ret (JSCall f [a])
   Lam _ p e -> rewriteExprToStmts JSReturn e >>= \stmts -> ret (JSFun [p] stmts)
   Case _ e ps -> newPhi >>= \phiOut ->
-    rewriteExpr e >>= \e -> (case e of
+    addStmt (JSLet phiOut Nothing) >> rewriteExpr e >>= \e -> (case e of
       JSRef _ -> ret e
       JSIndex _ _ -> ret e
-      _ -> newPhi >>= \p -> addVar p e >> ret (JSRef p)) >>= \phiIn ->
+      _ -> newPhi >>= \p -> addConst p e >> ret (JSRef p)) >>= \phiIn ->
         foldM (assemblePatternMatch2 phiIn phiOut) (JSExpr (JSCall (JSRef 'error') [JSString 'pattern match fail', phiIn])) (reverse ps) >>=
           addStmt >> ret (JSRef phiOut)
   Let _ ds e->
-    mapM (\d -> case d of Pair n e -> rewriteExpr e >>= addVar n) ds >> rewriteExpr e
+    mapM (\d -> case d of Pair n e -> rewriteExpr e >>= addConst n) ds >> rewriteExpr e
   New _ 'Array' es -> mapM rewriteExpr es >>= \es -> ret (JSArray es)
   New _ tag es -> mapM rewriteExpr es >>= \es -> getCons >>= \cons -> case (lookup tag cons) of
     Nothing -> error ('unrecognized tag in New: ' ++ tag)
@@ -76,7 +76,7 @@ assemblePatternMatch2 phiIn phiOut alt p = getCons >>= \cons -> case p of
   Pair pat e -> case (processPattern cons phiIn pat) of
     Pair f (Pair ns vs) -> let
       rep = foldl (\r p -> insert (fst p) (snd p) r) Empty (zip ns vs)
-      in withRep rep (rewriteExprToStmts (JSVar phiOut) e) >>= \stmts -> ret (JSIf f stmts [alt])
+      in withRep rep (rewriteExprToStmts (JSAssign (JSRef phiOut)) e) >>= \stmts -> ret (JSIf f stmts [alt])
 
 checkUndefined label expr =
   JSTernary (JSBinOp '===' expr JSUndefined) (JSCall (JSRef 'error') [JSString label]) expr
@@ -141,7 +141,7 @@ moduleToJs m = case m of
         Pair n e -> not (isJust (getAnn 'dead' (annOf e)))
       in filter f vs
     defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM (\v -> case v of Pair n e -> rewriteExprToStmts (JSVar (opName n)) e) vs2)
-    exportDef = JSVar 'exports' (exportObject vs2)
+    exportDef = JSConst 'exports' (exportObject vs2)
     in push exportDef (concat imports defs)
 
 opName = \op -> case op of

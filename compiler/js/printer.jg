@@ -22,8 +22,17 @@ jsExprToString indent e = let
       ++ paren (intercalate ',' (map print xs))
     JSNew c xs -> 'new ' ++ printParen c
       ++ paren (intercalate ',' (map print xs))
-    JSFun ps bs -> '(' ++ intercalate ',' ps ++ ')=>{\n'
-      ++ printIndent (indent + 1) ++  (intercalate (';\n' ++ printIndent (indent + 1)) (map (jsStmtToString (indent + 1)) bs)) ++ '\n' ++ printIndent indent ++ '}'
+    JSFun ps bs -> let
+      params = case (length ps) of
+        1 -> getIx 0 ps ++ ' => '
+        _ -> '(' ++ intercalate ',' ps ++ ') => '
+      in case (length bs) of
+        1 -> case (head bs) of
+          JSReturn e -> case e of
+            JSObject _ -> params ++ paren (print e)
+            _ -> params ++ print e
+        _ -> params ++ '{\n'
+          ++ printIndent (indent + 1) ++  (intercalate (';\n' ++ printIndent (indent + 1)) (map (jsStmtToString (indent + 1)) bs)) ++ '\n' ++ printIndent indent ++ '}'
     JSTernary b x y -> printParen b ++ '?'
       ++ printParen x ++ ':'
       ++ printParen y
@@ -50,6 +59,10 @@ jsStmtToString indent s = case s of
   JSExpr e -> jsExprToString indent e
   JSReturn e -> 'return ' ++ jsExprToString indent e
   JSVar v e -> 'var ' ++ v ++ ' = ' ++ jsExprToString indent e
+  JSConst v e -> 'const ' ++ v ++ ' = ' ++ jsExprToString indent e
+  JSLet v e -> case e of
+    Nothing -> 'let ' ++ v
+    Just e -> 'let ' ++ v ++ ' = ' ++ jsExprToString indent e
   JSBreak -> 'break'
   JSSwitch e cs -> 'switch' ++ paren (jsExprToString indent e) ++ '{\n' ++ printIndent (indent + 1)
     ++ intercalate (';\n' ++ printIndent (indent + 1)) (map (caseToString (indent + 1)) cs) ++ '\n' ++ printIndent indent ++ '}'
