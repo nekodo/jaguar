@@ -3,19 +3,27 @@ import * from '//compiler/ast.jg'
 import {reallyPrintExpr} from '//compiler/printer.jg'
 import {rewriteExpr as renameExpr} from '//compiler/uniquifier.jg'
 import {getUid, setUid} from '//compiler/pass.jg'
+import {bindingsScc} from '//compiler/typer.jg'
 
 inline enable m = getUid >>= \uid -> case m of
   Module ann fn is ds cs ins bs -> let
-    iterCount = case enable of
-      True -> 10
-      False -> 0
-    r = runState uid (loopPasses iterCount pass bs)
-    bs2 = snd r
-    uid2 = fst r
-    bs3 = mapBindings (\e -> snd $ annWithUseCount e) bs2
-    useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs3)
+    //obs = fst (optBindings Empty bs)
+    bs2 = mapBindings (\e -> snd $ annWithUseCount e) bs
+    useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs2)
     is2 = processImports useCount is
-    in setUid uid2 >> ret (Module ann fn is2 ds cs ins bs3)
+    in ret (Module ann fn is2 ds cs ins bs2)
+
+optBindings env bs = let
+  scc = bindingsScc bs
+  optCc env bs = map (mapSnd (optExpr env)) bs
+  f oe bs = case oe of (out, env) -> let
+    bs2 = optCc env bs
+    env2 = foldl (\env b -> case b of (n, e) -> insert n e env) env bs2
+    in (concat out bs2, env2)
+  in foldl f ([], env) scc
+
+optExpr env e = case e of
+  _ -> e
 
 getCount e = case (getAnn 'useCount' (annOf e)) of
   Just (AnnUseCount c) -> c

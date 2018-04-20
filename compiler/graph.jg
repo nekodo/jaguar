@@ -1,10 +1,14 @@
 import * from '//compiler/prelude.jg'
 
+mustGet k g = case (lookup k g) of
+  Just v -> v
+  Nothing -> error ('failed to find ' ++ k ++ ' in ' ++ showG g)
+
 dfs g visited v = let
   visit r e = case (contains e r) of
     True -> r
     False -> concat (dfs g (push v (concat r visited)) e) r
-  es = filter (\v -> not (contains v visited)) (get v g)
+  es = filter (\v -> not (contains v visited)) (fromJust $ lookup v g)
   r = foldr visit [] es
   in enqueue v r
 
@@ -12,26 +16,28 @@ fullDfs g = let
   visit result v _ = case (contains v result) of
     True -> result
     False -> concat (dfs g result v) result
-  result = foldRecord visit [] g
+  result = foldTrie visit [] g
   in result
+
+showG g = jsonStringify $ foldTrie (\r k v -> set k v r) empty g
 
 scc g = let
   invertedG = let
-    invertEdge v ig e = case (has e ig) of
-      True -> set e (push v (get e ig)) ig
-      False -> set e [v] ig
+    invertEdge v ig e = case (lookup e ig) of
+      Just vs -> insert e (push v vs) ig
+      Nothing -> insert e [v] ig
     invert ig v es = let
-      ig2 = case (has v ig) of
-        True -> ig
-        False -> set v [] ig
+      ig2 = case (lookup v ig) of
+        Just _ -> ig
+        Nothing -> insert v [] ig
       in foldl (invertEdge v) ig2 es
-    in foldRecord invert empty g
+    in foldTrie invert Empty g
   assembleCc gs v = case gs of
     Pair ig ccs -> case (exists (contains v) ccs) of
       True -> Pair ig ccs
       False -> let
         cc = dfs ig [] v
-        ig2 = foldl (\g v -> del v (mapRecord (filter (\w -> w /= v)) g)) ig cc
+        ig2 = foldl (\g v -> remove v (mapTrie (\_ -> filter (\w -> w /= v)) g)) ig cc
         in Pair ig2 (push cc ccs)
   firstDfs = fullDfs g
   ccs = snd (foldl assembleCc (Pair invertedG []) firstDfs)
@@ -42,15 +48,15 @@ sccSorted g = let
   topSort ccs = let
     g2g = let
       f r icc = case icc of
-        Pair i cc -> foldl (\r c -> set c (intToString i) r) r cc
-      in foldl f empty (zipWithIndex ccs)
+        Pair i cc -> foldl (\r c -> insert c (intToString i) r) r cc
+      in foldl f Empty (zipWithIndex ccs)
     addGraph r v es = let
-      rv = get v g2g
-      res = uniq (sort (filter (\re -> re /= rv) (map (\e -> get e g2g) es)))
-      in case (has rv r) of
-        False -> set rv res r
-        True -> set rv (mergeSet res (get rv r)) r
-    cg = foldRecord addGraph empty g
+      rv = fromJust $ lookup v g2g
+      res = uniq (sort (filter (\re -> re /= rv) (map (\e -> fromJust $ lookup e g2g) es)))
+      in case (lookup rv r) of
+        Nothing -> insert rv res r
+        Just x -> insert rv (mergeSet res x) r
+    cg = foldTrie addGraph Empty g
     ord = fullDfs cg
     in reverse (map (\i -> getIx (unsafeStringToInt i) ccs) ord)
   result = topSort ccs

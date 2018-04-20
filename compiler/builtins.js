@@ -270,8 +270,9 @@ builtins.sort = function(arr) {
 }
 
 builtins.error = function(s, x) {
-  if (x) console.log(JSON.stringify(x));
-	throw Error(s);
+    debugger;
+    if (x) console.log(JSON.stringify(x));
+    throw Error(s);
 }
 
 builtins.debug = function(x) {
@@ -404,7 +405,7 @@ builtins.strHashCode = function(s) {
     hash  = ((hash << 5) - hash) + chr;
     hash |= 0; // Convert to 32bit integer
   }
-  return hash;
+    return hash;
 };
 
 builtins.stringReplaceChar = a => b => s => {

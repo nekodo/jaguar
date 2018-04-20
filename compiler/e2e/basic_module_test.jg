@@ -53,17 +53,17 @@ fx = f 41
 letF = let g y z = y + z + 1
        in g 10 2
 
-scc1 = sortedScc (set 'a' ['b'] (set 'b' ['a'] (set 'c' ['a'] empty)))
+scc1 = sortedScc (insert 'a' ['b'] (insert 'b' ['a'] (insert 'c' ['a'] Empty)))
 
 scc2 =
   sort (scc
-    (set '//compiler/e2e/basic_module_test.jg' ['//compiler/prelude.jg', '//compiler/jaguarParser.jg']
-      (set '//compiler/prelude.jg' []
-        (set '//compiler/ast.jg' ['//compiler/prelude.jg']
-          (set '//compiler/parsers.jg' ['//compiler/prelude.jg']
-            (set '//compiler/jaguarLexer.jg' ['//compiler/prelude.jg', '//compiler/parsers.jg']
-              (set '//compiler/jaguarParser.jg' ['//compiler/prelude.jg', '//compiler/ast.jg', '//compiler/parsers.jg', '//compiler/jaguarLexer.jg']
-                empty)))))))
+    (insert '//compiler/e2e/basic_module_test.jg' ['//compiler/prelude.jg', '//compiler/jaguarParser.jg']
+      (insert '//compiler/prelude.jg' []
+        (insert '//compiler/ast.jg' ['//compiler/prelude.jg']
+          (insert '//compiler/parsers.jg' ['//compiler/prelude.jg']
+            (insert '//compiler/jaguarLexer.jg' ['//compiler/prelude.jg', '//compiler/parsers.jg']
+              (insert '//compiler/jaguarParser.jg' ['//compiler/prelude.jg', '//compiler/ast.jg', '//compiler/parsers.jg', '//compiler/jaguarLexer.jg']
+                Empty)))))))
 
 class Foo a where
   yay :: a -> String

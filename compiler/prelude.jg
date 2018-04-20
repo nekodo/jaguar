@@ -340,10 +340,18 @@ remove k t = let
             bitmap2 = bitAnd (bitNot m) bitmap
             in case (length entries) of
               1 -> Empty
-              2 -> getIx (bitAnd 1 (bitNot ix)) entries
+              2 -> let e = getIx (bitAnd 1 (bitNot ix)) entries in case e of
+                Leaf _ _ _ -> e
+                _ -> BitmapIndexed mp bitmap2 [e]
               _ -> BitmapIndexed mp bitmap2 (arrDel ix 1 entries)
           e -> BitmapIndexed mp bitmap (setIx ix e entries)
   in f 0 t
+
+checkTrieConsistency m t = let
+  f t k v = case (lookup k t) of
+    Nothing -> error (m ++ ': inconsistent trie, lookup failed to find key ' ++ k)
+    Just v2 -> t
+  in foldTrie f t t
 
 nextSetBitMask m n = case (bitAnd m n) of
   0 -> nextSetBitMask (bitShiftLeft m 1) n

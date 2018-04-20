@@ -28,10 +28,10 @@ parse fn = case (parseModule (readFile fn) ('//' ++ fn)) of
 // Run a depth-first search from the main file to determine the order of
 // compilation. Also means we'll ignore any extra files that are not needed.
 depSort mainName ms = let
-  modules = foldl (\r m -> set (moduleFile m) m r) empty ms
-  imports = mapRecord findImports modules
+  modules = foldl (\r m -> insert (moduleFile m) m r) Empty ms
+  imports = mapTrie (\_ -> findImports) modules
   ordered = dfs imports [] mainName
-  in reverse $ map (\n -> get n modules) ordered
+  in reverse $ map (\n -> fromJust $ lookup n modules) ordered
 
 findImports m = let
   importFileName i = case i of

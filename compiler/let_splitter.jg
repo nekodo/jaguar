@@ -24,19 +24,19 @@ splitExpr e = let
     _ -> ret (Left e)
   in breakableDownAndUpM handleLet split e
 
-splitBindings bs = let
-  ns = map fst bs
-  processBinding gbs b = case gbs of
-    Pair g bs -> case b of
-      Pair n e -> splitExpr e >>= \e ->
-        getRefs >>= \refs -> let
-          uses = filter (\n -> setContains n refs) ns
-          in mapM delRef uses >>
-            ret (Pair (set n (filter ((/=) n) uses) g) (push (Pair n e) bs))
-  in foldM processBinding (Pair empty []) bs >>= \gbs -> case gbs of
-    Pair g bs -> let
-      bsm = toRecord bs
-      ccs = sccSorted g
-      in ret (map (map (\n -> Pair n (get n bsm))) ccs)
+splitBindings bs = error '' //let
+//  ns = map fst bs
+//  processBinding gbs b = case gbs of
+//    Pair g bs -> case b of
+//      Pair n e -> splitExpr e >>= \e ->
+//        getRefs >>= \refs -> let
+//          uses = filter (\n -> setContains n refs) ns
+//          in mapM delRef uses >>
+//            ret (Pair (set n (filter ((/=) n) uses) g) (push (Pair n e) bs))
+//  in foldM processBinding (Pair empty []) bs >>= \gbs -> case gbs of
+//    Pair g bs -> let
+ //     bsm = toRecord bs
+ //     ccs = sccSorted g
+ //     in ret (map (map (\n -> Pair n (get n bsm))) ccs)
 
 splitLetsPass m = ret m

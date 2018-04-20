@@ -364,12 +364,15 @@ dropSatisfiedBounds env = gets >>= \ctx -> let
   bs2 = filter (\b -> not (exists (\i -> satisfiesBound i b) is)) bs
   in sets (setBounds bs2 ctx)
 
-inferDefs env ds = let
-  ns = map fst ds
-  g = foldl (\g d -> case d of Pair n e -> set n (filter (\v -> contains v ns && (v /= n)) (freeVars e)) g) empty ds
+bindingsScc bs = let
+  ns = map fst bs
+  g = foldl (\g d -> case d of Pair n e -> insert n (filter (\v -> contains v ns && (v /= n)) (freeVars e)) g) Empty bs
   ccs = sccSorted g
-  infer rs cc = fmap (concat rs) (inferSccDefs (foldl (\env r -> addBinding (fst r) (getType (snd r)) env) env rs) (filter (\d -> contains (fst d) cc) ds))
-  in foldM infer [] ccs
+  in map (\cc -> filter (\b -> contains (fst b) cc) bs) ccs
+
+inferDefs env ds = let
+  infer rs ds = fmap (concat rs) (inferSccDefs (foldl (\env r -> addBinding (fst r) (getType (snd r)) env) env rs) ds)
+  in foldM infer [] (bindingsScc ds)
 
 generalize env t = gets >>= \ctx -> let
   subs = getSubs ctx
