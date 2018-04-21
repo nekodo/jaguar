@@ -13,17 +13,53 @@ inline enable m = getUid >>= \uid -> case m of
     is2 = processImports useCount is
     in ret (Module ann fn is2 ds cs ins bs2)
 
+//data OptState = OptState (Map String Number)
+//addUse n = gets >>= \s -> case s of
+//  OptState m -> sets (OptState (updateOrSet n (\c -> c + 1) 1 m))
+//getUse n = gets >>= \s -> case s of
+//  OptState m -> ret (justOr 0 $ lookup n m)
+
+//data OptRet a = OptRet (Map String Number) a
+
+
 optBindings env bs = let
   scc = bindingsScc bs
-  optCc env bs = map (mapSnd (optExpr env)) bs
+  optCc env bs = let
+    f oe b = case oe of
+      (outBs, outEnv) -> case b of
+        (n, e) -> let e2 = optExpr env e in case e2 of
+          Var _ _ -> (outBs, insert n e2 outEnv)
+          Const _ _ -> (outBs, insert n e2 outEnv)
+          _ -> (push (n, e2) outBs, insert n e2 outEnv)
+    in foldl f ([], env) bs
   f oe bs = case oe of (out, env) -> let
-    bs2 = optCc env bs
-    env2 = foldl (\env b -> case b of (n, e) -> insert n e env) env bs2
-    in (concat out bs2, env2)
+    be = optCc env bs
+    in (concat out (fst be), snd be)
   in foldl f ([], env) scc
 
 optExpr env e = case e of
-  _ -> e
+  Var ann n -> case (lookup n env) of
+    Just (Var _ m) -> Var ann m
+    Just (Const _ c) -> Const ann c
+    _ -> e
+  App ann f e -> App ann (optExpr env f) (optExpr env e)
+  Lam ann p e -> Lam ann p (optExpr env e)
+  Let ann bs e -> case (optBindings env bs) of
+    (bs, env) -> Let ann bs (optExpr env e)
+  Case ann e ps -> Case ann (optExpr env e) (map (optPat env) ps)
+  Const _ _ -> e
+  New ann c es -> case (lookup c env) of
+    Just (Var _ c) -> New ann c (map (optExpr env) es)
+    _ -> New ann c (map (optExpr env) es)
+
+optPat env pe = case pe of
+  (p, e) -> let
+    f p = case p of
+      PData ann c ps -> case (lookup c env) of
+        Just (Var _ c) -> PData ann c (map f ps)
+       _ -> PData ann c (map f ps)
+      _ -> p
+    in (f p, optExpr env e)
 
 getCount e = case (getAnn 'useCount' (annOf e)) of
   Just (AnnUseCount c) -> c
@@ -137,8 +173,9 @@ inlineCode always e = let
     _ -> p 
   in breakableDownM inlineExpr e
 
+isExport e = isJust (getAnn 'export' (annOf e))
+
 dropDeadBindings useCount bs = let
-  isExport e = isJust (getAnn 'export' (annOf e))
   f b = case b of
     Pair n e -> let
       totalCount = justOr 0 (lookup n useCount)

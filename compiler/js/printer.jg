@@ -26,13 +26,15 @@ jsExprToString indent e = let
       params = case (length ps) of
         1 -> getIx 0 ps ++ ' => '
         _ -> '(' ++ intercalate ',' ps ++ ') => '
-      in case (length bs) of
-        1 -> case (head bs) of
-          JSReturn e -> case e of
-            JSObject _ -> params ++ paren (print e)
-            _ -> params ++ print e
-        _ -> params ++ '{\n'
-          ++ printIndent (indent + 1) ++  (intercalate (';\n' ++ printIndent (indent + 1)) (map (jsStmtToString (indent + 1)) bs)) ++ '\n' ++ printIndent indent ++ '}'
+      in let
+        full bs = params ++ '{\n' ++ printIndent (indent + 1) ++  (intercalate (';\n' ++ printIndent (indent + 1)) (map (jsStmtToString (indent + 1)) bs)) ++ '\n' ++ printIndent indent ++ '}'
+        in case (length bs) of
+          1 -> case (head bs) of
+            JSReturn e -> case e of
+              JSObject _ -> params ++ paren (print e)
+              _ -> params ++ print e
+            _ -> full bs
+          _ -> full bs
     JSTernary b x y -> printParen b ++ '?'
       ++ printParen x ++ ':'
       ++ printParen y

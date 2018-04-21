@@ -142,7 +142,7 @@ moduleToJs m = case m of
       in filter f vs
     defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM (\v -> case v of Pair n e -> rewriteExprToStmts (JSConst (opName n)) e) vs2)
     exportDef = JSConst 'exports' (exportObject vs2)
-    in push exportDef (concat imports defs)
+    in optStmts (push exportDef (concat imports defs))
 
 opName = \op -> case op of
   '+' -> '$add'
@@ -167,3 +167,62 @@ opChar c = case c of
   '>' -> '$gt'
   '^' -> '$rof'
   _ -> c
+
+optExpr e = case e of
+  JSRef _ -> e
+  JSIndex x i -> JSIndex (optExpr x) (optExpr i)
+  JSUnOp op a -> JSUnOp op (optExpr a)
+  JSBinOp op a b -> JSBinOp op (optExpr a) (optExpr b)
+  JSCall f xs -> JSCall (optExpr f) (map optExpr xs)
+  JSFun ps bs -> JSFun ps (optStmts bs)
+  JSTernary p a b -> JSTernary (optExpr p) (optExpr a) (optExpr b)
+  JSNum _ -> e
+  JSString _ -> e
+  JSBool _ -> e
+  JSNull -> e
+  JSUndefined -> e
+  JSObject kvs -> JSObject (map (\kv -> case kv of (k, v) -> (k, optExpr v)) kvs)
+  JSArray vs -> JSArray (map optExpr vs)
+  JSInstanceOf a b -> JSInstanceOf (optExpr a) (optExpr b)
+  JSNew c xs -> JSNew (optExpr c) (map optExpr xs)
+
+safeLast xs = case (length xs) of
+  0 -> Nothing
+  _ -> Just (last xs)
+
+optStmts ss = let
+  f s = case s of
+    JSExpr e -> JSExpr (optExpr e)
+    JSVar v e -> JSVar v (optExpr e)
+    JSConst v e -> JSConst v (optExpr e)
+    JSLet v e -> JSLet v (fmap optExpr e)
+    JSAssign a b -> JSAssign (optExpr a) (optExpr b)
+    //JSIf (JSRef v) xs (JSIf (JSUnOp '!' (JSRef w)) ys zs) -> case (v == w) of
+    //  True -> JSIf 
+    JSIf p xs ys -> JSIf (optExpr p) (optStmts xs) (optStmts ys)
+    JSReturn e -> JSReturn (optExpr e)
+  hasLet v = let
+    f s = case s of
+      JSLet w _ -> v == w
+      _ -> False
+    in exists f ss
+  in case (safeLast ss) of
+    Just (JSReturn (JSRef v)) -> case (hasLet v) of
+      True -> optStmts (concatMap (directReturn v) (init ss))
+      False ->  map f ss
+    _ -> map f ss
+
+directReturn v s = case s of
+  JSLet w e -> case (v == w) of
+    False -> [s]
+    True -> case e of
+      Nothing -> []
+      Just _ -> error 'unexpected let assignment'
+  JSConst w e -> case (v == w) of
+    False -> [s]
+    True -> [JSReturn e]
+  JSAssign (JSRef w) e -> case (v == w) of
+    False -> [s]
+    True -> [JSReturn e]
+  JSIf p xs ys -> [JSIf p (concatMap (directReturn v) xs) (concatMap (directReturn v) ys)]
+  _ -> [s]
