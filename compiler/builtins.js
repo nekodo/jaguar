@@ -20,16 +20,19 @@ builtins.$mul = function(a) {
     }
 }
 
-builtins.jsLt = function(a) {
-    return function(b) {
+function _jsLt(a, b) {
         return a < b
     }
+builtins.jsLt = function(a) {
+    return _jsLt.bind(null, a);
+}
+
+function _jsEq(a, b) {
+    return a === b;
 }
 
 builtins.jsEq = function(a) {
-    return function(b) {
-        return a === b
-    }
+    return _jsEq.bind(null, a);
 }
 
 
@@ -53,15 +56,16 @@ builtins.$concat = function(a) {
 
 builtins.empty = {}
 
-builtins.get = function(f) {
-    return function(r) {
-        const v = r[f];
+function _get(f, r) {
+    const v = r[f];
         if (v !== undefined) {
           return v
         } else {
           //throw Error(`no key ${f} in ${r}`)
         }
-    }
+}
+builtins.get = function(f) {
+    return _get.bind(null, f);
 }
 
 builtins.getIx = builtins.get;
@@ -98,11 +102,15 @@ builtins.set = function(f) {
     }
 }
 
-builtins.setIx = i => a => as => {
+function _setIx(i, a, as) {
   const r = as.slice(0);
   r[i] = a;
   return r;
-};
+}
+function _setIx1(i, a) {
+    return _setIx.bind(null, i, a);
+}
+builtins.setIx = i => _setIx1.bind(null, i);
 
 builtins.mapRecord = function(f) {
     return function(r) {
@@ -157,20 +165,22 @@ builtins.length = function(s) {
 
 builtins.emptyArray = [];
 
-builtins.push = function(x) {
-	return function(xs) {
-  	var xs2 = xs.slice(0);
+function _push(x, xs) {
+    var xs2 = xs.slice(0);
     xs2.push(x);
     return xs2;
-  }
+}
+builtins.push = function(x) {
+    return _push.bind(null, x);
 }
 
-builtins.enqueue = function(x) {
-	return function(xs) {
-  	var xs2 = xs.slice(0);
+function _enqueue(x, xs) {
+    var xs2 = xs.slice(0);
     xs2.unshift(x);
     return xs2;
-  }
+}
+builtins.enqueue = function(x) {
+    return _enqueue.bind(null, x);
 }
 
 builtins.intToString = function(i) {
@@ -206,11 +216,12 @@ builtins.splice = start => del => newItems => arr => {
   return r;
 };
 
-builtins.arrDel = ix => len => arr => {
-  const r = arr.slice(0);
-  r.splice(ix, len);
-  return r;
-};
+function _arrDel(ix, len, arr) {
+    const r = arr.slice(0);
+    r.splice(ix, len);
+    return r;
+}
+builtins.arrDel = ix => len => _arrDel.bind(null, ix, len);
 
 builtins.arrIns = ix => x => arr => {
   const r = arr.slice(0);
@@ -219,22 +230,21 @@ builtins.arrIns = ix => x => arr => {
 };
 
 builtins.concat = function(a) {
-    return function(b) {
-        return a.concat(b)
-    }
+    return a.concat.bind(a);
 }
 
+function _map(f, arr) {
+    return arr.map(f);
+}
 builtins.map = function(f) {
-	return function(arr) {
-	    //console.log(arr);
-      	return arr.map(f)
-    }
+    return _map.bind(null, f);
 }
 
+function _filter(f, arr) {
+    return arr.filter(f);
+}
 builtins.filter = function(f) {
-	return function(arr) {
-  	return arr.filter(f)
-  }
+    return _filter.bind(null, f);
 }
 
 builtins.foldr = function(f) {

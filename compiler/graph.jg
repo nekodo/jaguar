@@ -37,7 +37,7 @@ scc g = let
   in ccs
 
 sccSorted g = let
-  _ = debug ('sccSorted for size = ' ++ intToString (size g))
+  //_ = debug ('sccSorted for size = ' ++ intToString (size g))
   ccs = scc g
   topSort ccs = let
     g2g = let

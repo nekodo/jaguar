@@ -132,19 +132,19 @@ loop f start = let
 
 contains x xs = let
   f i = case (i < length xs) of
-    False -> Right False
+    False -> False
     True -> case (x == getIx i xs) of
-      True -> Right True
-      False -> Left (i + 1)
-  in loop f 0
+      True -> True
+      False -> f (i + 1)
+  in f 0
   
 find predicate xs = let
   f i = case (i < length xs) of
-    False -> Right Nothing
+    False -> Nothing
     True -> case (predicate (getIx i xs)) of
-      True -> Right (Just (getIx i xs))
-      False -> Left (i + 1)
-  in loop f 0
+      True -> Just (getIx i xs)
+      False -> f (i + 1)
+  in f 0
 
 mapIx f ix xs = setIx ix (f (getIx ix xs)) xs
 
