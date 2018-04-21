@@ -7,20 +7,10 @@ import {bindingsScc} from '//compiler/typer.jg'
 
 inline enable m = getUid >>= \uid -> case m of
   Module ann fn is ds cs ins bs -> let
-    obs = fst (optBindings Empty bs)
-    bs2 = mapBindings (\e -> snd $ annWithUseCount e) obs
-    useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs2)
-    is2 = processImports useCount is
-    in ret (Module ann fn is2 ds cs ins bs2)
-
-//data OptState = OptState (Map String Number)
-//addUse n = gets >>= \s -> case s of
-//  OptState m -> sets (OptState (updateOrSet n (\c -> c + 1) 1 m))
-//getUse n = gets >>= \s -> case s of
-//  OptState m -> ret (justOr 0 $ lookup n m)
-
-//data OptRet a = OptRet (Map String Number) a
-
+    obs = case enable of
+      True -> fst (optBindings Empty bs)
+      False -> bs
+    in ret (Module ann fn is ds cs ins obs)
 
 optBindings env bs = let
   scc = bindingsScc bs
@@ -52,14 +42,13 @@ optExpr env e = case e of
     Just (Var _ c) -> New ann c (map (optExpr env) es)
     _ -> New ann c (map (optExpr env) es)
 
-optPat env pe = case pe of
-  (p, e) -> let
-    f p = case p of
-      PData ann c ps -> case (lookup c env) of
-        Just (Var _ c) -> PData ann c (map f ps)
-       _ -> PData ann c (map f ps)
-      _ -> p
-    in (f p, optExpr env e)
+optPat env pe = case pe of (p, e) -> let
+  f p = case p of
+    PData ann c ps -> case (lookup c env) of
+      Just (Var _ c) -> PData ann c (map f ps)
+      _ -> PData ann c (map f ps)
+    _ -> p
+  in (f p, optExpr env e)
 
 getCount e = case (getAnn 'useCount' (annOf e)) of
   Just (AnnUseCount c) -> c

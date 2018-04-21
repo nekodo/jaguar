@@ -62,8 +62,8 @@ rewriteExpr e = case e of
       JSRef _ -> ret e
       JSIndex _ _ -> ret e
       _ -> newPhi >>= \p -> addConst p e >> ret (JSRef p)) >>= \phiIn ->
-        foldM (assemblePatternMatch2 phiIn phiOut) (JSExpr (JSCall (JSRef 'error') [JSString 'pattern match fail', phiIn])) (reverse ps) >>=
-          addStmt >> ret (JSRef phiOut)
+        foldM (assemblePatternMatch2 phiIn phiOut) [JSExpr (JSCall (JSRef 'error') [JSString 'pattern match fail', phiIn])] (reverse ps) >>=
+          mapM addStmt >> ret (JSRef phiOut)
   Let _ ds e->
     mapM (\d -> case d of Pair n e -> rewriteExpr e >>= addConst n) ds >> rewriteExpr e
   New _ 'Array' es -> mapM rewriteExpr es >>= \es -> ret (JSArray es)
@@ -72,14 +72,23 @@ rewriteExpr e = case e of
     Just (Nothing) -> ret (JSObject (zip (dataConFieldIds es) es))
     Just (Just tag) -> ret (JSObject (push (Pair '$tag' (JSNum tag)) (zip (dataConFieldIds es) es)))
 
-assemblePatternMatch2 phiIn phiOut alt p = getCons >>= \cons -> case p of
+assemblePatternMatch2 phiIn phiOut alts p = getCons >>= \cons -> case p of
   Pair pat e -> case (processPattern cons phiIn pat) of
     Pair f (Pair ns vs) -> let
       rep = foldl (\r p -> insert (fst p) (snd p) r) Empty (zip ns vs)
-      in withRep rep (rewriteExprToStmts (JSAssign (JSRef phiOut)) e) >>= \stmts -> ret (JSIf f stmts [alt])
+      out stmts = case f of
+        JSBool (True) -> ret stmts
+        _ -> ret [JSIf f stmts alts]
+      in withRep rep (rewriteExprToStmts (JSAssign (JSRef phiOut)) e) >>= out
 
 checkUndefined label expr =
   JSTernary (JSBinOp '===' expr JSUndefined) (JSCall (JSRef 'error') [JSString label]) expr
+
+combineChecks a b = case a of
+  JSBool (True) -> b
+  _ -> case b of
+    JSBool (True) -> a
+    _ -> JSBinOp '&&' a b
 
 processPattern cons pm p = case p of
   PVar _ '_' -> Pair (JSBool True) (Pair [] [])
@@ -101,7 +110,7 @@ processPattern cons pm p = case p of
       (\a b -> case a of
         Pair fa (Pair na va) -> case b of
           Pair fb (Pair nb vb) ->
-            Pair (JSBinOp '&&' fa fb) (Pair (concat na nb) (concat va vb)))
+            Pair (combineChecks fa fb) (Pair (concat na nb) (concat va vb)))
       (Pair tagCheck (Pair [] []))
       (map
         (\p -> case p of
