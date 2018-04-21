@@ -251,15 +251,9 @@ instance Hashable String where
 
 data Map k v =
   Empty
-  | Leaf Number k v
-  | Collision Number (Array (Pair k v))
-  | BitmapIndexed Number Number (Array (Map k v))
-
-nodeMask t = case t of
-  Empty -> 0
-  Leaf m _ _ -> m
-  Collision m _ -> m
-  BitmapIndexed m _ _ -> m
+  | Leaf k v
+  | Collision (Array (Pair k v))
+  | BitmapIndexed Number (Array (Map k v))
 
 popCount n = let
   n2 = n - (bitAnd (bitShiftRight n 1) 1431655765)
@@ -281,11 +275,11 @@ lookup k t = let
   hash = hashCode k
   f depth t = case t of
     Empty -> Nothing
-    Leaf _ k2 v -> case (k == k2) of
+    Leaf k2 v -> case (k == k2) of
       False -> Nothing
       True -> Just v
-    Collision _ entries -> fmap snd $ find (\e -> fst e == k) entries
-    BitmapIndexed _ bitmap entries -> let
+    Collision entries -> fmap snd $ find (\e -> fst e == k) entries
+    BitmapIndexed bitmap entries -> let
       m = hamtMask depth hash
       in case (bitAnd m bitmap) of
         0 -> Nothing
@@ -295,22 +289,22 @@ lookup k t = let
 insert k v t = let
   hash = hashCode k
   f depth t = case t of
-    Empty -> Leaf 0 k v
-    Collision mp entries -> Collision mp (push (Pair k v) (filter (\e -> fst e /= k) entries))
-    Leaf mp k2 v2 -> case (k == k2) of
-      True -> Leaf mp k v
+    Empty -> Leaf k v
+    Collision entries -> Collision (push (Pair k v) (filter (\e -> fst e /= k) entries))
+    Leaf k2 v2 -> case (k == k2) of
+      True -> Leaf k v
       False -> case depth of
-        7 -> Collision mp [Pair k2 v2, Pair k v]
+        7 -> Collision [Pair k2 v2, Pair k v]
         _ -> let
           m = hamtMask depth (hashCode k2)
-          in f depth (BitmapIndexed mp m [Leaf m k2 v2])
-    BitmapIndexed mp bitmap entries -> let
+          in f depth (BitmapIndexed m [Leaf k2 v2])
+    BitmapIndexed bitmap entries -> let
       m = hamtMask depth hash
       bitmap2 = bitOr m bitmap
       ix = hamtIndex bitmap2 m
       in case (bitAnd m bitmap) of
-        0 -> BitmapIndexed mp bitmap2 (arrIns ix (Leaf m k v) entries)
-        _ -> BitmapIndexed mp bitmap2 (mapIx (f (depth + 1)) ix entries)
+        0 -> BitmapIndexed bitmap2 (arrIns ix (Leaf k v) entries)
+        _ -> BitmapIndexed bitmap2 (mapIx (f (depth + 1)) ix entries)
   in f 0 t
 
 updateOrSet k f d m = case (lookup k m) of
@@ -321,16 +315,17 @@ remove k t = let
   hash = hashCode k
   f depth t = case t of
     Empty -> Empty
-    Leaf _ k2 _ -> case (k2 == k) of
+    Leaf k2 _ -> case (k2 == k) of
       True -> Empty
       False -> t
-    Collision mp entries -> let
+    Collision entries -> let
       entries2 = filter (\e -> fst e /= k) entries
       in case (length entries2) of
         0 -> Empty
-        1 -> Leaf mp (fst (getIx 0 entries2)) (snd (getIx 0 entries2))
-        _ -> Collision mp entries2
-    BitmapIndexed mp bitmap entries -> let
+        1 -> case (getIx 0 entries2) of
+          (k, v) -> Leaf k v
+        _ -> Collision entries2
+    BitmapIndexed bitmap entries -> let
       m = hamtMask depth hash
       ix = hamtIndex bitmap m
       in case (bitAnd m bitmap) of
@@ -341,58 +336,29 @@ remove k t = let
             in case (length entries) of
               1 -> Empty
               2 -> let e = getIx (bitAnd 1 (bitNot ix)) entries in case e of
-                Leaf _ _ _ -> e
-                _ -> BitmapIndexed mp bitmap2 [e]
-              _ -> BitmapIndexed mp bitmap2 (arrDel ix 1 entries)
-          e -> BitmapIndexed mp bitmap (setIx ix e entries)
+                Leaf _ _ -> e
+                _ -> BitmapIndexed bitmap2 [e]
+              _ -> BitmapIndexed bitmap2 (arrDel ix 1 entries)
+          e -> BitmapIndexed bitmap (setIx ix e entries)
   in f 0 t
-
-checkTrieConsistency m t = let
-  f t k v = case (lookup k t) of
-    Nothing -> error (m ++ ': inconsistent trie, lookup failed to find key ' ++ k)
-    Just v2 -> t
-  in foldTrie f t t
-
-nextSetBitMask m n = case (bitAnd m n) of
-  0 -> nextSetBitMask (bitShiftLeft m 1) n
-  _ -> m
-
-filterTrie f t = case t of
-  Empty -> Empty
-  Leaf _ k v -> case (f k v) of
-    False -> Empty
-    True -> t
-  Collision mp entries -> let
-    entries2 = filter (\e -> f (fst e) (snd e)) entries
-    in case (length entries2) of
-      0 -> Empty
-      1 -> Leaf mp (fst (getIx 0 entries2)) (snd (getIx 0 entries2))
-      _ -> Collision mp entries2
-  BitmapIndexed mp bitmap entries -> let
-    pred e = not (isEmpty e)
-    entries2 = filter pred (map (filterTrie f) entries)
-    bitmap2 = foldl (\r e -> bitOr r (nodeMask e)) 0 entries2
-    in case bitmap2 of
-      0 -> Empty
-      _ -> BitmapIndexed mp bitmap2 entries2
 
 foldTrie f a t = case t of
   Empty -> a
-  Leaf _ k v -> f a k v
-  Collision _ entries -> foldl (\a e -> f a (fst e) (snd e)) a entries
-  BitmapIndexed _ _ entries -> foldl (foldTrie f) a entries
+  Leaf k v -> f a k v
+  Collision entries -> foldl (\a e -> f a (fst e) (snd e)) a entries
+  BitmapIndexed _ entries -> foldl (foldTrie f) a entries
 
 mapTrie f t = case t of
   Empty -> Empty
-  Leaf mp k v -> Leaf mp k (f k v)
-  Collision mp entries -> Collision mp $ map (\e -> Pair (fst e) $ f (fst e) (snd e)) entries
-  BitmapIndexed mp bitmap entries -> BitmapIndexed mp bitmap $ map (mapTrie f) entries
+  Leaf k v -> Leaf k (f k v)
+  Collision entries -> Collision $ map (\e -> Pair (fst e) $ f (fst e) (snd e)) entries
+  BitmapIndexed bitmap entries -> BitmapIndexed bitmap $ map (mapTrie f) entries
 
 size t = case t of
   Empty -> 0
-  Leaf _ _ _ -> 1
-  Collision _ entries -> length entries
-  BitmapIndexed _ _ entries -> foldl (+) 0 (map size entries)
+  Leaf _ _ -> 1
+  Collision entries -> length entries
+  BitmapIndexed _ entries -> foldl (+) 0 (map size entries)
 
 isEmpty t = case t of
   Empty -> True

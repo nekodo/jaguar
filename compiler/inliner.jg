@@ -7,8 +7,8 @@ import {bindingsScc} from '//compiler/typer.jg'
 
 inline enable m = getUid >>= \uid -> case m of
   Module ann fn is ds cs ins bs -> let
-    //obs = fst (optBindings Empty bs)
-    bs2 = mapBindings (\e -> snd $ annWithUseCount e) bs
+    obs = fst (optBindings Empty bs)
+    bs2 = mapBindings (\e -> snd $ annWithUseCount e) obs
     useCount = foldl mergeCount Empty (map (\b -> getCount (snd b)) bs2)
     is2 = processImports useCount is
     in ret (Module ann fn is2 ds cs ins bs2)

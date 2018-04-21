@@ -1,25 +1,18 @@
 import * from '//compiler/prelude.jg'
 
-mustGet k g = case (lookup k g) of
-  Just v -> v
-  Nothing -> error ('failed to find ' ++ k ++ ' in ' ++ showG g)
-
 dfs g visited v = let
-  visit r e = case (contains e r) of
+  visit r e = case (contains e r || contains e visited) of
     True -> r
     False -> concat (dfs g (push v (concat r visited)) e) r
-  es = filter (\v -> not (contains v visited)) (fromJust $ lookup v g)
-  r = foldr visit [] es
-  in enqueue v r
+  in case (lookup v g) of
+    Just es -> enqueue v $ foldr visit [] es
+    Nothing -> []
 
 fullDfs g = let
   visit result v _ = case (contains v result) of
     True -> result
     False -> concat (dfs g result v) result
-  result = foldTrie visit [] g
-  in result
-
-showG g = jsonStringify $ foldTrie (\r k v -> set k v r) empty g
+  in foldTrie visit [] g
 
 scc g = let
   invertedG = let
@@ -37,13 +30,14 @@ scc g = let
       True -> Pair ig ccs
       False -> let
         cc = dfs ig [] v
-        ig2 = foldl (\g v -> remove v (mapTrie (\_ -> filter (\w -> w /= v)) g)) ig cc
+        ig2 = foldl (\g v -> remove v g) ig cc
         in Pair ig2 (push cc ccs)
   firstDfs = fullDfs g
   ccs = snd (foldl assembleCc (Pair invertedG []) firstDfs)
   in ccs
 
 sccSorted g = let
+  _ = debug ('sccSorted for size = ' ++ intToString (size g))
   ccs = scc g
   topSort ccs = let
     g2g = let
