@@ -427,10 +427,6 @@ freeVars e = let
   freeVarsInPData p = case p of
     PData _ n ps -> foldl mergeSet [n] (map freeVarsInPData ps)
     _ -> []
-  namesInPat p = case p of
-    PVar _ v -> [v]
-    PConst _ c -> []
-    PData _ n ps -> foldl mergeSet [] (map namesInPat ps)
   in case e of
     Var _ v -> [v]
     Const _ c -> []

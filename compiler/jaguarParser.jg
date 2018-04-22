@@ -199,11 +199,20 @@ ofP = pure Pair <*>
 caseP = pure Case <*>
   locP <*> (reservedP 'case' |-> simpleExprP) <*-> (reservedP 'of' |> some ofP)
 
-defP = pure (\l n ps e -> Pair n (foldr (\e p -> mkPatLam l p e) e ps)) <*>
-  locP <*> notUpperCaseId <*-> many patP <*-> (operatorP '=' |> exprP)
+mkDefs l p e = case p of
+  PVar _ n -> [(n, e)]
+  _ -> let
+    id = case (getAnnCodeLoc l) of
+      Just (AnnCodeLoc _ l c) -> '$pat_' ++ intToString l ++ '_' ++ intToString c
+    in enqueue (id, e) (map (\n -> (n, Case l (Var emptyAnn id) [(p, Var emptyAnn n)])) (namesInPat p))
+
+defP = pure (\l lhs ps e -> mkDefs l lhs (foldr (\e p -> mkPatLam l p e) e ps)) <*>
+  locP <*> nakedPatP <*-> many patP <*-> (operatorP '=' |> exprP)
+
+defsP = pure (foldl concat []) <*> some defP
 
 letP = pure Let <*>
-  locP <*> (reservedP 'let' |-> some defP) <*> (reservedP 'in' |-> exprP)
+  locP <*> (reservedP 'let' |-> defsP) <*> (reservedP 'in' |-> exprP)
 
 primaryExprP = appP <|> constP <|> lamP <|> caseP <|> letP <|> arrayLitP <|> tupleLitP
 
@@ -235,7 +244,7 @@ classMemberP = pure Pair <*>
   notUpperCaseId <*-> (operatorP '::' |> typeP)
 
 instanceP = pure (\name t maybeDefs -> Instance emptyAnn name t (justOr [] maybeDefs)) <*>
-  (reservedP 'instance' |-> upperCaseId) <*-> simpleTypeP <*-> opt (reservedP 'where' |> some defP)
+  (reservedP 'instance' |-> upperCaseId) <*-> simpleTypeP <*-> opt (reservedP 'where' |> defsP)
 
 // --------------- module ------------------
 
@@ -257,18 +266,18 @@ importAllP = pure (ImportAll emptyAnn) <*>
 
 importP = reservedP 'import' |> (importOpenP <|> importAllP)
 
-moduleP = pure (\loc is es -> case (splitFourWay es) of Pair (Pair dts dfs) (Pair cs ins) -> Module loc (case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f) is dts cs (map (Pair '') ins) dfs) <*>
+moduleP = pure (\loc is es -> case (splitFourWay es) of Pair (Pair dts dfs) (Pair cs ins) -> Module loc (case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f) is dts cs (map (Pair '') ins) (foldl concat [] dfs)) <*>
   locP <*> many importP <*> some topLevelP
 
 splitFourWay e = case (splitEither e) of
   Pair a b -> Pair (splitEither a) (splitEither b)
 
 eitherP a b = Parser $ \s -> applyParser ((pure Left <*> a) <|> (pure Right <*> b)) s
-topLevelDef = let
+topLevelDefsP = let
   addExportAnn d = case d of
     Pair n e -> Pair n (withAnn (setAnn 'export' (AnnExport n) (annOf e)) e)
-  in pure addExportAnn <*> defP
-topLevelP = eitherP (eitherP dataP topLevelDef) (eitherP classP instanceP)
+  in pure (map addExportAnn) <*> defsP
+topLevelP = eitherP (eitherP dataP topLevelDefsP) (eitherP classP instanceP)
   
 parseModule = runParser moduleP
 parseImports = runParser (many importP)

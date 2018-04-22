@@ -41,9 +41,11 @@ paramPat = let
 // Simple let.
 letExpr =
   let
-    x = 7
-    y = 8
-  in x + y
+    x = 5
+    y = 7
+    (a, b) = (1, 2)
+    Just c = Just a
+  in x + y + b + c
 
 // Check that shadowing works as expected.
 letExpr2 =

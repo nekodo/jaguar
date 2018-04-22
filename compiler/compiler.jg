@@ -50,28 +50,12 @@ parseExports e = let
   bs = mapRecord (\s -> skolemizeType $ evalState newCtx (generalize emptyEnv (parseT s))) e
   in ModuleInterface bs [] Empty
 
-instrument m = let
-  instrumentDef d = case d of
-    Pair n (Lam a p e) -> Pair n (instrumentExpr n (Lam a p e))
-    _ -> d
-  instrumentExpr n e = case e of
-    Lam a p e -> Lam a p (instrumentExpr n e)
-    _ -> let
-      we = Lam emptyAnn '$unused$' e
-      in App emptyAnn (App emptyAnn (Var emptyAnn 'perfTime') (Const emptyAnn (CStr n))) we
-  addImport i = case i of
-    ImportOpen ann './builtins.js' syms -> ImportOpen ann './builtins.js' (push (Pair 'perfTime' 'perfTime') syms)
-    _ -> i
-  in case m of
-    Module ann fn is ds cs ins vs -> Module ann fn (map addImport is) ds cs ins (map instrumentDef vs)
-
 builtinsPathArg = ArgString 'builtins' Nothing
 outPathArg = ArgString 'out' Nothing
 mainArg = ArgString 'main' Nothing
-profileArg = ArgBool 'profile' (Just False)
 optArg = ArgBool 'opt' (Just False)
 
-argDefs = [builtinsPathArg, outPathArg, mainArg, profileArg, optArg]
+argDefs = [builtinsPathArg, outPathArg, mainArg, optArg]
 
 liftPass p a = ret (p a)
 
@@ -86,10 +70,6 @@ typerPass m = getExports >>= \es -> let
 declasserPass m = getExports >>= \es ->
   ret (declassModule es m)
 
-instrumentPass profile m = case profile of
-  False -> ret m
-  True -> ret (instrument m)
-
 main argv = let
   // Read args.
   args = parseArgs argDefs (slice 2 argv)
@@ -97,7 +77,6 @@ main argv = let
   outPath = getString args outPathArg
   mainName = '//' ++ getString args mainArg
   srcFiles = getPositional args
-  profile = getBool args profileArg
   opt = getBool args optArg
   
   // Load builtin exports from file.
@@ -119,7 +98,6 @@ main argv = let
            timed 'merge-modules' (liftPass mergeModules) >=>
            timed 'opt' (inline opt) >=>
            // Code generation.
-           timed 'instrument' (instrumentPass profile) >=>
            timed 'generate-js' (liftPass (generateJs builtinsPath)) >=>
            reportTimes
   

@@ -50,6 +50,11 @@ data Pat =
   | PConst (Map String Ann) CVal
   | PData (Map String Ann) String (Array Pat)
 
+namesInPat p = case p of
+  PVar _ v -> [v]
+  PConst _ c -> []
+  PData _ n ps -> foldl mergeSet [] (map namesInPat ps)
+
 data Module = Module
   (Map String Ann)           // annotations
   String                     // path
