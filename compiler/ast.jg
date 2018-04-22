@@ -51,12 +51,12 @@ data Pat =
   | PData (Map String Ann) String (Array Pat)
 
 data Module = Module
-  (Map String Ann)                        // annotations
+  (Map String Ann)           // annotations
   String                     // path
   (Array Import)             // imports
   (Array Data)               // ADT definitions
-  (Array Class)              // type clas definitions
-  (Array (Pair String Instance))           // type clas instances
+  (Array Class)              // type class definitions
+  (Array (Pair String Instance))           // type class instances
   (Array (Pair String Expr)) // value definitions
 
 data ModuleInterface = ModuleInterface
