@@ -251,20 +251,17 @@ infer env e = let
     infer (addBindings bs env) e >>= \e -> ret (pat, e)
   inferPat env te pat = case pat of
     PVar ann v -> newTVarM >>= \tv ->
-      unifyM te tv >>
-        ret (Pair (insert v tv Empty) (PVar (setAnnType tv ann) v))
-    PConst _ (CNum n) -> unifyM te (TConst emptyAnn 'Number') >> ret (Pair Empty pat)
-    PConst _ (CStr s) -> unifyM te (TConst emptyAnn 'String') >> ret (Pair Empty pat)
+      unifyM te tv >> ret (insert v tv Empty, PVar (setAnnType tv ann) v)
+    PConst _ (CNum n) -> unifyM te (TConst emptyAnn 'Number') >> ret (Empty, pat)
+    PConst _ (CStr s) -> unifyM te (TConst emptyAnn 'String') >> ret (Empty, pat)
     PData ann n ps -> getBindingM n env >>= \bt -> case bt of
       Nothing -> error ('unknown data type ' ++ n)
       Just t -> instantiateM t >>= \t ->
-        case (unrollDataConType t) of
-          Pair tps dt -> case (length ps == length tps) of
+        case (unrollDataConType t) of (tps, dt) ->
+          case (length ps == length tps) of
             False -> errorM 'number of pattern params does not match the number of constructor params'
-            True -> foldM (inferSubPat env) (Pair Empty []) (zip ps tps) >>= \bps -> case bps of
-              Pair bs ps ->
-                unifyM te dt >>
-                  (ret $ Pair bs (PData ann n ps))
+            True -> foldM (inferSubPat env) (Empty, []) (zip ps tps) >>= \(bs, ps) ->
+              unifyM te dt >> ret (bs, PData ann n ps)
   inferSubPat env bp pt = case bp of
     Pair bs ps -> case pt of
       Pair pat t -> inferPat env t pat >>= \bp -> case bp of
