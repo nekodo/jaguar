@@ -34,6 +34,10 @@ nestedMatch = case (Pair (Kitten 'Fluffbun') 7) of
 tupleMatch = case (3, 4, (7, 6)) of
   (a, b, (c, d)) -> ((a * b) + c) - d
 
+paramPat = let
+  f (Pair a (b, 13)) = a + b
+  in f (3, (4, (\(Just x) -> x) (Just 13)))
+
 // Simple let.
 letExpr =
   let

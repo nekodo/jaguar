@@ -1,0 +1,41 @@
+// Ideas for lambda lifting:
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import {getUid, setUid} from '//compiler/pass.jg'
+import {freeVars} from '//compiler/typer.jg'
+
+mkClosure captured lam = case (length captured) of
+  0 -> lam
+  n -> New emptyAnn '@closure' [Const emptyAnn (CNum n), foldr (\b p -> Lam emptyAnn p b) lam captured]
+
+mkBind ann id captured = case (length captured) of
+  0 -> Var ann id
+  _ -> New ann '@bind' (map (Var emptyAnn) (push id captured))
+
+data State = S Number (Array (Pair String Expr))
+
+addTop e = gets >>= \s -> case s of
+  S cnt bs -> let
+    id = '$lift' ++ intToString cnt
+    in sets (S (cnt + 1) (push (id, e) bs)) >> ret id
+
+lift top e = case e of
+  Lam ann p b -> let
+    captured = filter (\v -> not (isJust $ lookup v top)) (freeVars e)
+    closure = mkClosure captured e
+    in addTop closure >>= \id -> ret (mkBind ann id captured)
+  _ -> ret e
+
+liftBinding top b = case b of (n, e) ->
+  upM (lift top) e >>= \e -> ret (n, e)
+
+liftTop uid top bs = case (runState (S uid []) (mapM (liftBinding top) bs)) of
+    (S uid nbs, bs) -> (uid, concat nbs bs)
+
+liftModule m = getUid >>= \uid -> case m of
+  Module ann f imps ds cs ins bs -> let
+    fromImp s i = case i of
+      ImportOpen _ _ ns -> setAddAll (map snd ns) s
+    top = foldl fromImp (setAddAll (map fst bs) emptySet) imps
+    in case (liftTop uid top bs) of
+      (uid, bs) -> setUid uid >> ret (Module ann f imps ds cs ins bs)

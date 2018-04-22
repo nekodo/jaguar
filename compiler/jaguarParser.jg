@@ -150,10 +150,14 @@ simpleExprP = varP <|> constP <|> arrayLitP <|> tupleLitP <|> parenP exprP
 appP = pure (foldl (\f a -> App (withLocOf f) f a)) <*>
   (varP <|> parenP exprP) <*-> many simpleExprP
 
-lamP = pure (\l ps a -> foldr (\a p -> Lam l p a) a ps) <*>
-  locP <*> (symP '\\' |-> some notUpperCaseId) <*-> (operatorP '->' |> exprP)
-
 patP = Parser (\s -> applyParser allPatP s)
+
+mkPatLam l p a = case p of
+  PVar _ p -> Lam l p a
+  _ -> Lam l '$pat' (Case l (Var l '$pat') [(p, a)])
+
+lamP = pure (\l ps a -> foldr (\a p -> mkPatLam l p a) a ps) <*>
+  locP <*> (symP '\\' |-> some patP) <*-> (operatorP '->' |> exprP)
 
 pvarP = pure PVar <*> locP <*> notUpperCaseId
 
@@ -171,6 +175,11 @@ strP = parseToken (\t -> case t of
 
 pconstP = pcnumP <|> pcstrP
 
+pdataP = pure PData <*>
+  locP <*> upperCaseId <*-> many patP
+
+nakedPatP = patP <|> pdataP
+
 ptupleP = let
   f ann p ps = let
     cons = case (length ps) of
@@ -180,21 +189,18 @@ ptupleP = let
       4 -> 'Tuple5'
       5 -> 'Tuple6'
     in PData ann cons (enqueue p ps)
-  in pure f <*> locP <*> (symP '(' |> (patP <| symP ',')) <*> (sepBy1 patP (symP ',') <| symP ')')
-
-pdataP = pure PData <*>
-  locP <*> upperCaseId <*-> many (pvarP <|> pconstP <|> ptupleP <|> parenP patP)
+  in pure f <*> locP <*> (symP '(' |> (nakedPatP <| symP ',')) <*> (sepBy1 nakedPatP (symP ',') <| symP ')')
   
-allPatP = pvarP <|> pconstP <|> pdataP <|> ptupleP
+allPatP = pvarP <|> pconstP <|> parenP pdataP <|> ptupleP
 
 ofP = pure Pair <*>
-  patP <*-> (operatorP '->' |> exprP)
+  nakedPatP <*-> (operatorP '->' |> exprP)
 
 caseP = pure Case <*>
   locP <*> (reservedP 'case' |-> simpleExprP) <*-> (reservedP 'of' |> some ofP)
 
-defP = pure (\l n ps e -> Pair n (foldr (\e p -> Lam l p e) e ps)) <*>
-  locP <*> notUpperCaseId <*-> many notUpperCaseId <*-> (operatorP '=' |> exprP)
+defP = pure (\l n ps e -> Pair n (foldr (\e p -> mkPatLam l p e) e ps)) <*>
+  locP <*> notUpperCaseId <*-> many patP <*-> (operatorP '=' |> exprP)
 
 letP = pure Let <*>
   locP <*> (reservedP 'let' |-> some defP) <*> (reservedP 'in' |-> exprP)

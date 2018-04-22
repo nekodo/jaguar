@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
- import {Success, Error} from '//compiler/parsers.jg'
+import {Success, Error} from '//compiler/parsers.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileModule as generateJs} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
@@ -15,6 +15,7 @@ import {inline} from '//compiler/inliner.jg'
 import {translateAdts} from '//compiler/adt.jg'
 import * from '//compiler/pass.jg'
 import {splitLetsPass} from '//compiler/let_splitter.jg'
+import {liftModule} from '//compiler/lambdaLifter.jg'
 
 moduleFile m = case m of
   Module _ n _ _ _ _ _ -> n
@@ -113,6 +114,7 @@ main argv = let
                // Typing and type clas handling.
                timed 'typer' typerPass >=>
                timed 'declasser' declasserPass) >=>
+               //timed 'lambda-lifter' liftModule) >=>
            // Optimization passes.
            timed 'merge-modules' (liftPass mergeModules) >=>
            timed 'opt' (inline opt) >=>

@@ -28,7 +28,8 @@ const expected = {
   hamtTest3: 55,
   hamtTest4: 2,
   hamtTest5: 13,
-  arrayTest: true,
+    arrayTest: true,
+    paramPat: 7,
 };
 
 module.exports = expected;

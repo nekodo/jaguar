@@ -66,11 +66,29 @@ rewriteExpr e = case e of
           mapM addStmt >> ret (JSRef phiOut)
   Let _ ds e->
     mapM (\d -> case d of Pair n e -> rewriteExpr e >>= addConst n) ds >> rewriteExpr e
+  New _ '@closure' xs -> case (length xs) of
+    2 -> case (getIx 0 xs) of
+      Const _ (CNum n) -> mkClosure n (getIx 1 xs)
+    _ -> error 'invalid @closure'
+  New _ '@bind' xs -> case (last xs) of
+    Var _ f -> mkBind (init xs) f
   New _ 'Array' es -> mapM rewriteExpr es >>= \es -> ret (JSArray es)
   New _ tag es -> mapM rewriteExpr es >>= \es -> getCons >>= \cons -> case (lookup tag cons) of
     Nothing -> error ('unrecognized tag in New: ' ++ tag)
     Just (Nothing) -> ret (JSObject (zip (dataConFieldIds es) es))
     Just (Just tag) -> ret (JSObject (push (Pair '$tag' (JSNum tag)) (zip (dataConFieldIds es) es)))
+
+mkClosure n e = let
+  gather n e = case e of
+    Lam _ p e -> case n of
+      0 -> ([p], e)
+      _ -> case (gather (n - 1) e) of
+        (ps, e) -> (enqueue p ps, e)
+  in case (gather n e) of
+    (ps, e) -> rewriteExprToStmts JSReturn e >>= \stmts -> ret (JSFun ps stmts)
+
+mkBind args f = mapM rewriteExpr args >>= \args ->
+  ret (JSCall (JSIndex (JSRef f) (JSString 'bind')) (enqueue JSNull args))
 
 assemblePatternMatch2 phiIn phiOut alts p = getCons >>= \cons -> case p of
   Pair pat e -> case (processPattern cons phiIn pat) of
