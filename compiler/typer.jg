@@ -7,13 +7,11 @@ import {sccSorted} from '//compiler/graph.jg'
 
 data Subs = Subs (Map String Type) (Map String Type)
 
-getSub v subs = case subs of
-  Subs sat unsat -> lookup v sat <|> lookup v unsat
+getSub v (Subs sat unsat) = lookup v sat <|> lookup v unsat
 
 emptySubs = Subs Empty Empty
 
-composeSubs ef sa sb = case sb of
-  Subs sat unsat -> foldTrie (\r v t -> addSub ef v t r) (foldTrie (\r v t -> addSatSub ef v t r) sa sat) unsat
+composeSubs ef sa (Subs sat unsat) = foldTrie (\r v t -> addSub ef v t r) (foldTrie (\r v t -> addSatSub ef v t r) sa sat) unsat
 
 addSub ef v t subs = let
   t2 = applySubs subs t
@@ -150,13 +148,10 @@ instantiateM t = gets >>= \ctx -> case (instantiate ctx (\ctx _ -> newTVar ctx) 
 
 instantiate ctx mkvar t = case t of
   TForall ann vs bs t -> let
-    _sc = let
-      f sc v = case sc of
-        Pair subs ctx -> case (mkvar ctx v) of
-          Pair ctx tv -> Pair (insert v tv subs) ctx
-      in foldl f (Pair Empty ctx) vs
-    subs = fst _sc
-    ctx2 = snd _sc
+    (subs, ctx2) = let
+      f (subs, ctx) v = case (mkvar ctx v) of
+        (ctx, tv) -> (insert v tv subs, ctx)
+      in foldl f (Empty, ctx) vs
     replace t = case t of
       TConst _ _ -> t
       TVar _ _ -> t
@@ -167,7 +162,7 @@ instantiate ctx mkvar t = case t of
       TApp ann f a -> TApp ann (replace f) (replace a)
       TRow ann ms r -> TRow
         ann
-        (map (\m -> case m of Pair k v -> Pair (replace k) (replace v)) ms)
+        (map (\(k, v) -> (replace k, replace v)) ms)
         (fmap replace r)
       TForall _ _ _ _ -> error 'nested universal quantification'
     replaceBound b = case b of
@@ -181,11 +176,9 @@ applySubs subs t = case t of
   TForall ann vs bs t -> let
     subs2 = dropSubs vs subs
     in mkTForall ann vs (map (applySubsBound subs2) bs) (applySubs subs2 t)
-  TVar _ v -> case (getSub v subs) of
-    Nothing -> t
-    Just subT -> subT
+  TVar _ v -> justOr t (getSub v subs)
   TApp ann f a -> TApp ann (applySubs subs f) (applySubs subs a)
-  TRow ann ms r -> TRow ann (map (\m -> case m of Pair k v -> Pair (applySubs subs k) (applySubs subs v)) ms) (fmap (applySubs subs) r)
+  TRow ann ms r -> TRow ann (map (\(k, v) -> (applySubs subs k, applySubs subs v)) ms) (fmap (applySubs subs) r)
   _ -> t
 
 applySubsBound subs b = case b of
@@ -254,11 +247,8 @@ infer env e = let
       // TODO: check whether the inferred type is broader then the user-provided one
       ret e
     te -> unifyM t te >> ret e
-  inferCase env te p = case p of
-    Pair pat e -> inferPat env te pat >>= \cb -> case cb of
-      Pair bs pat ->
-        infer (addBindings bs env) e >>= \e ->
-          ret (Pair pat e)
+  inferCase env te (pat, e) = inferPat env te pat >>= \(bs, pat) ->
+    infer (addBindings bs env) e >>= \e -> ret (pat, e)
   inferPat env te pat = case pat of
     PVar ann v -> newTVarM >>= \tv ->
       unifyM te tv >>
