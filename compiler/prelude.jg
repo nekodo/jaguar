@@ -42,6 +42,26 @@ class Monad m where
 
 (>>) a b = a >>= \_ -> b
 
+class Semigroup a where
+  (<>) :: a -> a -> a
+
+instance Semigroup (Array a) where
+  (<>) = concat
+
+instance Semigroup String where
+  (<>) = (++)
+
+class Monoid a where
+  mzero :: a
+
+instance Monoid (Array a) where
+  mzero = []
+
+instance Monoid String where
+  mzero = ''
+
+mconcat = foldl (<>) mzero
+
 data Maybe a = Just a | Nothing
 
 instance Functor Maybe where
@@ -109,26 +129,20 @@ splitEither = \a -> Pair
   (map (\e -> case e of Left a -> a) (filter (either (\_ -> True) (\_ -> False)) a))
   (map (\e -> case e of Right b -> b) (filter (either (\_ -> False) (\_ -> True)) a))
 
-not = \b -> case b of
+not b = case b of
   True -> False
   False -> True
 
 // (a -> Either a b) -> a -> b
 loop f start = let
-  // Pair a (Maybe b) -> Bool
   shouldStop x = case x of
     Pair _ (Nothing) -> False
     _ -> True
-  // Pair a (Maybe b) -> Pair a (Maybe c)
-  // f :: a -> Either a c
-  next xr = case xr of
-    Pair x _ -> case (f x) of
-      Left x2 -> Pair x2 Nothing
-      Right r -> Pair x (Just r)
-  sp = Pair start Nothing
-  result = iterate sp shouldStop next
-  in case (snd result) of
-    Just r -> r    
+  next (x, _) = case (f x) of
+    Left x -> (x, Nothing)
+    Right r -> (x, Just r)
+  result = iterate (start, Nothing) shouldStop next
+  in case result of (_, Just r) -> r    
 
 contains x xs = let
   f i = case (i < length xs) of
@@ -159,7 +173,7 @@ containsChar x xs = let
 exists f xs = foldl (\r x -> f x || r) False xs
 all f xs = foldl (\r x -> f x && r) True xs
 
-join = \xs s -> case (length xs) of
+join xs s = case (length xs) of
   0 -> ''
   n -> foldl1 (\a b -> a ++ s ++ b) xs
 
@@ -173,7 +187,7 @@ zip xs ys = case ((length xs == 0) || (length ys == 0)) of
   True -> []
   False -> enqueue (Pair (head xs) (head ys)) (zip (tail xs) (tail ys))
 
-concatMap = \f a -> foldl concat [] (map f a)
+concatMap = \f a -> foldl (<>) [] (map f a)
 
 mapJust f xs = let
   g r x = case (f x) of
@@ -204,14 +218,13 @@ uniq xs = case (length xs < 2) of
 
 reverse = foldl (\xs x -> enqueue x xs) []
 
-toRecord = foldl (\r p -> case p of Pair k v -> set k v r) empty
+toRecord = foldl (\r (k, v) -> set k v r) empty
 
 strToArray s = let
-  f p = case p of
-    Pair i r -> case (i < length s) of
-      False -> Right r
-      True -> Left (Pair (i + 1) (push (getChar i s) r))
-  in loop f (Pair 0 [])
+  f (i, r) = case (i < length s) of
+    False -> Right r
+    True -> Left (i + 1, push (getChar i s) r)
+  in loop f (0, [])
 
 foldM f r xs = foldl (\r x -> r >>= \r -> f r x) (ret r) xs
 
@@ -221,17 +234,17 @@ forM xs f = mapM f xs
 data State s a = State (s -> Pair s a)
 
 instance Functor (State s) where
-  fmap f s = case s of State sf -> State (\s -> case (sf s) of Pair s a -> Pair s (f a))
+  fmap f (State sf) = State (\s -> case (sf s) of (s, a) -> (s, f a))
 
 instance Applicative (State s) where
-  pure a = State (\s -> Pair s a)
-  (<*>) f a = case f of State sf -> case a of State sa -> State
-    (\s -> case (sf s) of Pair s f -> case (sa s) of Pair s a -> Pair s (f a))
+  pure a = State (\s -> (s, a))
+  (<*>) (State sf) (State sa) =
+    State (\s -> case (sf s) of (s, f) -> case (sa s) of (s, a) -> (s, f a))
 
 instance Monad (State s) where
   ret = pure
-  (>>=) a f = case a of State sa -> State
-    (\s -> case (sa s) of Pair s a -> case (f a) of State sb -> sb s)
+  (>>=) (State sa) f =
+    State (\s -> case (sa s) of (s, a) -> case (f a) of State sb -> sb s)
 
 gets = State (\s -> Pair s s)
 sets s = State (\_ -> Pair s Unit)
@@ -290,7 +303,7 @@ insert k v t = let
   hash = hashCode k
   f depth t = case t of
     Empty -> Leaf k v
-    Collision entries -> Collision (push (Pair k v) (filter (\e -> fst e /= k) entries))
+    Collision entries -> Collision (push (k, v) (filter (\(k2, _) -> k2 /= k) entries))
     Leaf k2 v2 -> case (k == k2) of
       True -> Leaf k v
       False -> case depth of
@@ -319,7 +332,7 @@ remove k t = let
       True -> Empty
       False -> t
     Collision entries -> let
-      entries2 = filter (\e -> fst e /= k) entries
+      entries2 = filter (\(k2, _) -> k2 /= k) entries
       in case (length entries2) of
         0 -> Empty
         1 -> case (getIx 0 entries2) of
@@ -345,13 +358,13 @@ remove k t = let
 foldTrie f a t = case t of
   Empty -> a
   Leaf k v -> f a k v
-  Collision entries -> foldl (\a e -> f a (fst e) (snd e)) a entries
+  Collision entries -> foldl (\a (k, v) -> f a k v) a entries
   BitmapIndexed _ entries -> foldl (foldTrie f) a entries
 
 mapTrie f t = case t of
   Empty -> Empty
   Leaf k v -> Leaf k (f k v)
-  Collision entries -> Collision $ map (\e -> Pair (fst e) $ f (fst e) (snd e)) entries
+  Collision entries -> Collision $ map (\(k, v) -> (k, f k v)) entries
   BitmapIndexed bitmap entries -> BitmapIndexed bitmap $ map (mapTrie f) entries
 
 size t = case t of
@@ -388,27 +401,28 @@ debug2 p x = snd (Pair (debug p) x)
 data Identity a = Identity a
 
 instance Functor Identity where
-  fmap f i = case i of
-    Identity a -> Identity (f a)
+  fmap f (Identity a) = Identity (f a)
 
 instance Applicative Identity where
   pure x = Identity x
-  (<*>) f x = case f of
-    Identity f -> fmap f x
+  (<*>) (Identity f) x = fmap f x
 
 instance Monad Identity where
   ret = pure
-  (>>=) a f = case a of
-    Identity a -> f a
+  (>>=) (Identity a) f = f a
 
 (>=>) a b x = a x >>= b
 
-mapFst f p = case p of
-  Pair a b -> Pair (f a) b
+mapFst f (a, b) = (f a, b)
 
-mapSnd f p = case p of
-  Pair a b -> Pair a (f b)
+mapSnd f (a, b) = (a, f b)
 
 assert s b = case b of
   True -> True
   False -> error s
+
+//instance Semigroup (Map String v) where
+//  (<>) = mergeTrie
+
+//instance Monoid (Map k v) where
+//  mzero = Empty

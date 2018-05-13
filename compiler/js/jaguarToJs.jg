@@ -73,6 +73,13 @@ rewriteExpr e = case e of
   New _ '@bind' xs -> case (last xs) of
     Var _ f -> mkBind (init xs) f
   New _ 'Array' es -> mapM rewriteExpr es >>= \es -> ret (JSArray es)
+  New _ '@Rec' es -> let
+    unpack es = let
+      f (out, n) e = case n of
+        Just n -> (push (n, e) out, Nothing)
+        Nothing -> case e of Const _ (CStr n) -> (out, Just n)
+      in fst (foldl f ([], Nothing) es)
+    in mapM (\(n, e) -> rewriteExpr e >>= \e -> ret (n, e)) (unpack es) >>= \kvs -> ret (JSObject kvs)
   New _ tag es -> mapM rewriteExpr es >>= \es -> getCons >>= \cons -> case (lookup tag cons) of
     Nothing -> error ('unrecognized tag in New: ' ++ tag)
     Just (Nothing) -> ret (JSObject (zip (dataConFieldIds es) es))

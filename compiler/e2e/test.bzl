@@ -52,7 +52,7 @@ module_diff_test = rule(
 def compiler_diff_test(name, expected, actual):
   jaguar_js_bundle(
       name = "%s_actual_stage1" % name,
-      main = actual,
+      main = "test",
       srcs = [
         actual,
         "//compiler:prelude.jg",
@@ -73,7 +73,7 @@ def compiler_diff_test(name, expected, actual):
   
   jaguar_js_bundle(
       name = "%s_actual_stage2" % name,
-      main = actual,
+      main = "test",
       srcs = [
         actual,
         "//compiler:prelude.jg",
@@ -94,7 +94,7 @@ def compiler_diff_test(name, expected, actual):
   
   jaguar_js_bundle(
       name = "%s_actual_opt" % name,
-      main = actual,
+      main = "test",
       srcs = [
         actual,
         "//compiler:prelude.jg",

@@ -12,7 +12,7 @@ def jaguar_js_bundle(name, main, srcs,
     args = [
     	 "--builtins=$(location %s)" % builtins,
 	 "--out=$(location %s)" % out,
-	 "--main=$(location %s)" % main,
+	 "--main=%s" % main,
     ] + ["$(location %s)" % src for src in srcs] + compiler_args
 
     native.genrule(

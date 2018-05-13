@@ -75,7 +75,7 @@ main argv = let
   args = parseArgs argDefs (slice 2 argv)
   builtinsPath = getString args builtinsPathArg
   outPath = getString args outPathArg
-  mainName = '//' ++ getString args mainArg
+  mainName = getString args mainArg
   srcFiles = getPositional args
   opt = getBool args optArg
   

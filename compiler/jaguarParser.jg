@@ -64,7 +64,7 @@ locP = let
 
 (|->) pa pb = pure (\_ b -> b) <*> pa <*-> pb
 
-reserved = ['as', 'class', 'where', 'instance', 'let', 'in', 'from', 'import', 'case', 'of', 'data']
+reserved = ['as', 'class', 'where', 'instance', 'let', 'in', 'from', 'import', 'case', 'of', 'data', 'module']
 
 symP s = parseToken (\t -> case t of
   Token (SymTok) v i c -> case (v == s) of
@@ -113,11 +113,7 @@ parenP p = symP '(' |> p <| symP ')'
 withLocAnn a = setAnn 'codeLoc' a emptyAnn
 withLocOf e = withLocAnn (fromJust $ getAnn 'codeLoc' (annOf e))
 
-varP = pure Var <*> locP <*> parseToken (\t -> case t of
-  Token (IdTok) v l c -> case (contains v reserved) of
-    True -> Nothing
-    False -> Just v
-  x -> Nothing)
+varP = pure Var <*> locP <*> nonReservedP
 
 cnumP = pure Const <*> locP <*> parseToken (\t -> case t of
   Token (NumTok) v l c -> Just (CNum (unsafeStringToInt v))
@@ -134,6 +130,9 @@ exprP = Parser (\s -> applyParser opP s)
 arrayLitP = pure (\ann xs -> New ann 'Array' xs) <*>
   locP <*> (symP '[' |> sepBy exprP (symP ',') <| symP ']')
 
+recLitP = pure (\ann xs -> New ann '@Rec' (foldl concat [] xs)) <*>
+  locP <*> (symP '{' |> sepBy (pure (\a b -> [Const emptyAnn (CStr a), b]) <*> (nonReservedP <| operatorP '=') <*> exprP) (symP ',') <| symP '}')
+
 tupleLitP = let
   f ann e es = let
     cons = case (length es) of
@@ -145,7 +144,7 @@ tupleLitP = let
     in foldl (App ann) (App ann (Var ann cons) e) es
   in pure f <*> locP <*> (symP '(' |> (exprP <| symP ',')) <*> (sepBy1 exprP (symP ',') <| symP ')')
 
-simpleExprP = varP <|> constP <|> arrayLitP <|> tupleLitP <|> parenP exprP
+simpleExprP = varP <|> constP <|> arrayLitP <|> tupleLitP <|> recLitP <|> parenP exprP
 
 appP = pure (foldl (\f a -> App (withLocOf f) f a)) <*>
   (varP <|> parenP exprP) <*-> many simpleExprP
@@ -214,7 +213,7 @@ defsP = pure (foldl concat []) <*> some defP
 letP = pure Let <*>
   locP <*> (reservedP 'let' |-> defsP) <*> (reservedP 'in' |-> exprP)
 
-primaryExprP = appP <|> constP <|> lamP <|> caseP <|> letP <|> arrayLitP <|> tupleLitP
+primaryExprP = appP <|> constP <|> lamP <|> caseP <|> letP <|> arrayLitP <|> recLitP <|> tupleLitP
 
 opP = pure (\e oes -> foldl (\a lob -> case lob of Pair l (Pair op b) -> App l (App l (Var l op) a) b) e oes) <*>
   primaryExprP <*-> many (pure (\l op e -> Pair l (Pair op e)) <*> locP <*> anyOpP <*> primaryExprP)
@@ -266,8 +265,15 @@ importAllP = pure (ImportAll emptyAnn) <*>
 
 importP = reservedP 'import' |> (importOpenP <|> importAllP)
 
-moduleP = pure (\loc is es -> case (splitFourWay es) of Pair (Pair dts dfs) (Pair cs ins) -> Module loc (case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f) is dts cs (map (Pair '') ins) (foldl concat [] dfs)) <*>
-  locP <*> many importP <*> some topLevelP
+headerP = reservedP 'module' |> nonReservedP <| reservedP 'where'
+
+moduleP = let
+  name h loc = case h of
+    Nothing -> case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f
+    Just n -> n
+  f loc h is es = case (splitFourWay es) of
+    Pair (Pair dts dfs) (Pair cs ins) -> Module loc (name h loc) is dts cs (map (Pair '') ins) (foldl concat [] dfs)
+  in pure f <*> locP <*> opt headerP <*> many importP <*> some topLevelP
 
 splitFourWay e = case (splitEither e) of
   Pair a b -> Pair (splitEither a) (splitEither b)

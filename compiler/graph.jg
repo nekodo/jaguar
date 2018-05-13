@@ -25,15 +25,14 @@ scc g = let
         Nothing -> insert v [] ig
       in foldl (invertEdge v) ig2 es
     in foldTrie invert Empty g
-  assembleCc gs v = case gs of
-    Pair ig ccs -> case (exists (contains v) ccs) of
-      True -> Pair ig ccs
+  assembleCc (ig, ccs) v = case (exists (contains v) ccs) of
+      True -> (ig, ccs)
       False -> let
         cc = dfs ig [] v
         ig2 = foldl (\g v -> remove v g) ig cc
-        in Pair ig2 (push cc ccs)
+        in (ig2, push cc ccs)
   firstDfs = fullDfs g
-  ccs = snd (foldl assembleCc (Pair invertedG []) firstDfs)
+  ccs = snd (foldl assembleCc (invertedG, []) firstDfs)
   in ccs
 
 sccSorted g = let
@@ -41,8 +40,7 @@ sccSorted g = let
   ccs = scc g
   topSort ccs = let
     g2g = let
-      f r icc = case icc of
-        Pair i cc -> foldl (\r c -> insert c (intToString i) r) r cc
+      f r (i, cc) = foldl (\r c -> insert c i r) r cc
       in foldl f Empty (zipWithIndex ccs)
     addGraph r v es = let
       rv = fromJust $ lookup v g2g
@@ -52,6 +50,6 @@ sccSorted g = let
         Just x -> insert rv (mergeSet res x) r
     cg = foldTrie addGraph Empty g
     ord = fullDfs cg
-    in reverse (map (\i -> getIx (unsafeStringToInt i) ccs) ord)
+    in reverse (map (\i -> getIx i ccs) ord)
   result = topSort ccs
   in result
