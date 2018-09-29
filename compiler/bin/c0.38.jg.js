@@ -383,7 +383,7 @@ process.on('exit', function() {
 builtins.writeFile = function(contents) {
   return function(f) {
     var out = fs.openSync(f, 'w');
-    fs.write(out, contents);
+    fs.writeSync(out, contents);
   }
 }
 
