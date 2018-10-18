@@ -129,7 +129,7 @@ freeTVars t = case t of
   TUnknown -> emptySet
   TConst _ c -> emptySet
   TSkolem _ _ -> emptySet
-  TForall _ vs bs t -> 
+  TForall _ vs bs t ->
     foldl (\s v -> setRemove v s) (foldl setUnion (freeTVars t) (map freeTVarsInBound bs)) vs
   TApp _ f a -> setUnion (freeTVars f) (freeTVars a)
   TRow _ ms r -> foldl setUnion (justOr emptySet $ fmap freeTVars r) (map (\m -> setUnion (freeTVars (fst m)) (freeTVars (snd m))) ms)
@@ -180,6 +180,8 @@ applySubs subs t = case t of
   TApp ann f a -> TApp ann (applySubs subs f) (applySubs subs a)
   TRow ann ms r -> TRow ann (map (\(k, v) -> (applySubs subs k, applySubs subs v)) ms) (fmap (applySubs subs) r)
   _ -> t
+
+applySubsM t = gets >>= \ctx -> ret (applySubs (getSubs ctx) t)
 
 applySubsBound subs b = case b of
   TCBound ann n t -> TCBound ann n (applySubs subs t)
@@ -243,12 +245,16 @@ withLocError e f = case (getAnnCodeLoc (annOf e)) of
   Just loc -> withError (\s -> s ++ ' ' ++ printCodeLoc loc) f
 
 infer env e = let
-  setFinalType t e = case (getType e) of
-    TUnknown -> ret (setType t e)
-    TForall _ _ _ _ ->
-      // TODO: check whether the inferred type is broader then the user-provided one
-      ret e
-    te -> unifyM t te >> ret e
+  setFinalType t e = case (hasAnnE 'data' e) of
+    // Skip this check for generated data constructor functions as they contain
+    // skolems in a way that confuses the typer.
+    True -> ret e
+    False -> case (getType e) of
+      TUnknown -> ret (setType t e)
+      //te -> instantiateM te >>= \ite -> unifyM t ite >> ret e
+      te -> instantiateM te >>= \ite -> unifyM t ite >> case (satisfies t ite) of
+        True -> ret e
+        False -> errorM ('inferred type ' ++ printType t ++ ' does not satisfy explicit type ' ++ printType te ++ ' for <<<' ++ reallyPrintExpr False e ++ '>>>')
   inferCase env te (pat, e) = inferPat env te pat >>= \(bs, pat) ->
     infer (addBindings bs env) e >>= \e -> ret (pat, e)
   inferPat env te pat = case pat of
@@ -269,27 +275,27 @@ infer env e = let
   in withLocError e $ case e of
     Const _ (CNum n) -> setFinalType (TConst emptyAnn 'Number') e
     Const _ (CStr s) -> setFinalType (TConst emptyAnn 'String') e
-    Var _ v -> getBindingM v env >>= \vt -> case vt of
+    Var _ v -> withError (\s -> 'Var: ' ++ s) (getBindingM v env >>= \vt -> case vt of
       Nothing -> errorM ('unknown identifier ' ++ v ++ ', env: ' ++ jsonStringify (trieKeys $ getBindings env))
-      Just t -> instantiateM t >>= \t -> setFinalType t e
-    Lam ann p a -> newTVarM >>= \tv ->
+      Just t -> instantiateM t >>= \t -> setFinalType t e)
+    Lam ann p a -> withError (\s -> 'Lam: ' ++ s) (newTVarM >>= \tv ->
       infer (addBinding p tv env) a >>= \a ->
-        setFinalType (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') tv) (getType a)) (Lam ann p a)
-    App ann f a -> newTVarM >>= \tv ->
+        setFinalType (TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') tv) (getType a)) (Lam ann p a))
+    App ann f a -> withError (\s -> 'App: ' ++ s) (newTVarM >>= \tv ->
       infer env f >>= \f ->
         infer env a >>= \a -> let
           synth = f1 (getType a) tv
           in unifyM (getType f) synth >>
-            setFinalType tv (App ann f a)
-    Case ann e ps -> infer env e >>= \e ->
+            setFinalType tv (App ann f a))
+    Case ann e ps -> withError (\s -> 'Case: ' ++ s) $ infer env e >>= \e ->
       mapM (inferCase env (getType e)) ps >>= \ps -> let
         t = getType (snd (head ps))
         in mapM (\(_, e) -> unifyM t (getType e)) (tail ps) >>
           setFinalType t (Case ann e ps)
-    Let ann ds e -> inferDefs env ds >>= \ds -> let
+    Let ann ds e -> withError (\s -> 'Let: ' ++ s) (inferDefs env ds >>= \ds -> let
       env2 = foldl (\env (n, e) -> addBinding n (getType e) env) env ds
       in infer env2 e >>= \e ->
-        setFinalType (getType e) (Let ann ds e)
+        setFinalType (getType e) (Let ann ds e))
     New ann 'Array' es -> mapM (infer env) es >>= \es ->
       newTVarM >>= \tv ->
         mapM (\e -> unifyM tv (getType e)) es >>
@@ -306,14 +312,14 @@ infer env e = let
         in TRow emptyAnn (map f bs) Nothing
       in mapM (\(n, e) -> infer env e >>= \e -> ret (n, e)) (unpack es) >>= \bs ->
         setFinalType (mkType bs) (New ann '@Rec' (pack bs))
-    New ann tag es -> mapM (infer env) es >>= \es -> getBindingM tag env >>= \t -> case t of
+    New ann tag es -> withError (\s -> 'New: ' ++ s) (mapM (infer env) es >>= \es -> getBindingM tag env >>= \t -> case t of
       Nothing -> error ('unknown data constructor ' ++ tag)
       Just t -> instantiateM t >>= \t ->
         case (unrollDataConType t) of
           (tps, dt) -> case (length es == length tps) of
             False -> errorM ('number of New args does not match the number of constructor params ' ++ jsonStringify es ++ ' ' ++ printType t)
             True -> mapM (\(t, e) -> unifyM t (getType e)) (zip tps es) >>
-              setFinalType dt (New ann tag es)
+              withError (\s -> 't = ' ++ printType t ++ ': ' ++ s) (setFinalType dt (New ann tag es)))
     _ -> error 'type inference not supported for this AST node'
 
 inferSccDefs env ds = let
@@ -478,17 +484,27 @@ getTypedExports (Module _ _ _ _ cs ins ds) = let
   bs = foldl collectExports empty ds
   in ModuleInterface bs cs (foldl (\m (n, i) -> insert n (instanceToTypeBound i) m) Empty ins)
 
-satisfies a b = case a of
-  TVar _ _ -> True
-  TSkolem _ va -> case b of
-    TSkolem _ vb -> va == vb
-    _ -> False
-  TConst _ c -> case b of
-    TConst _ c2 -> c == c2
-    _ -> False
-  TApp _ fa xa -> case b of
-    TApp _ fb xb -> satisfies fa fb && satisfies xa xb
-    _ -> False
-  _ -> error ('unexpected type in satisfies ' ++ printType a)
+satisfies a b = // :: Type -> Type -> Pair Bool subs
+  let
+    instantiateTop t = case (instantiate Unit (\_ v -> (Unit, TVar emptyAnn ('$sat$' ++ v))) t) of
+      ((t, _), _) -> t
+    sat subs a b = case a of
+      TConst _ ca -> case b of
+        TConst _ cb -> (ca == cb, subs)
+        _ -> (False, subs)
+      TApp _ fa xa -> case b of
+        TApp _ fb xb -> let
+          (fs, subs2) = sat subs fa fb
+          (xs, subs3) = sat subs2 xa xb
+          in (fs && xs, subs3)
+        _ -> (False, subs)
+      TSkolem _ va -> case b of
+        TSkolem _ vb -> (va == vb, subs)
+        _ -> (False, subs)
+      TVar _ va -> case (lookup va subs) of
+        Nothing -> (True, insert va b subs)
+        Just t -> (equivType t b, subs)
+      _ -> error ('satisfies does not support type ' ++ printType a)
+  in fst (sat Empty (instantiateTop a) b)
 
 satisfiesBound (TCBound _ na ta) (TCBound _ nb tb) = na == nb && satisfies ta tb

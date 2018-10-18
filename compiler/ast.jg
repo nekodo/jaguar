@@ -17,6 +17,9 @@ copyAnn names ann = let
     Just a -> setAnn n a r
   in foldl f Empty names
 
+getAnnE name e = getAnn name (annOf e)
+hasAnnE name e = isJust (getAnnE name e)
+
 getAnnType ann = case (getAnn 'type' ann) of
   Just (AnnType t) -> t
   Nothing -> TUnknown
@@ -138,7 +141,7 @@ data Import =
 
 dataConName = \dc -> case dc of DataCon _ n ts -> n
 dataConNames = \d -> case d of Data _ n ps cs -> map dataConName cs
-  
+
 setType t e = case e of
   Var ann v -> Var (setAnnType t ann) v
   Const ann c -> Const (setAnnType t ann) c

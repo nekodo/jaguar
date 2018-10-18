@@ -5,13 +5,13 @@ import {printType, printTypeBound, reallyPrintExpr} from '//compiler/printer.jg'
 import {mkConFun} from '//compiler/adt.jg'
 
 declassModule ms m = case m of
-  Module ann fn imps dt cs ins ds -> let 
+  Module ann fn imps dt cs ins ds -> let
     // Materialize instances from import modules as reified instance object imports.
     _isi = foldl (rewriteImportedInstances ms) (Pair [] []) imps
     impsWithImportedInstances = fst _isi
     importedInstances = snd _isi
 
-    // Translate class declarations 
+    // Translate class declarations
     classFuns = concat
       (map mkClassDictConstructor cs)
       (concatMap mkClassDictAccessors cs)
@@ -159,7 +159,9 @@ rewriteExpr is env e = let
           S _ is _ -> let
             matching = filter (\p -> case p of Pair _ ib -> satisfiesBound ib b) is
             in case (length matching) of
-              0 -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b ++ ' ' ++ exprLoc e)
+              0 -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b ++ ' ' ++ exprLoc e ++
+                            '\nKnown type class instances:' ++
+                            concatMap (\(_, ib) -> '\n  # ' ++ printTypeBound ib) is)
               1 -> fst (getIx 0 matching)
               _ -> error ('declasser found more than 1 satisfying instance for ' ++ printTypeBound b  ++ ' ' ++ exprLoc e)
         requiredInstances tv td = case (instantiate Unit (\_ v -> Pair Unit $ TVar emptyAnn ('$ins$' ++ v)) td) of

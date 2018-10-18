@@ -6,7 +6,7 @@ translateAdts m = case m of
   Module ann fn is ds cs ins bs -> Module ann fn is [] cs ins (concat (concatMap rewriteData ds) bs)
 
 rewriteData d = case d of
-  Data _ n vs cs -> let 
+  Data _ n vs cs -> let
     dt = foldl (\r v -> TApp emptyAnn r (TVar emptyAnn v)) (TConst emptyAnn n) vs
     rewriteCon c = let
       tag = case (length cs) of

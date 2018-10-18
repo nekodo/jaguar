@@ -6,7 +6,7 @@ import {scc, sccSorted as sortedScc} from '//compiler/graph.jg'
 import * from '//compiler/ast.jg'
 
 // Simple operator.
-addition = 6 + 5
+addition :: Number = 6 + 5
 
 // Pattern match.
 match = case (Pair 'foo' 'bar') of
@@ -41,7 +41,7 @@ paramPat = let
   in f (3, (4, (\(Just x) -> x) (Just 13)))
 
 // Simple let.
-letExpr =
+letExpr :: Number =
   let
     x = 5
     y = 7
@@ -52,9 +52,9 @@ letExpr =
 // Check that shadowing works as expected.
 letExpr2 =
   let contains = False in not contains
-  
+
 // Syntax-sugar for function definitions.
-f x = x + 1
+f x :: Number -> Number = x + 1
 fx = f 41
 
 // Syntax sugar for funs in lets.
@@ -141,3 +141,11 @@ arrayTest = contains 'a' (concat ['a', 'b'] [])
 arrayTest2 = [1,2,3]
 
 recTest = {a = 8, b = True}
+
+imabool b x y :: Bool -> z -> z -> z =
+  case b of
+    True -> x
+    False -> y
+
+hah = imabool True '7' '6'
+hah2 = imabool False 7 6

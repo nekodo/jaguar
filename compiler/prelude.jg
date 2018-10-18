@@ -142,7 +142,7 @@ loop f start = let
     Left x -> (x, Nothing)
     Right r -> (x, Just r)
   result = iterate (start, Nothing) shouldStop next
-  in case result of (_, Just r) -> r    
+  in case result of (_, Just r) -> r
 
 contains x xs = let
   f i = case (i < length xs) of
@@ -151,7 +151,7 @@ contains x xs = let
       True -> True
       False -> f (i + 1)
   in f 0
-  
+
 find predicate xs = let
   f i = case (i < length xs) of
     False -> Nothing
@@ -162,7 +162,7 @@ find predicate xs = let
 
 mapIx f ix xs = setIx ix (f (getIx ix xs)) xs
 
-containsChar x xs = let 
+containsChar x xs = let
   f i = case (i < length xs) of
     False -> False
     True -> case (getChar i xs == x) of
@@ -187,7 +187,7 @@ zip xs ys = case ((length xs == 0) || (length ys == 0)) of
   True -> []
   False -> enqueue (Pair (head xs) (head ys)) (zip (tail xs) (tail ys))
 
-concatMap = \f a -> foldl (<>) [] (map f a)
+concatMap f a = mconcat (map f a)
 
 mapJust f xs = let
   g r x = case (f x) of
@@ -296,7 +296,7 @@ lookup k t = let
       m = hamtMask depth hash
       in case (bitAnd m bitmap) of
         0 -> Nothing
-        _ -> f (depth + 1) (getIx (hamtIndex bitmap m) entries) 
+        _ -> f (depth + 1) (getIx (hamtIndex bitmap m) entries)
   in f 0 t
 
 insert k v t = let

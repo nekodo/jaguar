@@ -122,7 +122,7 @@ cnumP = pure Const <*> locP <*> parseToken (\t -> case t of
 cstrP = pure Const <*> locP <*> parseToken (\t -> case t of
   Token (StrTok) v l c -> Just (CStr v)
   x -> Nothing)
-  
+
 constP = cstrP <|> cnumP
 
 exprP = Parser (\s -> applyParser opP s)
@@ -189,7 +189,7 @@ ptupleP = let
       5 -> 'Tuple6'
     in PData ann cons (enqueue p ps)
   in pure f <*> locP <*> (symP '(' |> (nakedPatP <| symP ',')) <*> (sepBy1 nakedPatP (symP ',') <| symP ')')
-  
+
 allPatP = pvarP <|> pconstP <|> parenP pdataP <|> ptupleP
 
 ofP = pure Pair <*>
@@ -198,15 +198,19 @@ ofP = pure Pair <*>
 caseP = pure Case <*>
   locP <*> (reservedP 'case' |-> simpleExprP) <*-> (reservedP 'of' |> some ofP)
 
-mkDefs l p e = case p of
-  PVar _ n -> [(n, e)]
+mkDefs mt l p e = case p of
+  PVar _ n -> case mt of
+    Just t -> [(n, setType t e)]
+    Nothing -> [(n, e)]
   _ -> let
     id = case (getAnnCodeLoc l) of
       Just (AnnCodeLoc _ l c) -> '$pat_' ++ intToString l ++ '_' ++ intToString c
     in enqueue (id, e) (map (\n -> (n, Case l (Var emptyAnn id) [(p, Var emptyAnn n)])) (namesInPat p))
 
-defP = pure (\l lhs ps e -> mkDefs l lhs (foldr (\e p -> mkPatLam l p e) e ps)) <*>
-  locP <*> nakedPatP <*-> many patP <*-> (operatorP '=' |> exprP)
+typeAnnP = Parser (\s -> applyParser (operatorP '::' |> typeP) s)
+
+defP = pure (\l lhs ps mt e -> mkDefs mt l lhs (foldr (\e p -> mkPatLam l p e) e ps)) <*>
+  locP <*> nakedPatP <*-> many patP <*-> opt typeAnnP <*-> (operatorP '=' |> exprP)
 
 defsP = pure (foldl concat []) <*> some defP
 
@@ -220,7 +224,9 @@ opP = pure (\e oes -> foldl (\a lob -> case lob of Pair l (Pair op b) -> App l (
 
 // --------------- types -------------------
 
-typeP = Parser (\s -> applyParser tfunP s)
+typeP = Parser (\s -> applyParser boundTFunP s)
+
+typeBoundP = pure (TCBound emptyAnn) <*> upperCaseId <*> typeP
 
 tconstP = pure (TConst emptyAnn) <*> upperCaseId
 
@@ -233,6 +239,13 @@ tappP = pure (foldl (TApp emptyAnn)) <*>
 
 tfunP = pure (\t ts -> foldr1 (\b a -> TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b) (enqueue t ts)) <*>
   tappP <*-> many (operatorP '->' |> tappP)
+
+boundTFunP = let
+  f mbs t = case mbs of
+    Nothing -> t
+    Just bs -> TForall emptyAnn [] bs t
+  in pure f <*>
+    opt (symP '(' |> sepBy1 typeBoundP (symP ',') <| symP ')' <| operatorP '=>') <*> tfunP
 
 // ------------ type classes ---------------
 
@@ -284,7 +297,7 @@ topLevelDefsP = let
     Pair n e -> Pair n (withAnn (setAnn 'export' (AnnExport n) (annOf e)) e)
   in pure (map addExportAnn) <*> defsP
 topLevelP = eitherP (eitherP dataP topLevelDefsP) (eitherP classP instanceP)
-  
+
 parseModule = runParser moduleP
 parseImports = runParser (many importP)
 parseExpr = runParser exprP
