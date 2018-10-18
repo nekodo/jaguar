@@ -89,7 +89,7 @@ typeClass = let
   x = yay 'pon'
   in x ++ 'y'
 
-tryitF = yay
+tryitF :: (Foo a) => a -> String = yay
 tryit2F x = x ++ tryitF 'foo'
 tryit3F y = tryitF y
 
