@@ -252,7 +252,7 @@ infer env e = let
     False -> case (getType e) of
       TUnknown -> ret (setType t e)
       //te -> instantiateM te >>= \ite -> unifyM t ite >> ret e
-      te -> instantiateM te >>= \ite -> unifyM t ite >> case (satisfies t ite) of
+      te -> instantiateM te >>= \ite -> unifyM t ite >> applySubsM t >>= \t -> case (satisfies t ite) of
         True -> ret e
         False -> errorM ('inferred type ' ++ printType t ++ ' does not satisfy explicit type ' ++ printType te ++ ' for <<<' ++ reallyPrintExpr False e ++ '>>>')
   inferCase env te (pat, e) = inferPat env te pat >>= \(bs, pat) ->
@@ -395,6 +395,8 @@ generalize env t = gets >>= \ctx -> let
     case ((not $ isEmpty finalVars) || (length rbs > 0)) of
       True -> ret (mkTForall emptyAnn (setToArray finalVars) rbs t)
       False -> ret t
+
+generalizeStandalone t = evalState newCtx (generalize emptyEnv t)
 
 // a -> (b -> (c -> Foo a b c))
 unrollDataConType t = case t of

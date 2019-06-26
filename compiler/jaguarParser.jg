@@ -2,6 +2,7 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import * from '//compiler/parsers.jg'
 import {tokenize, Token, WsTok, SymTok, NumTok, StrTok, OpTok, IdTok, ComTok} from '//compiler/jaguarLexer.jg'
+import {generalizeStandalone, skolemizeType} from '//compiler/typer.jg'
 
 data ParserState = ParserState
   (Array Token) // input (ts)
@@ -198,9 +199,12 @@ ofP = pure Pair <*>
 caseP = pure Case <*>
   locP <*> (reservedP 'case' |-> simpleExprP) <*-> (reservedP 'of' |> some ofP)
 
+//prepType t = case t of
+//  TForall ann
+
 mkDefs mt l p e = case p of
   PVar _ n -> case mt of
-    Just t -> [(n, setType t e)]
+    Just t -> [(n, setType (skolemizeType $ generalizeStandalone t) e)]
     Nothing -> [(n, e)]
   _ -> let
     id = case (getAnnCodeLoc l) of

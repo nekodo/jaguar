@@ -1,0 +1,37 @@
+import * from '//compiler/prelude.jg'
+import {assertTrue, assertEq, runTests, Test, withMsg, Ok, Fail} from '//compiler/test/test.jg'
+import * from '//compiler/newtyper.jg'
+import * from '//compiler/ast.jg'
+import {printType} from '//compiler/printer.jg'
+import {parseModule, parseExpr, parseType} from '//compiler/jaguarParser.jg'
+import {Success, Error} from '//compiler/parsers.jg'
+
+mustParseExpr testName s = case (parseExpr s testName) of
+  Error e -> error e
+  Success e _ -> e
+
+mustParseModule testName s = case (parseModule s testName) of
+  Error e -> error e
+  Success m _ -> m
+
+assertIOk r = case r of
+  IOk _ -> Ok
+  IErr _ m -> Fail ('want IOk, but got IErr: ' ++ jsonStringify r)
+
+assertIFail r = case r of
+  IOk _ -> Fail ('want TFail, but got TOk')
+  IErr _ m -> Ok
+
+tc = TConst emptyAnn
+tv = TVar emptyAnn
+ts = TSkolem emptyAnn
+tapp = TApp emptyAnn
+tforall vs = TForall emptyAnn vs []
+
+ant t = setAnnType t emptyAnn
+
+tests = [
+
+  ]
+
+main argv = runTests 'newtyper_test' tests

@@ -111,7 +111,7 @@ Unsolvable:
 {a: b}
 
 update :: k -> v -> {k :: v2 | r} -> {k :: v | r}
-insert :: 
+insert ::
 
 Non-polymorphic keys only, no insert or delete
 
@@ -130,3 +130,41 @@ Cases we can solve:
     2. cardinality of both sides is equal and there is only one tvar as key
  2. when there are row vars and:
     1. there are no tvars as keys
+
+# Newtyper - a clean and unit-tested reimplementation
+
+Features that need to be supported:
+  - recursive lets
+  - partial existing type information
+  - type classes
+
+General idea:
+  - split all bindings into mutually recursive groups
+  - solve each group in dep order
+  - error in a given group stops inference for that
+    group and all dependent groups - others proceed
+
+Skolem vs tvar
+  - skolems are known generic variables, cannot be
+    eliminated - basically means that there is a
+    forall somewhere above which defines them
+  - tvars are unknown types which can be unified with
+    other types to resolve them
+
+Generalization
+  - when a full mutually recursive group (MGR) is
+    typed, then we are left with several bindings.
+    We generalize each independently, which means
+    replacing tvars with skolems and giving the
+    entire thing a Forall.
+    If there are any tvars in the body not represented in the
+    binding type, the we have two options:
+      1. Reject the binding as mistyped.
+      2. Keep inferring on the assumption that they
+         will get settled. We can try this option first and see if things behave reasonably.
+  - When top-level binding is generalized, we must
+    have all the tvars resolved. Otherwise it is an error.
+
+Specialization
+  - when a generalized type is used, we need to
+    replace each skolem with a new tvar

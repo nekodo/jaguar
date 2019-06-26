@@ -1,0 +1,126 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
+import {sccSorted} from '//compiler/graph.jg'
+
+data ICtx =
+  ModuleCtx String
+  | BindingCtx String
+  | ExprCtx Expr
+  | UnifyCtx Type Type
+  | UpdateCtx String Type
+  | PatCtx Pat
+
+data InferenceResult a = IOk a | IErr (Array ICtx) String
+
+instance Functor InferenceResult where
+  fmap f a = case a of
+    IErr ctx m -> IErr ctx m
+    IOk a -> IOk (f a)
+
+instance Monad InferenceResult where
+  ret = IOk
+  (>>=) a f = case a of
+    IErr ctx m -> IErr ctx m
+    IOk a -> f a
+
+tnum = TConst emptyAnn 'Number'
+tstr = TConst emptyAnn 'String'
+tapp = TApp emptyAnn
+tfun a b = tapp (tapp (TConst emptyAnn '->') a) b
+
+varsInType t =
+  case t of
+    TConst _ _ -> Empty
+    TVar _ v -> setAdd v Empty
+    TSkolem _ _ -> Empty
+    TApp _ f a -> setUnion (varsInType f) (varsInType a)
+    _ -> error ('unsupported type in varsInType ' ++ jsonStringify t)
+
+replaceVar v vt t =
+  case t of
+    TConst _ _ -> t
+    TSkolem _ _ -> t
+    TVar _ w -> case (v == w) of
+      True -> vt
+      False -> t
+    TApp ann f a -> TApp ann (replaceVar v vt f) (replaceVar v vt a)
+    TForall ann vs bs t -> TForall ann vs bs (replaceVar v vt t)
+    _ -> error ('unsupported type in replaceVar ' ++ jsonStringify t)
+
+// State for type unification.
+// First map is type var to type.
+// Second map is type var to type vars which contain it.
+data UnifierState = US (Map String VarEntry) Number
+
+freshVar = gets >>= \(US vars n) -> let
+  v = '$' ++ intToString n
+  vars2 = insert v (UnresolvedVar Empty) vars
+  n2 = n + 1
+  in sets (US vars2 n2) >> ret v
+
+getVars = gets >>= \(US vars _) -> ret vars
+setVars vars = gets >>= \(US _ n) -> sets (US vars n)
+
+data VarEntry =
+  UnresolvedVar (Map String Unit)
+  | ResolvedVar Type
+
+updateVar ctx v t = let
+  ctx2 = push (UpdateCtx v t) ctx
+  err m = ret $ IErr ctx2 m
+  ok a = ret $ IOk a
+  in getVars >>= \vars -> case (lookup v vars) of
+    Nothing -> err 'unknown type var'
+    Just (ResolvedVar rt) -> unifyM ctx2 rt t >>= \ut -> case ut of
+      IOk rt2 -> setVars (insert v (ResolvedVar rt2) vars) >> ok rt2
+    Just (UnresolvedVar refVars) -> let
+      // Set v to resolved.
+      vars2 = insert v (ResolvedVar t) vars
+
+      // For each var in refVars look it up and replace v with t.
+      replace vars v = case (lookup v vars) of
+        Nothing -> IErr ctx2 'should not happen: unknown type var'
+        Just (UnresolvedVar _) -> IErr ctx2 'should not happen: unresolved var in refVars'
+        Just (ResolvedVar vt) -> IOk (insert v (ResolvedVar $ replaceVar v t vt) vars)
+
+      // All vars present in t must be unresolved. We need to add
+      // v's refVars to their refVars.
+      addRefVars vars v = case (lookup v vars) of
+        Nothing -> IErr ctx2 'should not happen: unknown type var'
+        Just (ResolvedVar _) -> IErr ctx2 'should not happen: resolved var in type'
+        Just (UnresolvedVar otherRefVars) -> IOk (insert v (UnresolvedVar $ setUnion otherRefVars refVars) vars)
+
+      varsOrErr = foldM replace vars2 (setToArray refVars) >>= \vars3 ->
+        foldM addRefVars vars3 (setToArray $ varsInType t)
+
+      in case varsOrErr of
+        IOk vars -> setVars vars >> ok t
+        IErr ctx m -> ret $ IErr ctx m
+
+preferredVar v w = case (length v == length w) of
+  True -> v < w
+  False -> length v < length w
+
+unifyM ctx a b = let
+  ctx2 = push (UnifyCtx a b) ctx
+  ok a = ret $ IOk a
+  err m = ret $ IErr ctx2 m
+  in case (a, b) of
+    (TVar _ v, TVar _ w) -> case (preferredVar v w) of
+      True -> updateVar ctx2 w a
+      False -> updateVar ctx2 v b
+    (TVar _ v, _) -> updateVar ctx2 v b
+    (_, TVar _ w) -> updateVar ctx2 w a
+    (TConst _ n, TConst _ m) -> case (n == m) of
+      True -> ok a
+      False -> err 'type name mismatch'
+    (TSkolem _ v, TSkolem _ w) -> case (v == w) of
+      True -> ok a
+      False -> err 'type name mismatch'
+    (TApp ann fa xa, TApp _ fb xb) -> unifyM ctx2 fa fb >>= \fr -> case fr of
+      IOk fu -> unifyM ctx2 xa xb >>= \xr -> case xr of
+        IOk xu -> ok (tapp fu xu)
+        e -> ret e
+      e -> ret e
+    _ -> err 'cannot unify'

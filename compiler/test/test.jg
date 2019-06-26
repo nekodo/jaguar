@@ -1,0 +1,34 @@
+import * from '//compiler/prelude.jg'
+
+data Result = Ok | Fail String
+
+failMsg r = case r of
+  Ok -> Nothing
+  Fail m -> Just m
+
+withMsg m r = case r of
+  Ok -> Ok
+  Fail _ -> Fail m
+
+data Test = Test String (Unit -> Array Result)
+
+assertTrue p = case p of
+  True -> Ok
+  False -> Fail 'want True, got False'
+
+assertEq a b =
+  withMsg ('want ' ++ jsonStringify a ++ ', got ' ++ jsonStringify b) $ assertTrue (a == b)
+
+runTests topMsg tests = let
+  tmp = \_ -> error ''
+  runTest (Test desc f) = let
+    rs = f Unit
+    fs = mapJust failMsg rs
+    in case (length fs) of
+      0 -> debug2 ('  PASS: ' ++ desc) Ok
+      _ -> debug2 ('  FAIL: ' ++ desc) (Fail ('  FAIL: ' ++ desc ++ '\n' ++ join (map (\f -> '    ' ++ f) fs) '\n'))
+  rs = map runTest tests
+  fs = mapJust failMsg rs
+  in case (length fs) of
+    0 -> debug2 (topMsg ++ ': ' ++ intToString (length rs) ++ ' tests passed') Unit
+    _ -> error (topMsg ++ ': ' ++ intToString (length rs - length fs) ++ ' tests passed\n' ++ join fs '\n')

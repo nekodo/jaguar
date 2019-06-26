@@ -1,9 +1,7 @@
 module test where
 
 import * from '//compiler/prelude.jg'
-import * from '//compiler/jaguarParser.jg'
 import {scc, sccSorted as sortedScc} from '//compiler/graph.jg'
-import * from '//compiler/ast.jg'
 
 // Simple operator.
 addition :: Number = 6 + 5
@@ -89,7 +87,7 @@ typeClass = let
   x = yay 'pon'
   in x ++ 'y'
 
-tryitF :: (Foo a) => a -> String = yay
+tryitF = yay
 tryit2F x = x ++ tryitF 'foo'
 tryit3F y = tryitF y
 

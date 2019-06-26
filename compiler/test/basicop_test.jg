@@ -1,0 +1,11 @@
+import * from '//compiler/prelude.jg'
+import {assertEq, runTests, Test} from '//compiler/test/test.jg'
+
+tests = [
+    Test 'add' $ \_ -> let
+      want = 8
+      got = 4 + 4
+      in [assertEq want got]
+  ]
+
+main argv = runTests 'basicop_test' tests

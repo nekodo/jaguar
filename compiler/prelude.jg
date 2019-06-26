@@ -177,6 +177,10 @@ join xs s = case (length xs) of
   0 -> ''
   n -> foldl1 (\a b -> a ++ s ++ b) xs
 
+repeat s n = case (n < 1) of
+  True -> ''
+  False -> s ++ repeat s (n - 1) 
+
 zipWithIndex2 = \n xs -> case (length xs) of
   0 -> []
   x -> enqueue (Pair n (head xs)) (zipWithIndex2 (n + 1) (tail xs))

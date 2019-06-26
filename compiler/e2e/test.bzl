@@ -3,7 +3,7 @@ load("//compiler:jaguar.bzl", "jaguar_js_bundle")
 def _module_diff_test_impl(ctx):
   expected = ctx.attr.expected
   actual = ctx.attr.actual
-  
+
   runfiles = ctx.runfiles(files=[
       ctx.file.expected,
       ctx.file.actual,
@@ -13,12 +13,12 @@ def _module_diff_test_impl(ctx):
   ).merge(
       ctx.attr.actual.default_runfiles,
   )
-  
-  ctx.file_action(
+
+  ctx.actions.write(
       output=ctx.outputs.executable,
       content="""
       #!/bin/bash
-      
+
       MAIN=%s
       ACTUAL=%s
       EXPECTED=%s
@@ -29,9 +29,9 @@ def _module_diff_test_impl(ctx):
           ctx.file.actual.short_path,
           ctx.file.expected.short_path,
       ),
-      executable=True
+      is_executable=True
   )
-  
+
   return [DefaultInfo(runfiles=runfiles)]
 
 module_diff_test = rule(
@@ -41,8 +41,7 @@ module_diff_test = rule(
         "actual": attr.label(allow_single_file=True),
         "_main": attr.label(
             default = Label("//compiler/e2e:run.js"),
-            single_file = True,
-            allow_files = True,
+            allow_single_file = True,
         ),
     },
     test = True,
@@ -64,13 +63,13 @@ def compiler_diff_test(name, expected, actual):
       ],
       compiler = "//compiler:stage1",
   )
-  
+
   module_diff_test(
       name = "%s_stage1" % name,
       actual = ":%s_actual_stage1" % name,
       expected = expected,
   )
-  
+
   jaguar_js_bundle(
       name = "%s_actual_stage2" % name,
       main = "test",
@@ -85,13 +84,13 @@ def compiler_diff_test(name, expected, actual):
       ],
       compiler = "//compiler:stage2",
   )
-  
+
   module_diff_test(
       name = "%s_stage2" % name,
       actual = ":%s_actual_stage2" % name,
       expected = expected,
   )
-  
+
   jaguar_js_bundle(
       name = "%s_actual_opt" % name,
       main = "test",
@@ -107,13 +106,13 @@ def compiler_diff_test(name, expected, actual):
       compiler = "//compiler:stage2",
       compiler_args = ["--opt"],
   )
-  
+
   module_diff_test(
       name = "%s_opt" % name,
       actual = ":%s_actual_opt" % name,
       expected = expected,
   )
-  
+
   native.test_suite(
       name = name,
       tests = [

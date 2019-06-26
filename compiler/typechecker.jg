@@ -1,0 +1,183 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
+import {sccSorted} from '//compiler/graph.jg'
+
+data TCtx =
+  ModuleCtx String
+  | BindingCtx String
+  | ExprCtx Expr
+  | TypeEquivCtx Type Type
+  | TypeInstCtx Type
+  | PatCtx Pat
+
+data TypingResult = TOk | TErr (Array TCtx) String
+
+checkMany f xs = case (length xs) of
+  0 -> TOk
+  _ -> case (f (head xs)) of
+    TOk -> checkMany f (tail xs)
+    e -> e
+
+tnum = TConst emptyAnn 'Number'
+tstr = TConst emptyAnn 'String'
+tfun a b = TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b
+
+checkEquiv ctx a b = evalState Empty (checkEquivM ctx a b)
+
+checkEquivM ctx toType fromType = let
+  ctx2 = push (TypeEquivCtx toType fromType) ctx
+  err m = ret $ TErr ctx2 m
+  ok = ret $ TOk
+  checkM = checkEquivM ctx2
+  in case fromType of
+      TConst _ n -> case toType of
+        TConst _ m -> case (n == m) of
+          True -> ok
+          False -> err 'type name mismatch'
+        _ -> err 'type mismatch'
+
+      TSkolem _ v -> gets >>= \bs -> case (lookup v bs) of
+        // Case 1: this is not a var we're instantiating.
+        Nothing -> case toType of
+          TSkolem _ w -> case (v == w) of
+            True -> ok
+            False -> err 'type name mismatch'
+          _ -> err 'type mismatch'
+        // Case 2: this is a var we're instantiating and it is
+        // the first time we encountered it.
+        Just (TUnknown) -> sets (insert v toType bs) >> ok
+        // Case 3: this is a var we're instantiating and
+        // we've seen it before.
+        Just t -> ret $ checkEquiv ctx2 t toType
+
+      TApp _ fb xb -> case toType of
+        TApp _ fa xa -> checkM fa fb >>= \fr -> case fr of
+          TOk -> checkM xa xb
+          e -> ret e
+      _ -> err 'type cannot be equivalent'
+
+checkCanInstantiate ctx toType fromType =
+  case fromType of
+    TForall _ vs _ t -> let
+      bs = foldl (\bs v -> insert v TUnknown bs) Empty vs
+      ctx2 = push (TypeInstCtx fromType) ctx
+      in evalState bs (checkEquivM ctx2 toType t)
+    _ -> checkEquiv ctx toType fromType
+
+checkAllowedSkolems ctx asks t = let
+  check = checkAllowedSkolems ctx asks
+  in case t of
+    TSkolem _ n -> case (setContains n asks) of
+      True -> TOk
+      False -> TErr ctx ('unknown skolem ' ++ n)
+    TApp _ a b -> case (check a) of
+      TOk -> check b
+      e -> e
+    TForall _ vs _ t -> let
+      asks2 = setAddAll vs asks
+      in checkAllowedSkolems ctx asks2 t
+    _ -> TOk
+
+checkBindings ctx env asks bs = let
+  env2 = foldl (\env (n, e) -> insert n (getType e) env) env bs
+  check (n, e) = checkExpr (push (BindingCtx n) ctx) env2 asks e
+  in (env2, checkMany check bs)
+
+// ctx: contexts for error reporting
+// env: bindings, name -> type
+// asks: allowed skolems, things that we generalize over
+checkExpr ctx env asks e = let
+  ctx2 = push (ExprCtx e) ctx
+  err = TErr ctx2
+  et = getType e
+  check = checkExpr ctx2
+
+  checkDataRef ctx consName dataType argTypes = let
+    refType = foldr (\d t -> tfun t d) dataType argTypes
+    in case (lookup consName env) of
+      Just consType -> checkCanInstantiate ctx refType consType
+      _ -> err 'unrecognized identifier'
+
+  in case (checkAllowedSkolems ctx2 asks et) of
+    TOk -> case e of
+      Var _ n ->  case (lookup n env) of
+        Nothing -> err 'unrecognized identifier'
+        Just t -> checkCanInstantiate ctx2 et t
+      Const _ (CNum _) -> checkEquiv ctx2 et tnum
+      Const _ (CStr _) -> checkEquiv ctx2 et tstr
+      Gen _ e -> case et of
+        TForall _ vs _ t -> let
+          asks2 = setAddAll vs asks
+          in case (check env asks2 e) of
+            TOk -> checkEquiv ctx2 t (getType e)
+            e -> e
+        _ -> err 'Gen expr with non-TForall type'
+      App _ f a -> case (check env asks f) of
+        TOk -> case (check env asks a) of
+          TOk -> checkEquiv ctx2 (tfun (getType a) et) (getType f)
+          e -> e
+        e -> e
+      Lam _ v e ->
+        case et of
+          TApp _ (TApp _ (TConst _ '->') ta) tb -> let
+            env2 = insert v ta env
+            in case (check env2 asks e) of
+              TOk -> checkEquiv ctx2 tb (getType e)
+              e -> e
+          _ -> err 'Lam expr with non-function type'
+      New _ d es ->
+        case (checkMany (check env asks) es) of
+          TOk -> checkDataRef ctx2 d et (map getType es)
+          e -> e
+      Let _ bs e -> case (checkBindings ctx2 env asks bs) of
+        (env2, TOk) -> check env2 asks e
+        (_, err) -> err
+
+      // Checks to do:
+      // 1. Check the expr
+      // 2. Check top-level patterns against the expr type
+      // 3. Check pattern consistency
+      // 4. For each branch get bindings from pat and check
+      //    branch expr, also against the return type
+      Case _ e ps -> let
+        caseType = et
+        exprType = getType e
+        topPats = map fst ps
+        topPatTypes = map getPatType topPats
+
+        // Checks type consistency between the pattern, sub-patterns
+        // and referenced data type constructors.
+        checkPat ctx p = let
+          ctx2 = push (PatCtx p) ctx
+          patType = getPatType p
+          in case p of
+            PData _ d ps -> case (checkDataRef ctx2 d patType (map getPatType ps)) of
+              TOk -> checkMany (checkPat ctx2) ps
+              e -> e
+            PConst _ (CNum _) -> checkEquiv ctx2 tnum patType
+            PConst _ (CStr _) -> checkEquiv ctx2 tstr patType
+            PVar _ _ -> TOk
+
+        // Checks specific case branch, in particular the branch expr
+        // with pattern bindings and consistency of the branch expr type and
+        // the overall case expr type.
+        checkBranch (p, e) = let
+          getBs env p = case p of
+            PVar _ v -> insert v (getPatType p) env
+            PData _ _ ps -> foldl getBs env ps
+            PConst _ _ -> env
+          env2 = getBs env p
+          branchType = getType e
+          in case (check env2 asks e) of
+            TOk -> checkEquiv ctx2 caseType branchType
+            e -> e
+
+        in case (check env asks e) of
+          TOk -> case (checkMany (checkEquiv ctx2 exprType) topPatTypes) of
+            TOk -> case (checkMany (checkPat ctx2) topPats) of
+              TOk -> checkMany checkBranch ps
+              e -> e
+            e -> e
+          e -> e
+    e -> e

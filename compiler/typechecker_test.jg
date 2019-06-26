@@ -1,0 +1,395 @@
+import * from '//compiler/prelude.jg'
+import {assertTrue, assertEq, runTests, Test, withMsg, Ok, Fail} from '//compiler/test/test.jg'
+import * from '//compiler/typechecker.jg'
+import * from '//compiler/ast.jg'
+
+assertTOk r = case r of
+  TOk -> Ok
+  TErr _ m -> Fail ('want TOk, but got TErr: ' ++ jsonStringify r)
+
+assertTFail r = case r of
+  TOk -> Fail ('want TFail, but got TOk')
+  TErr _ m -> Ok
+
+tc = TConst emptyAnn
+tv = TVar emptyAnn
+ts = TSkolem emptyAnn
+tapp = TApp emptyAnn
+tforall vs = TForall emptyAnn vs []
+
+ant t = setAnnType t emptyAnn
+
+tests = [
+    Test 'checkEquiv TConst' $ \_ -> let
+      a = TConst emptyAnn 'Number'
+      b = TConst emptyAnn 'Number'
+
+      got = checkEquiv [] a b
+      in [assertTOk got],
+
+    Test 'checkEquiv TSkolem' $ \_ -> let
+      a = TSkolem emptyAnn 'x'
+      b = TSkolem emptyAnn 'x'
+
+      got = checkEquiv [] a b
+      in [assertTOk got],
+
+    Test 'checkEquiv TApp' $ \_ -> let
+      a = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
+      b = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
+
+      got = checkEquiv [] a b
+      in [assertTOk got],
+
+    Test 'checkEquiv TApp mismatch' $ \_ -> let
+      a = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
+      b = TApp emptyAnn (TConst emptyAnn 'a') (TSkolem emptyAnn 'x')
+
+      got = checkEquiv [] a b
+      in [assertTFail got],
+
+    Test 'checkEquiv TVar' $ \_ -> let
+      a = TConst emptyAnn 'A'
+      b = TVar emptyAnn 'v'
+
+      got = checkEquiv [] a b
+      in [assertTFail got],
+
+    Test 'checkEquivM TSkolem (ABB Avv)' $ \_ -> let
+      a = tapp (tapp (tc 'A') (tc 'B')) (tc 'B')
+      b = tapp (tapp (tc 'A') (ts 'v')) (ts 'v')
+
+      got = evalState (insert 'v' TUnknown Empty) $ checkEquivM [] a b
+      in [assertTOk got],
+
+    Test 'checkEquivM TVar (ABC Avv)' $ \_ -> let
+      a = tapp (tapp (tc 'A') (tc 'B')) (tc 'C') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TConst emptyAnn 'B')) (TConst emptyAnn 'B')
+      b = tapp (tapp (tc 'A') (ts 'v')) (ts 'v') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TVar emptyAnn 'v')) (TVar emptyAnn 'v')
+
+      got = evalState (insert 'v' TUnknown Empty) $ checkEquivM [] a b
+      in [assertTFail got],
+
+    Test 'checkEquivM TVar (ABC Avw)' $ \_ -> let
+      a = tapp (tapp (tc 'A') (tc 'B')) (tc 'C') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TConst emptyAnn 'B')) (TConst emptyAnn 'B')
+      b = tapp (tapp (tc 'A') (ts 'v')) (ts 'w') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TVar emptyAnn 'v')) (TVar emptyAnn 'v')
+
+      got = evalState (insert 'w' TUnknown (insert 'v' TUnknown Empty)) $ checkEquivM [] a b
+      in [assertTOk got],
+
+    Test 'checkCanInstantiate TConst' $ \_ -> let
+      a = TConst emptyAnn 'Number'
+      b = TConst emptyAnn 'Number'
+
+      got = checkCanInstantiate [] a b
+      in [assertTOk got],
+
+    Test 'checkCanInstantiate TSkolem' $ \_ -> let
+      a = TSkolem emptyAnn 'x'
+      b = TSkolem emptyAnn 'x'
+
+      got = checkCanInstantiate [] a b
+      in [assertTOk got],
+
+    Test 'checkCanInstantiate TApp' $ \_ -> let
+      a = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
+      b = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
+
+      got = checkCanInstantiate [] a b
+      in [assertTOk got],
+
+    Test 'checkCanInstantiate TForall' $ \_ -> let
+      a = tapp (tc 'A') (ts 'b')
+      b = tforall ['v'] (tapp (tc 'A') (ts 'v'))
+
+      got = checkCanInstantiate [] a b
+      in [assertTOk got],
+
+    Test 'checkCanInstantiate TVar' $ \_ -> let
+      a = tapp (tc 'A') (ts 'b')
+      b = tapp (tc 'A') (ts 'v')
+
+      got = checkCanInstantiate [] a b
+      in [assertTFail got],
+
+    Test 'checkExpr CNum' $ \_ -> let
+      ctx = []
+      env = Empty
+      asks = Empty
+      e = Const (ant tnum) (CNum 13)
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr CNum fail' $ \_ -> let
+      ctx = []
+      env = Empty
+      asks = Empty
+      e = Const (ant tstr) (CNum 13)
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr CStr' $ \_ -> let
+      ctx = []
+      env = Empty
+      asks = Empty
+      e = Const (ant tstr) (CStr 'jaguar')
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr TVar (Num)' $ \_ -> let
+      ctx = []
+      env = insert 'pony' tnum Empty
+      asks = Empty
+      e = Var (ant tnum) 'pony'
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr TVar (skolem)' $ \_ -> let
+      ctx = []
+      env = insert 'pony' (ts 't') Empty
+      asks = setAdd 't' Empty
+      e = Var (ant $ ts 't') 'pony'
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr TVar (unexpected skolem)' $ \_ -> let
+      ctx = []
+      env = insert 'pony' (ts 't') Empty
+      asks = Empty
+      e = Var (ant $ ts 't') 'pony'
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr TVar (forall)' $ \_ -> let
+      ctx = []
+      env = insert 'pony' (tforall ['a', 'b'] (tapp (ts 'a') (ts 'b'))) Empty
+      asks = setAdd 't' Empty
+      e = Var (ant $ tapp (ts 't') tnum) 'pony'
+
+      // Instantiating (forall a b. a b) into (t Num)
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr TVar (forall fail)' $ \_ -> let
+      ctx = []
+      env = insert 'pony' (tforall ['a'] (tapp (ts 'a') (ts 'a'))) Empty
+      asks = setAdd 't' Empty
+      e = Var (ant $ tapp (ts 't') tnum) 'pony'
+
+      // Instantiating (forall a. a a) into (t Num), should fail
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr Gen' $ \_ -> let
+      ctx = []
+      env = insert 'pony' (tforall ['a'] (ts 'a')) Empty
+      asks = setAdd 't' Empty
+
+      // forall g. g t
+      exprType = tapp (ts 'g') (ts 't')
+      genType = tforall ['g'] $ tapp (ts 'g') (ts 't')
+      e = Gen (ant genType) $ Var (ant exprType) 'pony'
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr Gen (mismatched wrapped type)' $ \_ -> let
+      ctx = []
+      env = insert 'pony' (tforall ['a'] (ts 'a')) Empty
+      asks = setAdd 't' Empty
+
+      exprType = tapp (tc 'Maybe') (ts 't')
+      genType = tforall ['g'] $ tapp (ts 'g') (ts 't')
+      e = Gen (ant genType) $ Var (ant exprType) 'pony'
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr Gen (non-forall)' $ \_ -> let
+      ctx = []
+      env = insert 'pony' (tforall ['a'] (ts 'a')) Empty
+      asks = setAdd 't' Empty
+
+      exprType = (ts 't')
+      genType = (ts 't')
+      e = Gen (ant genType) $ Var (ant exprType) 'pony'
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr Gen (error in wrapped expr)' $ \_ -> let
+      ctx = []
+      env = insert 'pony' tnum Empty
+      asks = setAdd 't' Empty
+
+      exprType = tapp (ts 'g') (ts 't')
+      genType = tforall ['g'] $ tapp (ts 'g') (ts 't')
+      e = Gen (ant genType) $ Var (ant exprType) 'pony'
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr App' $ \_ -> let
+      funType = tfun tstr tnum
+
+      ctx = []
+      env = insert 'f' funType Empty
+      asks = Empty
+
+      // f :: String -> Number
+      // e = f 'pony'
+      e = App (ant tnum) (Var (ant funType) 'f') (Const (ant tstr) (CStr 'pony'))
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr App (wrong arg type)' $ \_ -> let
+      funType = tfun tstr tnum
+
+      ctx = []
+      env = insert 'f' funType Empty
+      asks = Empty
+
+      // f :: String -> Number
+      // e = f 13
+      e = App (ant tnum) (Var (ant funType) 'f') (Const (ant tnum) (CNum 13))
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr App (wrong ret type)' $ \_ -> let
+      funType = tfun tstr tnum
+
+      ctx = []
+      env = insert 'f' funType Empty
+      asks = Empty
+
+      // f :: String -> Number
+      // e = f 13
+      e = App (ant tstr) (Var (ant funType) 'f') (Const (ant tnum) (CNum 13))
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr Lam' $ \_ -> let
+      funType = tfun (tc 'A') (tc 'B')
+      ctx = []
+      env = insert 'f' funType Empty
+      asks = Empty
+
+      lamType = tfun (tc 'A') (tc 'B')
+      e = Lam (ant lamType) 'x' (App (ant $ tc 'B') (Var (ant funType) 'f') (Var (ant $ tc 'A') 'x'))
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr Lam (non-fun type)' $ \_ -> let
+      funType = tfun (tc 'A') (tc 'B')
+      ctx = []
+      env = insert 'f' funType Empty
+      asks = Empty
+
+      lamType = tv '?'
+      e = Lam (ant lamType) 'x' (App (ant $ tc 'B') (Var (ant funType) 'f') (Var (ant $ tc 'A') 'x'))
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr Lam (wrong param type)' $ \_ -> let
+      funType = tfun (tc 'A') (tc 'B')
+      ctx = []
+      env = insert 'f' funType Empty
+      asks = Empty
+
+      lamType = tfun (tc 'C') (tc 'B')
+      e = Lam (ant lamType) 'x' (App (ant $ tc 'B') (Var (ant funType) 'f') (Var (ant $ tc 'A') 'x'))
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr Lam (wrong ret type)' $ \_ -> let
+      funType = tfun (tc 'A') (tc 'B')
+      ctx = []
+      env = insert 'f' funType Empty
+      asks = Empty
+
+      lamType = tfun (tc 'A') (tc 'C')
+      e = Lam (ant lamType) 'x' (App (ant $ tc 'B') (Var (ant funType) 'f') (Var (ant $ tc 'A') 'x'))
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr New' $ \_ -> let
+      consType = tforall ['a'] $ tfun (ts 'a') (tapp (tc 'Maybe') (ts 'a'))
+      ctx = []
+      env = insert 'Just' consType Empty
+      asks = Empty
+
+      newType = tapp (tc 'Maybe') tnum
+
+      e = New (ant newType) 'Just' [Const (ant tnum) (CNum 13)]
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr New (mistyped arg)' $ \_ -> let
+      consType = tforall ['a'] $ tfun (ts 'a') (tapp (tc 'Maybe') (ts 'a'))
+      ctx = []
+      env = insert 'Just' consType Empty
+      asks = Empty
+
+      newType = tapp (tc 'Maybe') tnum
+
+      e = New (ant newType) 'Just' [Const (ant tstr) (CNum 13)]
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr New (mistyped cons)' $ \_ -> let
+      consType = tforall ['a'] $ tfun (ts 'a') (tapp (tc 'Maybe') (ts 'a'))
+      ctx = []
+      env = insert 'Just' consType Empty
+      asks = Empty
+
+      newType = tapp (tc 'BoxyGarbage') tnum
+
+      e = New (ant newType) 'Just' [Const (ant tnum) (CNum 13)]
+
+      got = checkExpr ctx env asks e
+      in [assertTFail got],
+
+    Test 'checkExpr Let' $ \_ -> let
+      ctx = []
+      env = insert 'f' (tfun tnum tstr) Empty
+      asks = Empty
+
+      // let x = 13, y = f x in y
+      e = Let (ant tstr) [('x', Const (ant tnum) (CNum 13)), ('y', App (ant tstr) (Var (ant $ tfun tnum tstr) 'f') (Var (ant tnum) 'x'))] (Var (ant tstr) 'y')
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got],
+
+    Test 'checkExpr Case' $ \_ -> let
+      maybeStr = tapp (tc 'Maybe') tstr
+      justCons = tforall ['a'] $ tfun (ts 'a') (tapp (tc 'Maybe') (ts 'a'))
+      ctx = []
+      env = insert 'Just' justCons $ insert 'x' maybeStr Empty
+      asks = Empty
+
+      // case (x :: Maybe String) of Just 'pony' -> 'applejack', Just x -> x
+      e = Case (ant tstr) (Var (ant maybeStr) 'x') [
+        (PData (ant maybeStr) 'Just' [PConst (ant tstr) (CStr 'pony')], Const (ant tstr) (CStr 'applejack')),
+        (PData (ant maybeStr) 'Just' [PVar (ant tstr) 'x'], Var (ant tstr) 'x')]
+
+      got = checkExpr ctx env asks e
+      in [assertTOk got]
+  ]
+
+main argv = runTests 'typechecker_test' tests

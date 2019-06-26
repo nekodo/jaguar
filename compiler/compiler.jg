@@ -4,7 +4,7 @@ import {Success, Error} from '//compiler/parsers.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileModule as generateJs} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {newCtx, inferTypeModule, getTypedExports, generalize, skolemizeType, emptyEnv} from '//compiler/typer.jg'
+import {newCtx, inferTypeModule, getTypedExports, generalizeStandalone, skolemizeType, emptyEnv} from '//compiler/typer.jg'
 import {dfs} from '//compiler/graph.jg'
 import {ArgBool, ArgString, parseArgs, getPositional, getString, getBool} from '//compiler/args.jg'
 import {declassModule} from '//compiler/declasser.jg'
@@ -23,7 +23,7 @@ moduleFile m = case m of
 parse fn = case (parseModule (readFile fn) ('//' ++ fn)) of
   Success m (ParserState ts p li ri _) -> case (p == length ts) of
     True -> m
-    False -> error (fn ++ ': failed to parse all tokens, stopped at ' ++ jsonStringify (getIx p ts)) 
+    False -> error (fn ++ ': failed to parse all tokens, stopped at ' ++ jsonStringify (getIx p ts))
   Error e -> error (fn ++ ': ' ++ e)
 
 // Run a depth-first search from the main file to determine the order of
@@ -47,7 +47,7 @@ parseT s = case (parseType s '') of
   e -> error e
 
 parseExports e = let
-  bs = mapRecord (\s -> skolemizeType $ evalState newCtx (generalize emptyEnv (parseT s))) e
+  bs = mapRecord (\s -> skolemizeType $ generalizeStandalone (parseT s)) e
   in ModuleInterface bs [] Empty
 
 builtinsPathArg = ArgString 'builtins' Nothing
@@ -78,10 +78,10 @@ main argv = let
   mainName = getString args mainArg
   srcFiles = getPositional args
   opt = getBool args optArg
-  
+
   // Load builtin exports from file.
   baseExports = set './builtins.js' (parseExports (loadJSExports builtinsPath)) empty
-  
+
   passes = perModule (timed 'parse' $ liftPass parse) >=>
            timed 'dep-sort' (liftPass (depSort mainName)) >=>
            perModule (
@@ -100,6 +100,6 @@ main argv = let
            // Code generation.
            timed 'generate-js' (liftPass (generateJs builtinsPath)) >=>
            reportTimes
-  
+
   js = evalState (CompilerState baseExports 0 Empty) (passes srcFiles)
   in writeFile js outPath

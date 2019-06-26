@@ -43,6 +43,7 @@ data Expr =
   | Case (Map String Ann) Expr (Array (Pair Pat Expr))
   | Let (Map String Ann) (Array (Pair String Expr)) Expr
   | New (Map String Ann) String (Array Expr)
+  | Gen (Map String Ann) Expr
 
 data CVal =
   CNum Number
@@ -150,6 +151,7 @@ setType t e = case e of
   Case ann e ps -> Case (setAnnType t ann) e ps
   Let ann ds e -> Let (setAnnType t ann) ds e
   New ann tag es -> New (setAnnType t ann) tag es
+  Gen ann e -> Gen (setAnnType t ann) e
 
 annOf e = case e of
   Var ann v -> ann
@@ -159,6 +161,7 @@ annOf e = case e of
   Case ann e ps -> ann
   Let ann ds e -> ann
   New ann _ _ -> ann
+  Gen ann _ -> ann
 
 withAnn ann e = case e of
   Var _ v -> Var ann v
@@ -168,8 +171,14 @@ withAnn ann e = case e of
   Case _ e ps -> Case ann e ps
   Let _ ds e -> Let ann ds e
   New _ tag es -> New ann tag es
+  Gen _ e -> Gen ann e
 
 getType e = getAnnType $ annOf e
+
+getPatType p = case p of
+  PVar ann _ -> getAnnType ann
+  PConst ann _ -> getAnnType ann
+  PData ann _ _ -> getAnnType ann
 
 breakableDownAndUp down up a e = let
   go = breakableDownAndUp down up
