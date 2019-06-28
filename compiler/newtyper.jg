@@ -110,84 +110,9 @@ freshName = gets >>= \(US vars n) -> let
 
 freshVar = fmap (TVar emptyAnn) freshName
 
-getVars = gets >>= \(US vars _) -> ret vars
-setVars vars = gets >>= \(US _ n) -> sets (US vars n)
-
-updateVar ctx v t = let
-  ctx2 = push (UpdateCtx v t) ctx
-  err m = ret $ IErr ctx2 m
-  ok a = ret $ IOk a
-  in getVars >>= \vars -> case (lookup v vars) of
-    Nothing -> err 'unknown type var'
-    Just (ResolvedVar rt) -> unifyM ctx2 rt t >>= \ut -> case ut of
-      IOk rt2 -> setVars (insert v (ResolvedVar rt2) vars) >> ok rt2
-    Just (UnresolvedVar refVars) -> let
-      // Set v to resolved.
-      vars2 = insert v (ResolvedVar t) vars
-
-      // For each var in refVars look it up and replace v with t.
-      replace vars v = case (lookup v vars) of
-        Nothing -> IErr ctx2 'should not happen: unknown type var'
-        Just (UnresolvedVar _) -> IErr ctx2 'should not happen: unresolved var in refVars'
-        Just (ResolvedVar vt) -> IOk (insert v (ResolvedVar $ replaceVar v t vt) vars)
-
-      // All vars present in t must be unresolved. We need to add
-      // v's refVars to their refVars.
-      addRefVars vars v = case (lookup v vars) of
-        Nothing -> IErr ctx2 'should not happen: unknown type var'
-        Just (ResolvedVar _) -> IErr ctx2 'should not happen: resolved var in type'
-        Just (UnresolvedVar otherRefVars) -> IOk (insert v (UnresolvedVar $ setUnion otherRefVars refVars) vars)
-
-      varsOrErr = foldM replace vars2 (setToArray refVars) >>= \vars3 ->
-        foldM addRefVars vars3 (setToArray $ varsInType t)
-
-      in case varsOrErr of
-        IOk vars -> setVars vars >> ok t
-        IErr ctx m -> ret $ IErr ctx m
-
 preferredVar v w = case (length v == length w) of
   True -> v < w
   False -> length v < length w
-
-unifyM ctx a b = let
-  ctx2 = push (UnifyCtx a b) ctx
-  ok a = ret $ IOk a
-  err m = ret $ IErr ctx2 m
-  in case (a, b) of
-    (TVar _ v, TVar _ w) -> case (preferredVar v w) of
-      True -> updateVar ctx2 w a
-      False -> updateVar ctx2 v b
-    (TVar _ v, _) -> updateVar ctx2 v b
-    (_, TVar _ w) -> updateVar ctx2 w a
-    (TConst _ n, TConst _ m) -> case (n == m) of
-      True -> ok a
-      False -> err 'type name mismatch'
-    (TSkolem _ v, TSkolem _ w) -> case (v == w) of
-      True -> ok a
-      False -> err 'type name mismatch'
-    (TApp ann fa xa, TApp _ fb xb) -> unifyM ctx2 fa fb >>= \fr -> case fr of
-      IOk fu -> unifyM ctx2 xa xb >>= \xr -> case xr of
-        IOk xu -> ok (tapp fu xu)
-        e -> ret e
-      e -> ret e
-    _ -> err 'cannot unify'
-
-resolveType t = gets >>= \(US vars _) ->
-  case t of
-    TVar _ v -> case (lookup v vars) of
-      Just (ResolvedVar t) -> ret t
-      _ -> ret t
-    TApp ann f a -> resolveType f >>= \fr ->
-      resolveType a >>= \ar ->
-        ret $ TApp ann fr ar
-    TForall ann vs bs t -> resolveType t >>= \tr ->
-      ret $ TForall ann vs bs tr
-    _ -> ret t
-
-lookupBinding ctx n scope =
-  case (lookup n scope) of
-    Nothing -> ret $ IErr ctx 'name not in scope'
-    Just t -> fmap IOk $ resolveType t
 
 instantiate t = let
   addRep reps v = freshVar >>= \t ->
@@ -207,10 +132,9 @@ instantiate t = let
     _ -> ret t
 
 resolveName ctx n scope =
-  lookupBinding ctx n scope >>= \t ->
-    case t of
-      IOk t -> fmap IOk $ instantiate t
-      e -> ret e
+  case (lookup n scope) of
+    Nothing -> ret $ IErr ctx 'name not in scope'
+    Just t -> fmap IOk $ instantiate t
 
 inferExpr ctx scope e = let
   ctx2 = push (ExprCtx e) ctx
@@ -218,8 +142,7 @@ inferExpr ctx scope e = let
   err m = ret $ IErr ctx2 m
   finalize e t = case (getType e) of
     TUnknown -> ok (setType t e)
-    t2 -> unifyM ctx2 t t2 >>=>> \t3 ->
-      ret $ IOk (setType t3 e)
+    t2 -> unifyType ctx2 t t2 >>>> ok e
   in case e of
     Const _ (CNum _) -> finalize e tnum
     Const _ (CStr _) -> finalize e tstr
@@ -227,22 +150,34 @@ inferExpr ctx scope e = let
     App ann f a -> inferExpr ctx2 scope f >>=>> \fi ->
       inferExpr ctx2 scope a >>=>> \ai ->
         freshVar >>= \v ->
-          unifyM ctx2 (getType fi) (tfun (getType ai) v) >>=>> \_ ->
-            (resolveType v >>= finalize (App ann fi ai))
+          unifyType ctx2 (getType fi) (tfun (getType ai) v) >>>>
+            finalize (App ann fi ai) v
     Lam ann p e ->
       freshVar >>= \v ->
         inferExpr ctx2 (insert p v scope) e >>=>> \ei ->
-          resolveType v >>= \vr ->
-            finalize (Lam ann p ei) (tfun vr (getType ei))
+          finalize (Lam ann p ei) (tfun v (getType ei))
     Gen ann e -> case (getAnnType ann) of
       TForall _ _ _ t ->
         inferExpr ctx2 scope e >>=>> \ei ->
-          unifyM ctx2 t (getType ei) >>=>> \_ ->
-            ret (IOk $ Gen ann ei) 
+          unifyType ctx2 t (getType ei) >>>>
+            ok (Gen ann ei) 
       _ -> err 'Gen expr without a TForall type'
-    //Case _ e ps -> let
-    //  inferPat 
-    //  in inferExpr ctx2 scope e >>=>> \ei ->
+    Case ann e ps -> let
+      collectBindings scope p =
+        case p of
+          PConst _ _ -> scope
+          PVar _ v -> insert v (getPatType p) scope
+          PData _ _ ps -> foldl collectBindings scope ps
+      inferCase pt rt (p, e) =
+        inferPat ctx2 scope p >>=>> \pi ->
+          unifyType ctx2 pt (getPatType p) >>=>> \_ ->
+            inferExpr ctx2 (collectBindings scope pi) e >>=>> \ei ->
+              unifyType ctx2 rt (getType ei) >>>>
+                ok (pi, ei)
+      in inferExpr ctx2 scope e >>=>> \ei ->
+        freshVar >>= \rt ->
+          mapOk (inferCase (getType ei) rt) ps >>=>> \psi ->
+            finalize (Case ann ei psi) rt
 
 consType dataType argTypes = foldr (\d t -> tfun t d) dataType argTypes
 
@@ -252,8 +187,7 @@ inferPat ctx scope p = let
   err m = ret $ IErr ctx2 m
   finalize p t = case (getPatType p) of
     TUnknown -> ok (setPatType t p)
-    t2 -> unifyM ctx2 t t2 >>=>> \t3 ->
-      ret $ IOk (setPatType t3 p)
+    t2 -> unifyType ctx2 t t2 >>>> ok p
   in case p of
     PVar _ _ -> freshVar >>= finalize p
     PConst _ (CNum _) -> finalize p tnum
@@ -262,5 +196,5 @@ inferPat ctx scope p = let
       mapOk (inferPat ctx2 scope) ps >>=>> \psi ->
         freshVar >>= \dt ->
           resolveName ctx2 n scope >>=>> \ct ->
-            unifyM ctx2 ct (consType dt (map getPatType psi)) >>=>> \_ ->
-              (resolveType dt >>= finalize (PData ann n psi))
+            unifyType ctx2 ct (consType dt (map getPatType psi)) >>>>
+              finalize (PData ann n psi) dt

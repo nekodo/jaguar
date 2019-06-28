@@ -66,75 +66,8 @@ tests = [
 
       want = tnum
 
-      got = evalState vars (forceType t)
-      in [assertTypeEq want got],
-
-    Test 'forceType (check shorting)' $ \_ -> let
-      vars = insert 'a' (tv 'b') (insert 'b' (tv 'c') Empty)
-      t = tv 'a'
-
-      wantT = tv 'c'
-      wantVars = insert 'a' (tv 'c') (insert 'b' (tv 'c') Empty)
-
-      (gotVars, gotT) = runState vars (forceType t)
-      in [
-        prefixMsg 'type' $ assertTypeEq wantT gotT,
-        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
-
-    Test 'forceType (check shorting and TApp)' $ \_ -> let
-      vars = insert 'a' (tapp (tv 'b') (tv 'c')) (insert 'b' (tc 'Maybe') Empty)
-      t = tv 'a'
-
-      wantT = tapp (tv 'b') (tv 'c') // note tha b did not get forced
-      wantVars = vars // unchanged
-
-      (gotVars, gotT) = runState vars (forceType t)
-      in [
-        prefixMsg 'type' $ assertTypeEq wantT gotT,
-        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
-
-    Test 'unifyType (pick tvar to keep)' $ \_ -> let
-      ctx = []
-      vars = Empty
-      
-      a = tv '$1'
-      b = tv '$11'
-
-      wantT = tv '$1'
-      wantVars = insert '$11' (tv '$1') Empty
-
-      (gotVars, gotT) = runState vars (unifyType ctx a b)
-      in [
-        prefixMsg 'type' $ assertIOkAnd gotT (assertTypeEq wantT),
-        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
-
-    Test 'unifyType (Strings keep spreading)' $ \_ -> let
-      ctx = []
-      vars = insert 'a' (tv 'x') (insert 'b' (tv 'x') Empty)
-      
-      a = tfun (tv 'a') (tv 'b')
-      b = tfun tstr (tv 'x')
-
-      wantT = tfun tstr tstr
-      wantVars = insert 'a' (tv 'x') (insert 'b' tstr (insert 'x' tstr Empty))
-      wantA = tstr
-
-      (gotVars, gotT) = runState vars (unifyType ctx a b)
-      gotA = evalState gotVars (forceType (tv 'a'))
-      in [
-        prefixMsg 'type' $ assertIOkAnd gotT (assertTypeEq wantT),
-        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars,
-        prefixMsg 'forced a' $ assertTypeEq wantA gotA],
-
-    Test 'unifyType (mismatch in TApp)' $ \_ -> let
-      ctx = []
-      vars = insert 'a' (tv 'x') (insert 'b' (tv 'x') Empty)
-      
-      a = tfun (tv 'a') (tv 'b')
-      b = tfun tstr tnum
-
-      got = evalState vars (unifyType ctx a b)
-      in [assertIFail got]
+      got = evalState (US vars 0) (forceType t)
+      in [assertTypeEq want got]
   ]
 
 main argv = runTests 'newtyper_test' tests
