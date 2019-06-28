@@ -198,3 +198,33 @@ inferPat ctx scope p = let
           resolveName ctx2 n scope >>=>> \ct ->
             unifyType ctx2 ct (consType dt (map getPatType psi)) >>>>
               finalize (PData ann n psi) dt
+
+// Compute SCCs and split into mutually recursive groups.
+// Then run inferMGR in the correct order.
+// inferBindings
+
+// inferMGR
+// run inference all the bindings together, then generalize each
+
+
+// generalize
+// Forall can include any type vars which are entirely free (absent from vars map).
+
+generalize t = let
+  gen t =
+    case t of
+      TConst _ _ -> ret (t, [])
+      TSkolem _ _ -> ret (t, [])
+      TApp ann f a ->
+        gen f >>= \(fg, fvs) ->
+          gen a >>= \(ag, avs) ->
+            ret (TApp ann fg ag, fvs ++ avs)
+      TVar _ v -> gets >>= \(US vars _) ->
+        case (lookup v vars) of
+          Just t -> gen t
+          Nothing -> let
+            sk = TSkolem emptyAnn v
+            in setVar v sk >>
+              ret (sk, [v])
+  in gen t >>= \(tg. vs) ->
+    ret $ TForall emptyAnn vs tg
