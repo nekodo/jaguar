@@ -10,6 +10,8 @@ data ICtx =
   | UnifyCtx Type Type
   | UpdateCtx String Type
   | PatCtx Pat
+  | MRGCtx (Array String)
+  | FinTypeCtx Type
 
 data InferenceResult a = IOk a | IErr (Array ICtx) String
 
@@ -146,7 +148,7 @@ inferExpr ctx scope e = let
   in case e of
     Const _ (CNum _) -> finalize e tnum
     Const _ (CStr _) -> finalize e tstr
-    Var _ v -> resolveName ctx v scope >>=>> finalize e
+    Var _ v -> resolveName ctx2 v scope >>=>> finalize e
     App ann f a -> inferExpr ctx2 scope f >>=>> \fi ->
       inferExpr ctx2 scope a >>=>> \ai ->
         freshVar >>= \v ->
@@ -162,6 +164,12 @@ inferExpr ctx scope e = let
           unifyType ctx2 t (getType ei) >>>>
             ok (Gen ann ei) 
       _ -> err 'Gen expr without a TForall type'
+    New ann c es ->
+      mapOk (inferExpr ctx2 scope) es >>=>> \esi ->
+        freshVar >>= \dt ->
+          resolveName ctx2 c scope >>=>> \ct ->
+            unifyType ctx2 ct (consType dt (map getType esi)) >>>>
+              finalize (New ann c esi) dt
     Case ann e ps -> let
       collectBindings scope p =
         case p of
@@ -178,6 +186,10 @@ inferExpr ctx scope e = let
         freshVar >>= \rt ->
           mapOk (inferCase (getType ei) rt) ps >>=>> \psi ->
             finalize (Case ann ei psi) rt
+    Let ann bs e ->
+      inferBindings ctx2 scope bs >>=>> \(scope2, bsi) ->
+        inferExpr ctx2 scope2 e >>=>> \ei ->
+          finalize (Let ann bsi ei) (getType ei)
 
 consType dataType argTypes = foldr (\d t -> tfun t d) dataType argTypes
 
@@ -199,17 +211,95 @@ inferPat ctx scope p = let
             unifyType ctx2 ct (consType dt (map getPatType psi)) >>>>
               finalize (PData ann n psi) dt
 
+freeVars scope e =
+  case e of
+    Const _ _ -> Empty
+    Var _ v -> case (setContains v scope) of
+      False -> setAdd v Empty
+      True -> Empty
+    App _ f a -> setUnion (freeVars scope f) (freeVars scope a)
+    Lam _ p e -> freeVars (setAdd p scope) e
+    Gen _ e -> freeVars scope e
+    New _ _ es -> foldl (\fvs e -> setUnion fvs (freeVars scope e)) Empty es
+    Let _ bs e -> let
+      scope2 = setAddAll (map fst bs) scope
+      in foldl (\fvs (_, e) -> setUnion fvs (freeVars scope2 e)) (freeVars scope2 e) bs
+    Case _ e ps -> let
+      scopeFromPat scope p =
+        case p of
+          PConst _ _ -> scope
+          PVar _ v -> setAdd v scope
+          PData _ _ ps -> foldl scopeFromPat scope ps
+      in foldl (\fvs (p, e) -> setUnion fvs (freeVars (scopeFromPat scope p) e)) (freeVars scope e) ps
+
+
+bindingsToScope = foldl (\s (n, e) -> insert n (getType e) s)
+
+// Compute SCCs and split into mutually recursive groups.
+sortBindings bs = let
+  bsm = insertAll bs Empty
+  g = foldl (\g (n, e) -> insert n (filter (\v -> (isJust $ lookup v bsm) && (v /= n)) (setToArray $ freeVars Empty e)) g) Empty bs
+  ccs = sccSorted g
+  in map (map (\v -> (v, fromJust $ lookup v bsm))) ccs
+
+
+splitBindings bs = let
+  split (ubs, tbs) (n, e) =
+    case (getType e) of
+      TUnknown -> (push (n, e) ubs, tbs)
+      _ -> (ubs, push (n, e) tbs)
+  in foldl split ([], []) bs
+
+prepareBindings scope bs = let
+  (ubs, tbs) = splitBindings bs
+  scope2 = bindingsToScope scope tbs
+  sortedBs = concat (sortBindings ubs) (map (\b -> [b]) tbs)
+  in (scope2, sortedBs)
+
 // Compute SCCs and split into mutually recursive groups.
 // Then run inferMGR in the correct order.
 // inferBindings
+inferBindings ctx scope bs = let
+  (scope2, bs2) = prepareBindings scope bs
+  infer (scope, rs) bs =
+    inferMRG ctx scope bs >>=>> \bsi ->
+      ret (IOk (bindingsToScope scope bsi, concat rs bsi))
+  in foldOk infer (scope2, []) bs2
 
 // inferMGR
 // run inference all the bindings together, then generalize each
+inferMRG ctx scope bs = let
+  ctx2 = push (MRGCtx (map fst bs)) ctx 
+  add (scope, bs) (n, e) =
+    case (getType e) of
+      TUnknown -> freshVar >>= \t ->
+        ret (insert n t scope, push (n, setType t e) bs)
+      t -> ret (insert n t scope, push (n, e) bs)
+  inferB scope (n, e) =
+    inferExpr (push (BindingCtx n) ctx2) scope e >>=>> \ei ->
+      ret (IOk (n, ei))
+  genB (n, e) = generalize (getType e) >>= \t ->
+    case t of
+      TForall _ _ _ _ -> ret (n, Gen (setAnnType t emptyAnn) e)
+      _ -> ret (n, setType t e)
+  in foldM add (scope, []) bs >>= \(scope2, bst) ->
+    mapOk (inferB scope2) bst >>=>> \bsi ->
+      mapM genB bsi >>= \bsg ->
+        ret (IOk bsg)
 
+inferTopMRG ctx scope bs = let
+  (US vars _, bsi) = runState (US Empty 1) (inferMRG ctx scope bs)
+  in bsi >>= finalizeBindings ctx vars
+
+inferTopBindings ctx scope bs = let
+  (scope2, bs2) = prepareBindings scope bs
+  infer (scope, rs) bs =
+    inferTopMRG ctx scope bs >>= \bsi ->
+      IOk (bindingsToScope scope bsi, concat rs bsi)
+  in fmap snd $ foldM infer (scope2, []) bs2
 
 // generalize
 // Forall can include any type vars which are entirely free (absent from vars map).
-
 generalize t = let
   gen t =
     case t of
@@ -218,13 +308,85 @@ generalize t = let
       TApp ann f a ->
         gen f >>= \(fg, fvs) ->
           gen a >>= \(ag, avs) ->
-            ret (TApp ann fg ag, fvs ++ avs)
+            ret (TApp ann fg ag, concat fvs avs)
       TVar _ v -> gets >>= \(US vars _) ->
         case (lookup v vars) of
           Just t -> gen t
           Nothing -> let
             sk = TSkolem emptyAnn v
-            in setVar v sk >>
-              ret (sk, [v])
-  in gen t >>= \(tg. vs) ->
-    ret $ TForall emptyAnn vs tg
+            in setVar v sk >> ret (sk, [v])
+  in case t of
+    TForall _ _ _ _ -> ret t
+    _ -> gen t >>= \(tg, vs) ->
+      case (length vs) of
+        0 -> ret tg
+        _ -> ret (TForall emptyAnn vs [] tg)
+
+finalizeType ctx vars t = let
+  ctx2 = push (FinTypeCtx t) ctx
+  ok e = IOk e
+  err m = IErr ctx2 m
+  fin = finalizeType ctx2 vars
+  in case t of
+    TConst _ _ -> ok t
+    TSkolem _ _ -> ok t
+    TApp ann f a -> fin f >>= \ff ->
+      fin a >>= \af ->
+        ok (TApp ann ff af)
+    TForall ann vs bs t -> fin t >>= \tf ->
+      ok (TForall ann vs bs tf)
+    TVar _ v ->
+      case (lookup v vars) of
+        Just t -> fin t
+        Nothing -> err 'unknown type var found during finalization'
+
+finalizeExpr ctx vars e = let
+  ctx2 = push (ExprCtx e) ctx
+  ok e = IOk e
+  err m = IErr ctx2 m
+  fin = finalizeExpr ctx2 vars
+  in finalizeType ctx2 vars (getType e) >>= \tf ->
+    case e of
+      App ann f a ->
+        fin f >>= \ff ->
+          fin a >>= \fa ->
+            ok (App (setAnnType tf ann) ff fa)
+      Lam ann p e ->
+        fin e >>= \ef ->
+          ok (Lam (setAnnType tf ann) p ef)
+      Gen ann e ->
+        fin e >>= \ef ->
+          ok (Gen (setAnnType tf ann) ef)
+      Let ann bs e ->
+        finalizeBindings ctx2 vars bs >>= \bsf ->
+          fin e >>= \ef ->
+            ok (Let (setAnnType tf ann) bsf ef)
+      New ann c es ->
+        mapM fin es >>= \esf ->
+          ok (New (setAnnType tf ann) c esf) 
+      Case ann e ps -> let
+        finCase (p, e) =
+          finalizePat ctx2 vars p >>= \pf ->
+            fin e >>= \ef ->
+              ok (pf, ef)
+        in fin e >>= \ef ->
+          mapM finCase ps >>= \psf ->
+            ok (Case (setAnnType tf ann) ef psf)
+      _ -> ok (setType tf e)
+
+finalizePat ctx vars p = let
+  ctx2 = push (PatCtx p) ctx
+  in finalizeType ctx2 vars (getPatType p) >>= \tf ->
+    case p of
+      PData ann n ps ->
+        mapM (finalizePat ctx2 vars) ps >>= \psf ->
+          IOk (PData (setAnnType tf ann) n psf)
+      _ -> IOk (setPatType tf p)
+
+finalizeBindings ctx vars bs = let
+  fin (n, e) = 
+    finalizeExpr (push (BindingCtx n) ctx) vars e >>= \ef ->
+      IOk (n, ef)
+  in mapM fin bs
+
+// Top-level bindings

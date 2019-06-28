@@ -5,6 +5,7 @@ import * from '//compiler/ast.jg'
 import {printType} from '//compiler/printer.jg'
 import {parseModule, parseExpr, parseType} from '//compiler/jaguarParser.jg'
 import {Success, Error} from '//compiler/parsers.jg'
+import {checkTopBindings, TOk, TErr} from '//compiler/typechecker.jg'
 
 mustParseExpr testName s = case (parseExpr s testName) of
   Error e -> error e
@@ -13,6 +14,14 @@ mustParseExpr testName s = case (parseExpr s testName) of
 mustParseModule testName s = case (parseModule s testName) of
   Error e -> error e
   Success m _ -> m
+
+assertTOk r = case r of
+  TOk -> Ok
+  TErr _ m -> Fail ('want TOk, but got TErr: ' ++ jsonStringify r)
+
+assertTFail r = case r of
+  TOk -> Fail ('want TFail, but got TOk')
+  TErr _ m -> Ok
 
 assertIOk r = case r of
   IOk _ -> Ok
@@ -51,6 +60,12 @@ assertTypeMapEq want got = let
   sizeCheck = withMsg ('want map of size ' ++ intToString (size want) ++ ', but got ' ++ intToString (size got)) $ assertEq (size want) (size got)
   in foldTrie assertEntry sizeCheck want
 
+bsToScope = foldl (\m (n, e) -> insert n (getType e) m) Empty
+assertInferredTypes want got = assertIOkAnd got (\got -> assertTypeMapEq want (bsToScope got))
+
+assertTypecheckOk scope got =
+  assertIOkAnd got (\got -> assertTOk (checkTopBindings [] scope got))
+
 tc = TConst emptyAnn
 tv = TVar emptyAnn
 ts = TSkolem emptyAnn
@@ -67,7 +82,104 @@ tests = [
       want = tnum
 
       got = evalState (US vars 0) (forceType t)
-      in [assertTypeEq want got]
+      in [assertTypeEq want got],
+
+    Test 'forceType (check shorting)' $ \_ -> let
+      vars = insert 'a' (tv 'b') (insert 'b' (tv 'c') Empty)
+      t = tv 'a'
+
+      wantT = tv 'c'
+      wantVars = insert 'a' (tv 'c') (insert 'b' (tv 'c') Empty)
+
+      (US gotVars _, gotT) = runState (US vars 0) (forceType t)
+      in [
+        prefixMsg 'type' $ assertTypeEq wantT gotT,
+        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
+
+    Test 'forceType (check shorting and TApp)' $ \_ -> let
+      vars = insert 'a' (tapp (tv 'b') (tv 'c')) (insert 'b' (tc 'Maybe') Empty)
+      t = tv 'a'
+
+      wantT = tapp (tv 'b') (tv 'c') // note tha b did not get forced
+      wantVars = vars // unchanged
+
+      (US gotVars _, gotT) = runState (US vars 0) (forceType t)
+      in [
+        prefixMsg 'type' $ assertTypeEq wantT gotT,
+        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
+
+    Test 'unifyType (pick tvar to keep)' $ \_ -> let
+      ctx = []
+      vars = Empty
+      
+      a = tv '$1'
+      b = tv '$11'
+
+      wantT = tv '$1'
+      wantVars = insert '$11' (tv '$1') Empty
+
+      (US gotVars _, gotT) = runState (US vars 0) (unifyType ctx a b)
+      in [
+        prefixMsg 'type' $ assertIOkAnd gotT (assertTypeEq wantT),
+        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
+
+    Test 'unifyType (Strings keep spreading)' $ \_ -> let
+      ctx = []
+      vars = insert 'a' (tv 'x') (insert 'b' (tv 'x') Empty)
+      
+      a = tfun (tv 'a') (tv 'b')
+      b = tfun tstr (tv 'x')
+
+      wantT = tfun tstr tstr
+      wantVars = insert 'a' (tv 'x') (insert 'b' tstr (insert 'x' tstr Empty))
+      wantA = tstr
+
+      (US gotVars _, gotT) = runState (US vars 0) (unifyType ctx a b)
+      gotA = evalState (US gotVars 0) (forceType (tv 'a'))
+      in [
+        prefixMsg 'type' $ assertIOkAnd gotT (assertTypeEq wantT),
+        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars,
+        prefixMsg 'forced a' $ assertTypeEq wantA gotA],
+
+    Test 'unifyType (mismatch in TApp)' $ \_ -> let
+      ctx = []
+      vars = insert 'a' (tv 'x') (insert 'b' (tv 'x') Empty)
+      
+      a = tfun (tv 'a') (tv 'b')
+      b = tfun tstr tnum
+
+      got = evalState (US vars 0) (unifyType ctx a b)
+      in [assertIFail got],
+
+    Test 'generalize' $ \_ -> let
+      vars = insert 'a' (tfun (tv 'b') (tv 'x')) (insert 'b' (tv 'x') Empty)
+      t = tv 'a'
+
+      wantT = tforall ['x'] (tfun (ts 'x') (ts 'x'))
+      wantVars = insert 'x' (ts 'x') vars
+
+      (US gotVars _, gotT) = runState (US vars 0) (generalize t)
+      in [
+        prefixMsg 'type' $ assertTypeEq wantT gotT,
+        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
+
+    Test 'infer 1' $ \_ -> let
+      ctx = []
+      scope = insertAll [
+        ('id', tforall ['x'] (tfun (ts 'x') (ts 'x')))
+        ] Empty
+
+      want = insertAll [
+        ('x', tstr)
+        ] Empty
+
+      bs = [
+        ('x', App emptyAnn (Var emptyAnn 'id') (Const emptyAnn (CStr 'pony')))
+        ]
+      got = inferTopBindings ctx scope bs
+      in [
+        prefixMsg 'types' $ assertInferredTypes want got,
+        prefixMsg 'full check' $ assertTypecheckOk scope got]
   ]
 
 main argv = runTests 'newtyper_test' tests

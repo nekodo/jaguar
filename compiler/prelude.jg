@@ -386,6 +386,8 @@ mergeTrie a b = foldTrie (\a k v -> insert k v a) a b
 trieKeys m = foldTrie (\ks k _ -> push k ks) [] m
 trieEntries m = foldTrie (\es k v -> push (k, v) es) [] m
 
+insertAll es m = foldl (\m (k, v) -> insert k v m) m es
+
 emptySet = Empty
 setAdd a s = insert a Unit s
 setAddAll vs s = foldl (\s v -> setAdd v s) s vs

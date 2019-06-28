@@ -84,6 +84,8 @@ checkBindings ctx env asks bs = let
   check (n, e) = checkExpr (push (BindingCtx n) ctx) env2 asks e
   in (env2, checkMany check bs)
 
+checkTopBindings ctx scope bs = snd (checkBindings ctx scope Empty bs)
+
 // ctx: contexts for error reporting
 // env: bindings, name -> type
 // asks: allowed skolems, things that we generalize over
