@@ -1,5 +1,5 @@
 import * from '//compiler/prelude.jg'
-import {assertTrue, assertEq, runTests, Test, withMsg, Ok, Fail} from '//compiler/test/test.jg'
+import {assertTrue, assertEq, runTests, Test, withMsg, changeMsg, prefixMsg, Ok, Fail} from '//compiler/test/test.jg'
 import * from '//compiler/newtyper.jg'
 import * from '//compiler/ast.jg'
 import {printType} from '//compiler/printer.jg'
@@ -22,6 +22,35 @@ assertIFail r = case r of
   IOk _ -> Fail ('want TFail, but got TOk')
   IErr _ m -> Ok
 
+assertIOkAnd a f = case a of
+  IOk a -> f a
+  IErr _ m -> Fail ('want IOk, but got IErr: ' ++ jsonStringify a)
+
+typeEq a b =
+  case (a, b) of
+    (TVar _ v, TVar _ w) -> v == w
+    (TConst _ a, TConst _ b) -> a == b
+    (TSkolem _ a, TSkolem _ b) -> a == b
+    (TApp _ fa xa, TApp _ fb xb) -> typeEq fa fb && typeEq xa xb
+    (TForall _ vsa _ ta, TForall _ vsb _ tb) ->
+      foldl (\r (v, w) -> r && (v == w)) (typeEq ta tb) (zip vsa vsb)
+    _ -> False
+
+assertTypeEq want got =
+  case (typeEq want got) of
+    True -> Ok
+    False -> Fail ('want ' ++ printType want ++ ', but got ' ++ printType got)
+
+assertTypeMapEq want got = let
+  assertEntry r k wantType =
+    case r of
+      Ok -> case (lookup k got) of
+        Nothing -> Fail ('want key ' ++ k ++ ', but did not find it')
+        Just gotType -> prefixMsg ('var ' ++ k) $ assertTypeEq wantType gotType
+      f -> f
+  sizeCheck = withMsg ('want map of size ' ++ intToString (size want) ++ ', but got ' ++ intToString (size got)) $ assertEq (size want) (size got)
+  in foldTrie assertEntry sizeCheck want
+
 tc = TConst emptyAnn
 tv = TVar emptyAnn
 ts = TSkolem emptyAnn
@@ -31,7 +60,81 @@ tforall vs = TForall emptyAnn vs []
 ant t = setAnnType t emptyAnn
 
 tests = [
+    Test 'forceType (Number)' $ \_ -> let
+      vars = Empty
+      t = tnum
 
+      want = tnum
+
+      got = evalState vars (forceType t)
+      in [assertTypeEq want got],
+
+    Test 'forceType (check shorting)' $ \_ -> let
+      vars = insert 'a' (tv 'b') (insert 'b' (tv 'c') Empty)
+      t = tv 'a'
+
+      wantT = tv 'c'
+      wantVars = insert 'a' (tv 'c') (insert 'b' (tv 'c') Empty)
+
+      (gotVars, gotT) = runState vars (forceType t)
+      in [
+        prefixMsg 'type' $ assertTypeEq wantT gotT,
+        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
+
+    Test 'forceType (check shorting and TApp)' $ \_ -> let
+      vars = insert 'a' (tapp (tv 'b') (tv 'c')) (insert 'b' (tc 'Maybe') Empty)
+      t = tv 'a'
+
+      wantT = tapp (tv 'b') (tv 'c') // note tha b did not get forced
+      wantVars = vars // unchanged
+
+      (gotVars, gotT) = runState vars (forceType t)
+      in [
+        prefixMsg 'type' $ assertTypeEq wantT gotT,
+        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
+
+    Test 'unifyType (pick tvar to keep)' $ \_ -> let
+      ctx = []
+      vars = Empty
+      
+      a = tv '$1'
+      b = tv '$11'
+
+      wantT = tv '$1'
+      wantVars = insert '$11' (tv '$1') Empty
+
+      (gotVars, gotT) = runState vars (unifyType ctx a b)
+      in [
+        prefixMsg 'type' $ assertIOkAnd gotT (assertTypeEq wantT),
+        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
+
+    Test 'unifyType (Strings keep spreading)' $ \_ -> let
+      ctx = []
+      vars = insert 'a' (tv 'x') (insert 'b' (tv 'x') Empty)
+      
+      a = tfun (tv 'a') (tv 'b')
+      b = tfun tstr (tv 'x')
+
+      wantT = tfun tstr tstr
+      wantVars = insert 'a' (tv 'x') (insert 'b' tstr (insert 'x' tstr Empty))
+      wantA = tstr
+
+      (gotVars, gotT) = runState vars (unifyType ctx a b)
+      gotA = evalState gotVars (forceType (tv 'a'))
+      in [
+        prefixMsg 'type' $ assertIOkAnd gotT (assertTypeEq wantT),
+        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars,
+        prefixMsg 'forced a' $ assertTypeEq wantA gotA],
+
+    Test 'unifyType (mismatch in TApp)' $ \_ -> let
+      ctx = []
+      vars = insert 'a' (tv 'x') (insert 'b' (tv 'x') Empty)
+      
+      a = tfun (tv 'a') (tv 'b')
+      b = tfun tstr tnum
+
+      got = evalState vars (unifyType ctx a b)
+      in [assertIFail got]
   ]
 
 main argv = runTests 'newtyper_test' tests

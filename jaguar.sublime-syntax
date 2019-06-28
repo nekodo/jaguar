@@ -1,0 +1,43 @@
+%YAML 1.2
+---
+# See http://www.sublimetext.com/docs/3/syntax.html
+file_extensions:
+  - jg
+scope: source.jaguar
+contexts:
+  main:
+    # Strings begin and end with quotes, and use backslashes as an escape
+    # character
+    - match: "'"
+      scope: punctuation.definition.string.begin.jaguar
+      push: single_quoted_string
+
+    # Comments begin with a '//' and finish at the end of the line
+    - match: '//'
+      scope: punctuation.definition.comment.jaguar
+      push: line_comment
+
+    # Keywords are if, else for and while.
+    # Note that blackslashes don't need to be escaped within single quoted
+    # strings in YAML. When using single quoted strings, only single quotes
+    # need to be escaped: this is done by using two single quotes next to each
+    # other.
+    - match: '\b(import|let|in|case|of|data|class|instance|where)\b'
+      scope: keyword.control.jaguar
+
+    # Numbers
+    - match: '\b(-)?[0-9.]+\b'
+      scope: constant.numeric.jaguar
+
+  single_quoted_string:
+    - meta_scope: string.quoted.single.jaguar
+    - match: '\\.'
+      scope: constant.character.escape.jaguar
+    - match: "'"
+      scope: punctuation.definition.string.end.jaguar
+      pop: true
+
+  line_comment:
+    - meta_scope: comment.line.jaguar
+    - match: $
+      pop: true

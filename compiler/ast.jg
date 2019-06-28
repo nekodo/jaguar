@@ -180,6 +180,11 @@ getPatType p = case p of
   PConst ann _ -> getAnnType ann
   PData ann _ _ -> getAnnType ann
 
+setPatType t p = case p of
+  PVar ann v -> PVar (setAnnType t ann) v
+  PConst ann c -> PConst (setAnnType t ann) c
+  PData ann n ps -> PData (setAnnType t ann) n ps
+
 breakableDownAndUp down up a e = let
   go = breakableDownAndUp down up
   gos a = foldl (\ar p -> case (go (fst ar) (snd p)) of Pair a2 e -> Pair a2 (push (Pair (fst p) e) (snd ar))) (Pair a [])

@@ -24,6 +24,17 @@ instance Monad InferenceResult where
     IErr ctx m -> IErr ctx m
     IOk a -> f a
 
+invert m = m >>= \a -> fmap ret a
+
+(>>=>>) m f = m >>= \r -> case r of
+  IErr ctx m -> ret (IErr ctx m)
+  IOk x -> f x
+
+(>>>>) m n = m >>=>> \_ -> n
+
+foldOk f r xs = foldl (\r x -> r >>=>> \r -> f r x) (ret $ IOk r) xs
+mapOk f xs = foldOk (\rs x -> f x >>=>> \r -> ret (IOk $ push r rs)) [] xs
+
 tnum = TConst emptyAnn 'Number'
 tstr = TConst emptyAnn 'String'
 tapp = TApp emptyAnn
@@ -48,23 +59,59 @@ replaceVar v vt t =
     TForall ann vs bs t -> TForall ann vs bs (replaceVar v vt t)
     _ -> error ('unsupported type in replaceVar ' ++ jsonStringify t)
 
+forceType t = let
+  changed a b =
+    case a of
+      TVar _ v -> case b of
+        TVar _ w -> v /= w
+        _ -> True
+      _ -> False
+  in case t of
+    TVar _ v -> gets >>= \(US vars _) ->
+      case (lookup v vars) of
+        Nothing -> ret t
+        Just t -> forceType t >>= \t2 ->
+          case (changed t t2) of
+            True -> setVar v t2 >> ret t2
+            False -> ret t2
+    _ -> ret t
+
+setVar v t = gets >>= \(US vars n) -> sets $ US (insert v t vars) n
+
+unifyType ctx a b = let
+  ctx2 = push (UnifyCtx a b) ctx
+  ok a = ret $ IOk a
+  err m = ret $ IErr ctx2 m
+  in forceType a >>= \a -> forceType b >>= \b -> case (a, b) of
+    (TVar _ v, TVar _ w) -> case (preferredVar v w) of
+      True -> setVar w a >> ok a
+      False -> setVar v b >> ok b
+    (TVar _ v, _) -> setVar v b >> ok b
+    (_, TVar _ w) -> setVar w a >> ok a
+    (TConst _ n, TConst _ m) -> case (n == m) of
+      True -> ok a
+      False -> err 'type name mismatch'
+    (TSkolem _ v, TSkolem _ w) -> case (v == w) of
+      True -> ok a
+      False -> err 'skolem mismatch'
+    (TApp _ fa xa, TApp _ fb xb) -> unifyType ctx2 fa fb >>=>> \fu -> 
+      unifyType ctx2 xa xb >>=>> \xu -> ok (tapp fu xu)
+    _ -> err 'cannot unify'
+
 // State for type unification.
 // First map is type var to type.
 // Second map is type var to type vars which contain it.
-data UnifierState = US (Map String VarEntry) Number
+data UnifierState = US (Map String Type) Number
 
-freshVar = gets >>= \(US vars n) -> let
+freshName = gets >>= \(US vars n) -> let
   v = '$' ++ intToString n
-  vars2 = insert v (UnresolvedVar Empty) vars
   n2 = n + 1
-  in sets (US vars2 n2) >> ret v
+  in sets (US vars n2) >> ret v
+
+freshVar = fmap (TVar emptyAnn) freshName
 
 getVars = gets >>= \(US vars _) -> ret vars
 setVars vars = gets >>= \(US _ n) -> sets (US vars n)
-
-data VarEntry =
-  UnresolvedVar (Map String Unit)
-  | ResolvedVar Type
 
 updateVar ctx v t = let
   ctx2 = push (UpdateCtx v t) ctx
@@ -124,3 +171,96 @@ unifyM ctx a b = let
         e -> ret e
       e -> ret e
     _ -> err 'cannot unify'
+
+resolveType t = gets >>= \(US vars _) ->
+  case t of
+    TVar _ v -> case (lookup v vars) of
+      Just (ResolvedVar t) -> ret t
+      _ -> ret t
+    TApp ann f a -> resolveType f >>= \fr ->
+      resolveType a >>= \ar ->
+        ret $ TApp ann fr ar
+    TForall ann vs bs t -> resolveType t >>= \tr ->
+      ret $ TForall ann vs bs tr
+    _ -> ret t
+
+lookupBinding ctx n scope =
+  case (lookup n scope) of
+    Nothing -> ret $ IErr ctx 'name not in scope'
+    Just t -> fmap IOk $ resolveType t
+
+instantiate t = let
+  addRep reps v = freshVar >>= \t ->
+    ret $ insert v t reps
+  replaceSkolems t reps =
+    case t of
+      TSkolem _ n -> case (lookup n reps) of
+        Nothing -> ret t
+        Just v -> ret v
+      TApp ann f a -> replaceSkolems f reps >>= \fr ->
+        replaceSkolems a reps >>= \ar ->
+          ret $ TApp ann fr ar
+      _ -> ret t
+  in case t of
+    TForall _ vs _ t ->
+      foldM addRep Empty vs >>= replaceSkolems t
+    _ -> ret t
+
+resolveName ctx n scope =
+  lookupBinding ctx n scope >>= \t ->
+    case t of
+      IOk t -> fmap IOk $ instantiate t
+      e -> ret e
+
+inferExpr ctx scope e = let
+  ctx2 = push (ExprCtx e) ctx
+  ok e = ret $ IOk e
+  err m = ret $ IErr ctx2 m
+  finalize e t = case (getType e) of
+    TUnknown -> ok (setType t e)
+    t2 -> unifyM ctx2 t t2 >>=>> \t3 ->
+      ret $ IOk (setType t3 e)
+  in case e of
+    Const _ (CNum _) -> finalize e tnum
+    Const _ (CStr _) -> finalize e tstr
+    Var _ v -> resolveName ctx v scope >>=>> finalize e
+    App ann f a -> inferExpr ctx2 scope f >>=>> \fi ->
+      inferExpr ctx2 scope a >>=>> \ai ->
+        freshVar >>= \v ->
+          unifyM ctx2 (getType fi) (tfun (getType ai) v) >>=>> \_ ->
+            (resolveType v >>= finalize (App ann fi ai))
+    Lam ann p e ->
+      freshVar >>= \v ->
+        inferExpr ctx2 (insert p v scope) e >>=>> \ei ->
+          resolveType v >>= \vr ->
+            finalize (Lam ann p ei) (tfun vr (getType ei))
+    Gen ann e -> case (getAnnType ann) of
+      TForall _ _ _ t ->
+        inferExpr ctx2 scope e >>=>> \ei ->
+          unifyM ctx2 t (getType ei) >>=>> \_ ->
+            ret (IOk $ Gen ann ei) 
+      _ -> err 'Gen expr without a TForall type'
+    //Case _ e ps -> let
+    //  inferPat 
+    //  in inferExpr ctx2 scope e >>=>> \ei ->
+
+consType dataType argTypes = foldr (\d t -> tfun t d) dataType argTypes
+
+inferPat ctx scope p = let
+  ctx2 = push (PatCtx p) ctx
+  ok p = ret $ IOk p
+  err m = ret $ IErr ctx2 m
+  finalize p t = case (getPatType p) of
+    TUnknown -> ok (setPatType t p)
+    t2 -> unifyM ctx2 t t2 >>=>> \t3 ->
+      ret $ IOk (setPatType t3 p)
+  in case p of
+    PVar _ _ -> freshVar >>= finalize p
+    PConst _ (CNum _) -> finalize p tnum
+    PConst _ (CStr _) -> finalize p tstr
+    PData ann n ps ->
+      mapOk (inferPat ctx2 scope) ps >>=>> \psi ->
+        freshVar >>= \dt ->
+          resolveName ctx2 n scope >>=>> \ct ->
+            unifyM ctx2 ct (consType dt (map getPatType psi)) >>=>> \_ ->
+              (resolveType dt >>= finalize (PData ann n psi))

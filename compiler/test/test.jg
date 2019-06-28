@@ -6,9 +6,13 @@ failMsg r = case r of
   Ok -> Nothing
   Fail m -> Just m
 
-withMsg m r = case r of
+changeMsg f r = case r of
   Ok -> Ok
-  Fail _ -> Fail m
+  Fail m -> Fail (f m)
+
+withMsg m = changeMsg (\_ -> m)
+
+prefixMsg p = changeMsg (\m -> p ++ ': ' ++ m)
 
 data Test = Test String (Unit -> Array Result)
 
