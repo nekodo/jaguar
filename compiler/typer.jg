@@ -326,8 +326,8 @@ inferSccDefs env ds = let
   generateTVar env d = case (getType (snd d)) of
     TUnknown -> newTVarM >>= \tv -> ret (addBinding (fst d) tv env)
     t -> ret (addBinding (fst d) t env)
-  inferDef env (n, e) = infer env e >>= \e -> ret (n, e)
-  unifyDef env (n, e) = case (getType e) of
+  inferDef env (n, e) = withError (\s -> 'defInfer ' ++ n ++ ': ' ++ s) $ infer env e >>= \e -> ret (n, e)
+  unifyDef env (n, e) = withError (\s -> 'defUnify ' ++ n ++ ': ' ++ s) $ case (getType e) of
     TForall _ _ _ _ -> ret Unit
     t -> unifyM t (fromJust $ getBinding n env)
   generalizeDef env (n, e) = case (getType e) of

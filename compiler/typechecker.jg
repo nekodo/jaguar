@@ -2,6 +2,7 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
+import {replaceSkolems} from '//compiler/typeutil.jg'
 
 data TCtx =
   ModuleCtx String
@@ -13,6 +14,10 @@ data TCtx =
 
 data TypingResult = TOk | TErr (Array TCtx) String
 
+isOk r = case r of
+  TOk -> True
+  _ -> False
+
 checkMany f xs = case (length xs) of
   0 -> TOk
   _ -> case (f (head xs)) of
@@ -22,6 +27,20 @@ checkMany f xs = case (length xs) of
 tnum = TConst emptyAnn 'Number'
 tstr = TConst emptyAnn 'String'
 tfun a b = TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b
+
+data Inst = Inst (Array String) TypeBound
+data Scope = Scope (Map String Type) (Array Inst) (Map String Unit)
+
+addBinding v t (Scope bs is sks) = Scope (insert v t bs) is sks
+getBinding v (Scope bs _ _) = lookup v bs
+
+addSkolems vs (Scope bs is sks) = Scope bs is (setAddAll vs sks)
+allowedSkolem v (Scope _ _ sks) = setContains v sks
+
+instanceMatches ctx (TCBound _ nb tb) (Inst vs (TCBound _ ni ti)) =
+  (ni == nb) && isOk (evalState (foldl (\m v -> insert v TUnknown m) Empty vs) (checkEquivM ctx tb ti))
+addInstances vs tbs (Scope bs is sks) = Scope bs (concat is (map (Inst vs) tbs)) sks
+findInstances ctx b (Scope _ is _) = filter (instanceMatches ctx b) is
 
 checkEquiv ctx a b = evalState Empty (checkEquivM ctx a b)
 
@@ -57,74 +76,86 @@ checkEquivM ctx toType fromType = let
           e -> ret e
       _ -> err 'type cannot be equivalent'
 
-checkCanInstantiate ctx toType fromType =
+instantiateBound reps (TCBound ann className t) =
+  TCBound ann className (replaceSkolems t reps)
+
+checkBound ctx scope b = let
+  matchingInstances = findInstances ctx b scope
+  in case (length matchingInstances) of
+    0 -> TErr ctx ('no matching instances found (out of ' ++ intToString (length (case scope of (Scope _ ins _) -> ins)) ++ ')')
+    1 -> TOk
+    n -> TErr ctx ('too many matching instances found (' ++ intToString n ++ ')')
+
+checkCanInstantiate ctx scope toType fromType =
   case fromType of
-    TForall _ vs _ t -> let
+    TForall _ vs typeBounds t -> let
       bs = foldl (\bs v -> insert v TUnknown bs) Empty vs
       ctx2 = push (TypeInstCtx fromType) ctx
-      in evalState bs (checkEquivM ctx2 toType t)
+      in case (runState bs (checkEquivM ctx2 toType t)) of
+        (reps, TOk) -> checkMany (checkBound ctx scope) (map (instantiateBound reps) typeBounds) 
+        (_, e) -> e
     _ -> checkEquiv ctx toType fromType
 
-checkAllowedSkolems ctx asks t = let
-  check = checkAllowedSkolems ctx asks
+checkAllowedSkolems ctx scope t = let
+  check = checkAllowedSkolems ctx scope
   in case t of
-    TSkolem _ n -> case (setContains n asks) of
+    TSkolem _ n -> case (allowedSkolem n scope) of
       True -> TOk
       False -> TErr ctx ('unknown skolem ' ++ n)
     TApp _ a b -> case (check a) of
       TOk -> check b
       e -> e
-    TForall _ vs _ t -> let
-      asks2 = setAddAll vs asks
-      in checkAllowedSkolems ctx asks2 t
+    TForall _ vs bs t -> let
+      scope2 = addSkolems vs scope
+      in checkMany (checkAllowedSkolems ctx scope2) (push t (map (\(TCBound _ _ t) -> t) bs))
     _ -> TOk
 
-checkBindings ctx env asks bs = let
-  env2 = foldl (\env (n, e) -> insert n (getType e) env) env bs
-  check (n, e) = checkExpr (push (BindingCtx n) ctx) env2 asks e
-  in (env2, checkMany check bs)
+checkBindings ctx scope bs = let
+  scope2 = foldl (\scope (n, e) -> addBinding n (getType e) scope) scope bs
+  check (n, e) = checkExpr (push (BindingCtx n) ctx) scope2 e
+  in (scope2, checkMany check bs)
 
-checkTopBindings ctx scope bs = snd (checkBindings ctx scope Empty bs)
+checkTopBindings ctx scope bs = snd (checkBindings ctx scope bs)
 
 // ctx: contexts for error reporting
-// env: bindings, name -> type
+// scope: bindings, name -> type
 // asks: allowed skolems, things that we generalize over
-checkExpr ctx env asks e = let
+checkExpr ctx scope e = let
   ctx2 = push (ExprCtx e) ctx
   err = TErr ctx2
   et = getType e
   check = checkExpr ctx2
 
-  checkDataRef ctx consName dataType argTypes = let
+  checkDataRef ctx scope consName dataType argTypes = let
     refType = foldr (\d t -> tfun t d) dataType argTypes
-    in case (lookup consName env) of
-      Just consType -> checkCanInstantiate ctx refType consType
+    in case (getBinding consName scope) of
+      Just consType -> checkCanInstantiate ctx scope refType consType
       _ -> err 'unrecognized identifier'
 
-  in case (checkAllowedSkolems ctx2 asks et) of
+  in case (checkAllowedSkolems ctx2 scope et) of
     TOk -> case e of
-      Var _ n ->  case (lookup n env) of
+      Var _ n ->  case (getBinding n scope) of
         Nothing -> err 'unrecognized identifier'
-        Just t -> checkCanInstantiate ctx2 et t
+        Just t -> checkCanInstantiate ctx2 scope et t
       Const _ (CNum _) -> checkEquiv ctx2 et tnum
       Const _ (CStr _) -> checkEquiv ctx2 et tstr
       Gen _ e -> case et of
-        TForall _ vs _ t -> let
-          asks2 = setAddAll vs asks
-          in case (check env asks2 e) of
+        TForall _ vs bs t -> let
+          scope2 = addInstances vs bs $ addSkolems vs scope
+          in case (check scope2 e) of
             TOk -> checkEquiv ctx2 t (getType e)
             e -> e
         _ -> err 'Gen expr with non-TForall type'
-      App _ f a -> case (check env asks f) of
-        TOk -> case (check env asks a) of
+      App _ f a -> case (check scope f) of
+        TOk -> case (check scope a) of
           TOk -> checkEquiv ctx2 (tfun (getType a) et) (getType f)
           e -> e
         e -> e
       Lam _ v e ->
         case et of
           TApp _ (TApp _ (TConst _ '->') ta) tb -> let
-            env2 = insert v ta env
-            in case (check env2 asks e) of
+            scope2 = addBinding v ta scope
+            in case (check scope2 e) of
               TOk -> checkEquiv ctx2 tb (getType e)
               e -> e
           _ -> err 'Lam expr with non-function type'
@@ -132,16 +163,16 @@ checkExpr ctx env asks e = let
         case et of
           TApp _ (TConst _ 'Array') t -> let
             checkElem e = case (checkEquiv ctx2 t (getType e)) of
-              TOk -> check env asks e
+              TOk -> check scope e
               e -> e
             in checkMany checkElem es
           _ -> err 'New<Array> with non Array type'
       New _ d es ->
-        case (checkMany (check env asks) es) of
-          TOk -> checkDataRef ctx2 d et (map getType es)
+        case (checkMany (check scope) es) of
+          TOk -> checkDataRef ctx2 scope d et (map getType es)
           e -> e
-      Let _ bs e -> case (checkBindings ctx2 env asks bs) of
-        (env2, TOk) -> check env2 asks e
+      Let _ bs e -> case (checkBindings ctx2 scope bs) of
+        (scope2, TOk) -> check scope2 e
         (_, err) -> err
 
       // Checks to do:
@@ -162,7 +193,7 @@ checkExpr ctx env asks e = let
           ctx2 = push (PatCtx p) ctx
           patType = getPatType p
           in case p of
-            PData _ d ps -> case (checkDataRef ctx2 d patType (map getPatType ps)) of
+            PData _ d ps -> case (checkDataRef ctx2 scope d patType (map getPatType ps)) of
               TOk -> checkMany (checkPat ctx2) ps
               e -> e
             PConst _ (CNum _) -> checkEquiv ctx2 tnum patType
@@ -173,17 +204,17 @@ checkExpr ctx env asks e = let
         // with pattern bindings and consistency of the branch expr type and
         // the overall case expr type.
         checkBranch (p, e) = let
-          getBs env p = case p of
-            PVar _ v -> insert v (getPatType p) env
-            PData _ _ ps -> foldl getBs env ps
-            PConst _ _ -> env
-          env2 = getBs env p
+          getBs scope p = case p of
+            PVar _ v -> addBinding v (getPatType p) scope
+            PData _ _ ps -> foldl getBs scope ps
+            PConst _ _ -> scope
+          scope2 = getBs scope p
           branchType = getType e
-          in case (check env2 asks e) of
+          in case (check scope2 e) of
             TOk -> checkEquiv ctx2 caseType branchType
             e -> e
 
-        in case (check env asks e) of
+        in case (check scope e) of
           TOk -> case (checkMany (checkEquiv ctx2 exprType) topPatTypes) of
             TOk -> case (checkMany (checkPat ctx2) topPats) of
               TOk -> checkMany checkBranch ps

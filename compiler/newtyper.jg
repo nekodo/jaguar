@@ -2,6 +2,7 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
+import {replaceSkolems} from '//compiler/typeutil.jg'
 
 data ICtx =
   ModuleCtx String
@@ -56,6 +57,7 @@ varsInType t =
     TVar _ v -> setAdd v Empty
     TSkolem _ _ -> Empty
     TApp _ f a -> setUnion (varsInType f) (varsInType a)
+    TForall _ _ _ t -> varsInType t
     _ -> error ('unsupported type in varsInType ' ++ jsonStringify t)
 
 replaceVar v vt t =
@@ -77,7 +79,7 @@ forceType t = let
         _ -> True
       _ -> False
   in case t of
-    TVar _ v -> gets >>= \(US vars _) ->
+    TVar _ v -> gets >>= \(US vars _ _) ->
       case (lookup v vars) of
         Nothing -> ret t
         Just t -> forceType t >>= \t2 ->
@@ -86,7 +88,7 @@ forceType t = let
             False -> ret t2
     _ -> ret t
 
-setVar v t = gets >>= \(US vars n) -> sets $ US (insert v t vars) n
+setVar v t = gets >>= \(US vars n rins) -> sets $ US (insert v t vars) n rins
 
 unifyType ctx a b = let
   ctx2 = push (UnifyCtx a b) ctx
@@ -114,12 +116,12 @@ unifyType ctx a b = let
 
 // State for type unification.
 // First map is type var to type.
-data UnifierState = US (Map String Type) Number
+data UnifierState = US (Map String Type) Number (Array TypeBound)
 
-freshName = gets >>= \(US vars n) -> let
+freshName = gets >>= \(US vars n rins) -> let
   v = '$' ++ intToString n
   n2 = n + 1
-  in sets (US vars n2) >> ret v
+  in sets (US vars n2 rins) >> ret v
 
 freshVar = fmap (TVar emptyAnn) freshName
 
@@ -127,28 +129,24 @@ preferredVar v w = case (length v == length w) of
   True -> v < w
   False -> length v < length w
 
-replaceSkolems t reps =
-  case t of
-    TSkolem _ n -> case (lookup n reps) of
-      Nothing -> ret t
-      Just v -> ret v
-    TApp ann f a -> replaceSkolems f reps >>= \fr ->
-      replaceSkolems a reps >>= \ar ->
-        ret $ TApp ann fr ar
-    _ -> ret t
-
 instantiate t = let
   addRep reps v = freshVar >>= \t ->
     ret $ insert v t reps
+  replaceSkolemsTB reps (TCBound ann clz t) = TCBound ann clz (replaceSkolems t reps)
   in case t of
-    TForall _ vs _ t ->
-      foldM addRep Empty vs >>= replaceSkolems t
+    TForall _ vs bs t ->
+      foldM addRep Empty vs >>= \reps ->
+        addRequiredBounds (map (replaceSkolemsTB reps) bs) >>
+          ret (replaceSkolems t reps)
     _ -> ret t
 
 resolveName ctx n scope =
   case (lookup n scope) of
     Nothing -> ret $ IErr ctx 'name not in scope'
     Just t -> fmap IOk $ instantiate t
+
+addRequiredBounds bs = debug2 ('**adding bounds: ' ++ join (map printTypeBound bs) ', ') $ gets >>= \(US vars n rins) ->
+  sets (US vars n (concat rins bs))
 
 inferExpr ctx scope e = let
   ctx2 = push (ExprCtx e) ctx
@@ -302,12 +300,13 @@ inferMRG ctx scope bs = let
   setGenVar v = setVar v (TSkolem emptyAnn v)
   in foldM add (scope, []) bs >>= \(scope2, bst) ->
     mapOk (inferB scope2) bst >>=>> \bsi ->
-      foldM genB ([], []) bsi >>= \(vs, bsg) ->
-        mapM setGenVar vs >>
-          ret (IOk bsg)
+      resolveRins >>= \_ ->
+        foldM genB ([], []) bsi >>= \(vs, bsg) ->
+          mapM setGenVar vs >>
+            ret (IOk bsg)
 
 inferTopMRG ctx scope bs = let
-  (US vars _, bsi) = runState (US Empty 1) (inferMRG ctx scope bs)
+  (US vars _ _, bsi) = runState (US Empty 1 []) (inferMRG ctx scope bs)
   in bsi >>= finalizeBindings ctx vars
 
 inferTopBindings ctx scope bs = let
@@ -316,6 +315,33 @@ inferTopBindings ctx scope bs = let
     inferTopMRG ctx scope bs >>= \bsi ->
       IOk (bindingsToScope scope bsi, concat rs bsi)
   in fmap snd $ foldM infer (scope2, []) bs2
+
+resolveType t = let
+  resolve vars t =
+    case t of
+      TVar _ v -> case (lookup v vars) of
+        Nothing -> t
+        Just t -> resolve vars t
+      TApp ann f a -> TApp ann (resolve vars f) (resolve vars a)
+      _ -> t
+  in gets >>= \(US vars _ _) -> ret (resolve vars t)
+
+resolveBound (TCBound ann clz t) = resolveType t >>= \t -> ret (TCBound ann clz t)
+resolveBounds = mapM resolveBound
+
+resolveRins = gets >>= \(US vars n rins) ->
+  resolveBounds rins >>= \rins2 ->
+    sets (US vars n rins2)
+
+boundsWithVars vs = let
+  match (TCBound _ _ t) = inType t
+  inType t =
+    case t of
+      TVar _ v -> setContains v vs
+      TApp _ f a -> inType f || inType a
+      _ -> False
+  in gets >>= \(US _ _ rins) ->
+    ret (filter match rins)
 
 // generalize
 // Forall can include any type vars which are entirely free (absent from vars map).
@@ -328,7 +354,7 @@ generalize t = let
         gen f >>= \(fg, fvs) ->
           gen a >>= \(ag, avs) ->
             ret (TApp ann fg ag, concat fvs avs)
-      TVar _ v -> gets >>= \(US vars _) ->
+      TVar _ v -> gets >>= \(US vars _ _) ->
         case (lookup v vars) of
           Just t -> gen t
           Nothing -> let
@@ -339,7 +365,10 @@ generalize t = let
     _ -> gen t >>= \(tg, vs) ->
       case (length vs) of
         0 -> ret ([], tg)
-        _ -> ret (vs, TForall emptyAnn vs [] tg)
+        _ -> let
+          vsSet = setAddAll vs Empty
+          in boundsWithVars vsSet >>= \bs ->
+            ret (vs, TForall emptyAnn vs bs tg)
 
 finalizeType ctx vars t = let
   ctx2 = push (FinTypeCtx t) ctx
@@ -353,11 +382,15 @@ finalizeType ctx vars t = let
       fin a >>= \af ->
         ok (TApp ann ff af)
     TForall ann vs bs t -> fin t >>= \tf ->
-      ok (TForall ann vs bs tf)
+      mapM (finalizeTypeBound ctx2 vars) bs >>= \bsf ->
+        ok (TForall ann vs bsf tf)
     TVar _ v ->
       case (lookup v vars) of
         Just t -> fin t
         Nothing -> err 'unknown type var found during finalization'
+
+finalizeTypeBound ctx vars (TCBound ann clz t) =
+  finalizeType ctx vars t >>= \t -> IOk (TCBound ann clz t)
 
 finalizeExpr ctx vars e = let
   ctx2 = push (ExprCtx e) ctx

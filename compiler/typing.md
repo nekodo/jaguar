@@ -168,3 +168,22 @@ Generalization
 Specialization
   - when a generalized type is used, we need to
     replace each skolem with a new tvar
+
+Type class checking
+  - env needs to contain a new list of available instances
+  - when a type is instantiated we check that there is exactly one matching instance in the env
+    for each bound
+  - when descending into a Gen, for each bound we:
+    - add (Instance [] b) to the env
+  - instance matching rules:
+    - use checkEquivM targetBound candidateBound with state reflecting which skolems are free
+
+Type class inference
+  - while instantiating we add the list of instantiated type bounds to required bounds [DONE]
+  - when generalizing MRG:
+    - add all any bounds which mention the abstracted tvars to the tforalls as appropriate [DONE]
+    - carry over any bounds which do not mention the abstracted tvars over to the parent [TODO]
+  - finalization:
+    - updated bounds [DONE]
+    - remove satisfied bounds [TODO]
+

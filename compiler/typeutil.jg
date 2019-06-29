@@ -1,0 +1,10 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+
+replaceSkolems t reps =
+  case t of
+    TSkolem _ n -> case (lookup n reps) of
+      Nothing -> t
+      Just v -> v
+    TApp ann f a -> TApp ann (replaceSkolems f reps) (replaceSkolems a reps)
+    _ -> t
