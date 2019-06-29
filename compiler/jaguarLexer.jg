@@ -38,12 +38,12 @@ notCharP cs = parseChar (\c -> not (containsChar c cs))
 manyStr p = pure concatStr <*> many p
 someStr p = pure concatStr <*> some p
 
-stringCharP = let 
+stringCharP delim = let 
   newLineP = charP '\\' |> charP 'n' |> pure '\n'
   escapeP = charP '\\' |> anyCharP
-  notEndOfStringP = notCharP '\''
+  notEndOfStringP = notCharP delim
   in newLineP <|> escapeP <|> notEndOfStringP
-stringP = mkTok StrTok <*> (charP '\'' |> manyStr stringCharP <| charP '\'')
+stringP delim = mkTok StrTok <*> (charP delim |> manyStr (stringCharP delim) <| charP delim)
 
 whitespaceP = mkTok WsTok <*> someStr (charP ' \n')
 
@@ -59,6 +59,6 @@ opIdentP = mkTok IdTok <*> (charP '(' |> someStr (charP '-+*/=:&|<>^$') <| charP
 
 opP = mkTok OpTok <*> someStr (charP '-+*/=:&|<>^$~')
 
-jaguarTokenP = many (stringP <|> whitespaceP <|> numP <|> lineCommentP <|> identP <|> opIdentP <|> opP <|> symbolP)
+jaguarTokenP = many (stringP '\'' <|> stringP '"' <|> whitespaceP <|> numP <|> lineCommentP <|> identP <|> opIdentP <|> opP <|> symbolP)
 
 tokenize = runLexer jaguarTokenP

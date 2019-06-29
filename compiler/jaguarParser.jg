@@ -306,3 +306,10 @@ parseModule = runParser moduleP
 parseImports = runParser (many importP)
 parseExpr = runParser exprP
 parseType = runParser typeP
+
+scopeP = let
+  bindingP = pure Pair <*>
+    nonReservedP <*-> (operatorP '::' |> typeP)
+  in many bindingP
+
+parseScope = runParser scopeP

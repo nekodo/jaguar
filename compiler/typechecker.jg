@@ -128,6 +128,14 @@ checkExpr ctx env asks e = let
               TOk -> checkEquiv ctx2 tb (getType e)
               e -> e
           _ -> err 'Lam expr with non-function type'
+      New _ 'Array' es ->
+        case et of
+          TApp _ (TConst _ 'Array') t -> let
+            checkElem e = case (checkEquiv ctx2 t (getType e)) of
+              TOk -> check env asks e
+              e -> e
+            in checkMany checkElem es
+          _ -> err 'New<Array> with non Array type'
       New _ d es ->
         case (checkMany (check env asks) es) of
           TOk -> checkDataRef ctx2 d et (map getType es)

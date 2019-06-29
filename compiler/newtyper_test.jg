@@ -3,17 +3,36 @@ import {assertTrue, assertEq, runTests, Test, withMsg, changeMsg, prefixMsg, Ok,
 import * from '//compiler/newtyper.jg'
 import * from '//compiler/ast.jg'
 import {printType} from '//compiler/printer.jg'
-import {parseModule, parseExpr, parseType} from '//compiler/jaguarParser.jg'
+import {parseModule, parseExpr, parseType, parseScope} from '//compiler/jaguarParser.jg'
 import {Success, Error} from '//compiler/parsers.jg'
 import {checkTopBindings, TOk, TErr} from '//compiler/typechecker.jg'
 
-mustParseExpr testName s = case (parseExpr s testName) of
+mustParseExpr s = case (parseExpr s 'test') of
   Error e -> error e
   Success e _ -> e
 
-mustParseModule testName s = case (parseModule s testName) of
+mustParseModule s = case (parseModule s 'test') of
   Error e -> error e
   Success m _ -> m
+
+mustParseScope s = let
+  fixSkolems t = case t of
+    TVar ann v -> TSkolem ann v
+    TApp ann f a -> TApp ann (fixSkolems f) (fixSkolems a)
+    TForall ann vs bs t -> TForall ann vs bs (fixSkolems t)
+    _ -> t
+  fix t = let
+    vs = sort (setToArray $ varsInType t)
+    t2 = fixSkolems t
+    in case (length vs) of
+      0 -> t2
+      _ -> TForall emptyAnn vs [] t2
+  in case (parseScope s 'test') of
+    Error e -> error e
+    Success bs _ -> foldl (\s (n, t) -> insert n (fix t) s) Empty bs
+
+mustParseBindings s = case (mustParseModule s) of
+  Module _ _ _ _ _ _ bs -> bs
 
 assertTOk r = case r of
   TOk -> Ok
@@ -25,7 +44,7 @@ assertTFail r = case r of
 
 assertIOk r = case r of
   IOk _ -> Ok
-  IErr _ m -> Fail ('want IOk, but got IErr: ' ++ jsonStringify r)
+  e -> Fail ('want IOk, but got IErr:\n' ++ printIErr e)
 
 assertIFail r = case r of
   IOk _ -> Fail ('want TFail, but got TOk')
@@ -33,7 +52,7 @@ assertIFail r = case r of
 
 assertIOkAnd a f = case a of
   IOk a -> f a
-  IErr _ m -> Fail ('want IOk, but got IErr: ' ++ jsonStringify a)
+  e -> Fail ('want IOk, but got IErr:\n' ++ printIErr e)
 
 typeEq a b =
   case (a, b) of
@@ -41,9 +60,29 @@ typeEq a b =
     (TConst _ a, TConst _ b) -> a == b
     (TSkolem _ a, TSkolem _ b) -> a == b
     (TApp _ fa xa, TApp _ fb xb) -> typeEq fa fb && typeEq xa xb
-    (TForall _ vsa _ ta, TForall _ vsb _ tb) ->
-      foldl (\r (v, w) -> r && (v == w)) (typeEq ta tb) (zip vsa vsb)
+    (TForall _ vsa _ ta, TForall _ vsb _ tb) -> forallEquiv vsa ta vsb tb
     _ -> False
+
+forallEquiv vsa a vsb b = let
+  asa = setAddAll vsa Empty
+  asb = setAddAll vsb Empty
+  equiv a b =
+    case (a, b) of
+      (TVar _ v, TVar _ w) -> ret (v == w)
+      (TConst _ a, TConst _ b) -> ret (a == b)
+      (TSkolem _ a, TSkolem _ b) -> case (setContains a asa, setContains b asb) of
+        (True, True) -> gets >>= \(ma, mb) ->
+          case (lookup a ma, lookup b mb) of
+            (Nothing, Nothing) -> sets (insert a b ma, insert b a mb) >> ret True
+            (Just b2, Just a2) -> ret ((b == b2) && (a == a2))
+            _ -> ret False
+        (False, False) -> ret (a == b)
+        _ -> ret False
+      (TApp _ fa xa, TApp _ fb xb) -> equiv fa fb >>= \fe ->
+        equiv xa xb >>= \xe ->
+          ret (fe && xe)
+      _ -> ret False
+  in evalState (Empty, Empty) (equiv a b)
 
 assertTypeEq want got =
   case (typeEq want got) of
@@ -156,14 +195,14 @@ tests = [
       t = tv 'a'
 
       wantT = tforall ['x'] (tfun (ts 'x') (ts 'x'))
-      wantVars = insert 'x' (ts 'x') vars
+      wantVars = vars
 
-      (US gotVars _, gotT) = runState (US vars 0) (generalize t)
+      (US gotVars _, (_, gotT)) = runState (US vars 0) (generalize t)
       in [
         prefixMsg 'type' $ assertTypeEq wantT gotT,
         prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
 
-    Test 'infer 1' $ \_ -> let
+    Test 'infer simple' $ \_ -> let
       ctx = []
       scope = insertAll [
         ('id', tforall ['x'] (tfun (ts 'x') (ts 'x')))
@@ -176,6 +215,179 @@ tests = [
       bs = [
         ('x', App emptyAnn (Var emptyAnn 'id') (Const emptyAnn (CStr 'pony')))
         ]
+      got = inferTopBindings ctx scope bs
+      in [
+        prefixMsg 'types' $ assertInferredTypes want got,
+        prefixMsg 'full check' $ assertTypecheckOk scope got],
+
+    Test 'infer simple with parsed data' $ \_ -> let
+      ctx = []
+      scope = mustParseScope '
+        id :: a -> a
+      '
+
+      want = mustParseScope '
+        x :: String
+      '
+
+      bs = mustParseBindings '
+        x = id "pony"
+      '
+      got = inferTopBindings ctx scope bs
+      in [
+        prefixMsg 'types' $ assertInferredTypes want got,
+        prefixMsg 'full check' $ assertTypecheckOk scope got],
+
+    Test 'infer fib' $ \_ -> let
+      ctx = []
+      scope = mustParseScope '
+        sub :: Number -> Number -> Number
+        add :: Number -> Number -> Number
+      '
+
+      want = mustParseScope '
+        fib :: Number -> Number
+      '
+
+      bs = mustParseBindings '
+        fib n = case n of
+          0 -> 1
+          1 -> 1
+          _ -> add (fib (sub n 1)) (fib (sub n 2))
+      '
+      got = inferTopBindings ctx scope bs
+      in [
+        prefixMsg 'types' $ assertInferredTypes want got,
+        prefixMsg 'full check' $ assertTypecheckOk scope got],
+
+    Test 'infer fib mutually recursive' $ \_ -> let
+      ctx = []
+      scope = mustParseScope '
+        sub :: Number -> Number -> Number
+        add :: Number -> Number -> Number
+      '
+
+      want = mustParseScope '
+        fib :: Number -> Number
+        fib2 :: Number -> Number
+      '
+
+      bs = mustParseBindings '
+        fib n = case n of
+          0 -> 1
+          1 -> 1
+          _ -> add (fib2 (sub n 1)) (fib (sub n 2))
+        
+        fib2 n = case n of
+          0 -> 1
+          1 -> 1
+          _ -> add (fib (sub n 1)) (fib2 (sub n 2))
+      '
+      got = inferTopBindings ctx scope bs
+      in [
+        prefixMsg 'types' $ assertInferredTypes want got,
+        prefixMsg 'full check' $ assertTypecheckOk scope got],
+
+    Test 'polymorphic let binding' $ \_ -> let
+      ctx = []
+      scope = mustParseScope '
+        Pair :: a -> b -> Pair a b
+      '
+
+      want = mustParseScope '
+        x :: Pair Number String
+      '
+
+      bs = mustParseBindings '
+        x = let
+          id z = z
+          in (id 7, id "pony")
+      '
+      got = inferTopBindings ctx scope bs
+      in [
+        prefixMsg 'types' $ assertInferredTypes want got,
+        prefixMsg 'full check' $ assertTypecheckOk scope got],
+
+    Test 'infer array' $ \_ -> let
+      ctx = []
+      scope = Empty
+
+      want = mustParseScope '
+        x :: Array Number
+        y :: Number
+      '
+
+      bs = mustParseBindings '
+        y = 13
+        x = [42, y]
+      '
+      got = inferTopBindings ctx scope bs
+      in [
+        prefixMsg 'types' $ assertInferredTypes want got,
+        prefixMsg 'full check' $ assertTypecheckOk scope got],
+
+    Test 'infer map based on fold' $ \_ -> let
+      ctx = []
+      scope = mustParseScope '
+        foldl :: (b -> a -> b) -> b -> Array a -> b
+        push :: a -> Array a -> Array a
+      '
+
+      want = mustParseScope '
+        map :: (a -> b) -> Array a -> Array b
+      '
+
+      bs = mustParseBindings '
+        map f xs = foldl (\\rs x -> push (f x) rs) [] xs
+      '
+      got = inferTopBindings ctx scope bs
+      in [
+        prefixMsg 'types' $ assertInferredTypes want got,
+        prefixMsg 'full check' $ assertTypecheckOk scope got],
+
+    Test 'infer recursive fold impl' $ \_ -> let
+      ctx = []
+      scope = mustParseScope '
+        length :: Array a -> Number
+        head :: Array a -> a
+        tail :: Array a -> Array a
+      '
+
+      want = mustParseScope '
+        foldl :: (b -> a -> b) -> b -> Array a -> b
+      '
+
+      bs = mustParseBindings '
+        foldl f b xs = case (length xs) of
+          0 -> b
+          _ -> foldl f (f b (head xs)) (tail xs)
+      '
+      got = inferTopBindings ctx scope bs
+      in [
+        prefixMsg 'types' $ assertInferredTypes want got,
+        prefixMsg 'full check' $ assertTypecheckOk scope got],
+
+    Test 'infer mutually recursive fold impl' $ \_ -> let
+      ctx = []
+      scope = mustParseScope '
+        length :: Array a -> Number
+        head :: Array a -> a
+        tail :: Array a -> Array a
+      '
+
+      want = mustParseScope '
+        foldl :: (b -> a -> b) -> b -> Array a -> b
+        foldl2 :: (b -> a -> b) -> b -> Array a -> b
+      '
+
+      bs = mustParseBindings '
+        foldl f b xs = case (length xs) of
+          0 -> b
+          _ -> foldl2 f (f b (head xs)) (tail xs)
+        foldl2 f b xs = case (length xs) of
+          0 -> b
+          _ -> foldl f (f b (head xs)) (tail xs)
+      '
       got = inferTopBindings ctx scope bs
       in [
         prefixMsg 'types' $ assertInferredTypes want got,

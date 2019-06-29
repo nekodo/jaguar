@@ -404,6 +404,10 @@ setIntersection a b = let
 
 debug2 p x = snd (Pair (debug p) x)
 
+debugWrap tag f = debug2 ('** start: ' ++ tag) $ let
+  x = f Unit
+  in debug2 ('** stop: ' ++ tag) x
+
 data Identity a = Identity a
 
 instance Functor Identity where

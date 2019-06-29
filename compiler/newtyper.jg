@@ -15,6 +15,14 @@ data ICtx =
 
 data InferenceResult a = IOk a | IErr (Array ICtx) String
 
+printIErr (IErr ctx m) = let
+  printCtx ctx = case ctx of
+    BindingCtx n -> ['in binding of <' ++ n ++ '>']
+    UnifyCtx a b -> ['in unify <' ++ printType a ++ '> and <' ++ printType b ++ '>']
+    ExprCtx (Var _ v) -> ['in var <' ++ v ++ '>']
+    _ -> []
+  in join (push m (concatMap printCtx ctx)) '\n'
+
 instance Functor InferenceResult where
   fmap f a = case a of
     IErr ctx m -> IErr ctx m
@@ -85,9 +93,13 @@ unifyType ctx a b = let
   ok a = ret $ IOk a
   err m = ret $ IErr ctx2 m
   in forceType a >>= \a -> forceType b >>= \b -> case (a, b) of
-    (TVar _ v, TVar _ w) -> case (preferredVar v w) of
-      True -> setVar w a >> ok a
-      False -> setVar v b >> ok b
+    (TUnknown, _) -> err 'unify with TUnknown'
+    (_, TUnknown) -> err 'unify with TUnknown'
+    (TVar _ v, TVar _ w) -> case (v == w) of
+      True -> ok a
+      False -> case (preferredVar v w) of
+        True -> setVar w a >> ok a
+        False -> setVar v b >> ok b
     (TVar _ v, _) -> setVar v b >> ok b
     (_, TVar _ w) -> setVar w a >> ok a
     (TConst _ n, TConst _ m) -> case (n == m) of
@@ -98,11 +110,10 @@ unifyType ctx a b = let
       False -> err 'skolem mismatch'
     (TApp _ fa xa, TApp _ fb xb) -> unifyType ctx2 fa fb >>=>> \fu -> 
       unifyType ctx2 xa xb >>=>> \xu -> ok (tapp fu xu)
-    _ -> err 'cannot unify'
+    _ -> err ('cannot unify ' ++ printType a ++ ' and ' ++ printType b)
 
 // State for type unification.
 // First map is type var to type.
-// Second map is type var to type vars which contain it.
 data UnifierState = US (Map String Type) Number
 
 freshName = gets >>= \(US vars n) -> let
@@ -116,18 +127,19 @@ preferredVar v w = case (length v == length w) of
   True -> v < w
   False -> length v < length w
 
+replaceSkolems t reps =
+  case t of
+    TSkolem _ n -> case (lookup n reps) of
+      Nothing -> ret t
+      Just v -> ret v
+    TApp ann f a -> replaceSkolems f reps >>= \fr ->
+      replaceSkolems a reps >>= \ar ->
+        ret $ TApp ann fr ar
+    _ -> ret t
+
 instantiate t = let
   addRep reps v = freshVar >>= \t ->
     ret $ insert v t reps
-  replaceSkolems t reps =
-    case t of
-      TSkolem _ n -> case (lookup n reps) of
-        Nothing -> ret t
-        Just v -> ret v
-      TApp ann f a -> replaceSkolems f reps >>= \fr ->
-        replaceSkolems a reps >>= \ar ->
-          ret $ TApp ann fr ar
-      _ -> ret t
   in case t of
     TForall _ vs _ t ->
       foldM addRep Empty vs >>= replaceSkolems t
@@ -164,6 +176,11 @@ inferExpr ctx scope e = let
           unifyType ctx2 t (getType ei) >>>>
             ok (Gen ann ei) 
       _ -> err 'Gen expr without a TForall type'
+    New ann 'Array' es ->
+      mapOk (inferExpr ctx2 scope) es >>=>> \esi ->
+        freshVar >>= \elemType ->
+          mapOk (unifyType ctx2 elemType) (map getType esi) >>>>
+            finalize (New ann 'Array' esi) (TApp emptyAnn (TConst emptyAnn 'Array') elemType)
     New ann c es ->
       mapOk (inferExpr ctx2 scope) es >>=>> \esi ->
         freshVar >>= \dt ->
@@ -178,7 +195,7 @@ inferExpr ctx scope e = let
           PData _ _ ps -> foldl collectBindings scope ps
       inferCase pt rt (p, e) =
         inferPat ctx2 scope p >>=>> \pi ->
-          unifyType ctx2 pt (getPatType p) >>=>> \_ ->
+          unifyType ctx2 pt (getPatType pi) >>=>> \_ ->
             inferExpr ctx2 (collectBindings scope pi) e >>=>> \ei ->
               unifyType ctx2 rt (getType ei) >>>>
                 ok (pi, ei)
@@ -278,14 +295,16 @@ inferMRG ctx scope bs = let
   inferB scope (n, e) =
     inferExpr (push (BindingCtx n) ctx2) scope e >>=>> \ei ->
       ret (IOk (n, ei))
-  genB (n, e) = generalize (getType e) >>= \t ->
-    case t of
-      TForall _ _ _ _ -> ret (n, Gen (setAnnType t emptyAnn) e)
-      _ -> ret (n, setType t e)
+  genB (rvs, rbs) (n, e) = generalize (getType e) >>= \(vs, t) ->
+    case (length vs) of
+      0 -> ret (rvs, push (n, setType t e) rbs)
+      _ -> ret (concat rvs vs, push (n, Gen (setAnnType t emptyAnn) e) rbs)
+  setGenVar v = setVar v (TSkolem emptyAnn v)
   in foldM add (scope, []) bs >>= \(scope2, bst) ->
     mapOk (inferB scope2) bst >>=>> \bsi ->
-      mapM genB bsi >>= \bsg ->
-        ret (IOk bsg)
+      foldM genB ([], []) bsi >>= \(vs, bsg) ->
+        mapM setGenVar vs >>
+          ret (IOk bsg)
 
 inferTopMRG ctx scope bs = let
   (US vars _, bsi) = runState (US Empty 1) (inferMRG ctx scope bs)
@@ -314,13 +333,13 @@ generalize t = let
           Just t -> gen t
           Nothing -> let
             sk = TSkolem emptyAnn v
-            in setVar v sk >> ret (sk, [v])
+            in ret (sk, [v])
   in case t of
-    TForall _ _ _ _ -> ret t
+    TForall _ _ _ _ -> ret ([], t)
     _ -> gen t >>= \(tg, vs) ->
       case (length vs) of
-        0 -> ret tg
-        _ -> ret (TForall emptyAnn vs [] tg)
+        0 -> ret ([], tg)
+        _ -> ret (vs, TForall emptyAnn vs [] tg)
 
 finalizeType ctx vars t = let
   ctx2 = push (FinTypeCtx t) ctx
