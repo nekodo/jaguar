@@ -4,7 +4,6 @@ import {Success, Error} from '//compiler/parsers.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileModule as generateJs} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {generalizeStandalone, skolemizeType, emptyEnv} from '//compiler/typer.jg'
 import {dfs} from '//compiler/graph.jg'
 import {ArgBool, ArgString, parseArgs, getPositional, getString, getBool} from '//compiler/args.jg'
 import {declassModule} from '//compiler/declasser.jg'
@@ -16,7 +15,7 @@ import {translateAdts} from '//compiler/adt.jg'
 import * from '//compiler/pass.jg'
 import {splitLetsPass} from '//compiler/let_splitter.jg'
 import {liftModule} from '//compiler/lambdaLifter.jg'
-import {inferModule, moduleExports} from '//compiler/newtyper.jg'
+import {inferModule, moduleExports, fixType} from '//compiler/newtyper.jg'
 
 moduleFile m = case m of
   Module _ n _ _ _ _ _ -> n
@@ -48,7 +47,7 @@ parseT s = case (parseType s '') of
   e -> error e
 
 parseExports e = let
-  bs = mapRecord (\s -> skolemizeType $ generalizeStandalone (parseT s)) e
+  bs = mapRecord (\s -> fixType (parseT s)) e
   in ModuleInterface bs [] Empty
 
 builtinsPathArg = ArgString 'builtins' Nothing
