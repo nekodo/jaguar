@@ -7,7 +7,7 @@ translateAdts m = case m of
 
 rewriteData d = case d of
   Data _ n vs cs -> let
-    dt = foldl (\r v -> TApp emptyAnn r (TVar emptyAnn v)) (TConst emptyAnn n) vs
+    dt = foldl (\r v -> TApp emptyAnn r (TSkolem emptyAnn v)) (TConst emptyAnn n) vs
     rewriteCon c = let
       tag = case (length cs) of
         1 -> Nothing
@@ -23,4 +23,4 @@ mkConFun tag dt vs n ts = let
   con = foldr mkCon new nts
   conT = TForall emptyAnn vs [] (getType con)
   ann = setAnn 'export' (AnnExport n) (setAnn 'type' (AnnType conT) (setAnn 'data' (AnnData tag) emptyAnn))
-  in Pair n (skolemize (withAnn ann con))
+  in Pair n ( (withAnn ann con))
