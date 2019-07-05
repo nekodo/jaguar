@@ -138,7 +138,7 @@ hamtTest5 = justOr 0 $ lookup 'fluttershy' (remove 'applejack' hamtTestData)
 arrayTest = contains 'a' (concat ['a', 'b'] [])
 arrayTest2 = [1,2,3]
 
-recTest = {a = 8, b = True}
+//recTest = {a = 8, b = True}
 
 imabool b x y :: Bool -> z -> z -> z =
   case b of

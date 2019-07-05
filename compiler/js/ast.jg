@@ -27,3 +27,4 @@ data JSStmt =
   | JSBreak
   | JSAssign JSExpr JSExpr
   | JSIf JSExpr (Array JSStmt) (Array JSStmt)
+  | JSComment String

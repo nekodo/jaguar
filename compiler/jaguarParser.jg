@@ -2,7 +2,7 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import * from '//compiler/parsers.jg'
 import {tokenize, Token, WsTok, SymTok, NumTok, StrTok, OpTok, IdTok, ComTok} from '//compiler/jaguarLexer.jg'
-import {generalizeStandalone, skolemizeType} from '//compiler/typer.jg'
+import {fixType} from '//compiler/newtyper.jg'
 
 data ParserState = ParserState
   (Array Token) // input (ts)
@@ -204,7 +204,7 @@ caseP = pure Case <*>
 
 mkDefs mt l p e = case p of
   PVar _ n -> case mt of
-    Just t -> [(n, setType (skolemizeType $ generalizeStandalone t) e)]
+    Just t -> [(n, setType (fixType t) e)]
     Nothing -> [(n, e)]
   _ -> let
     id = case (getAnnCodeLoc l) of
@@ -253,11 +253,11 @@ boundTFunP = let
 
 // ------------ type classes ---------------
 
-classP = pure (\name tv maybeDefs -> Class emptyAnn name tv (justOr [] maybeDefs)) <*>
-  (reservedP 'class' |-> upperCaseId) <*-> notUpperCaseId <*-> opt (reservedP 'where' |> some classMemberP)
-
 classMemberP = pure Pair <*>
   notUpperCaseId <*-> (operatorP '::' |> typeP)
+
+classP = pure (\name tv maybeDefs -> Class emptyAnn name tv (justOr [] maybeDefs)) <*>
+  (reservedP 'class' |-> upperCaseId) <*-> notUpperCaseId <*-> opt (reservedP 'where' |> some classMemberP)
 
 instanceP = pure (\name t maybeDefs -> Instance emptyAnn name t (justOr [] maybeDefs)) <*>
   (reservedP 'instance' |-> upperCaseId) <*-> simpleTypeP <*-> opt (reservedP 'where' |> defsP)
@@ -284,14 +284,6 @@ importP = reservedP 'import' |> (importOpenP <|> importAllP)
 
 headerP = reservedP 'module' |> nonReservedP <| reservedP 'where'
 
-moduleP = let
-  name h loc = case h of
-    Nothing -> case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f
-    Just n -> n
-  f loc h is es = case (splitFourWay es) of
-    Pair (Pair dts dfs) (Pair cs ins) -> Module loc (name h loc) is dts cs (map (Pair '') ins) (foldl concat [] dfs)
-  in pure f <*> locP <*> opt headerP <*> many importP <*> some topLevelP
-
 splitFourWay e = case (splitEither e) of
   Pair a b -> Pair (splitEither a) (splitEither b)
 
@@ -301,6 +293,14 @@ topLevelDefsP = let
     Pair n e -> Pair n (withAnn (setAnn 'export' (AnnExport n) (annOf e)) e)
   in pure (map addExportAnn) <*> defsP
 topLevelP = eitherP (eitherP dataP topLevelDefsP) (eitherP classP instanceP)
+
+moduleP = let
+  name h loc = case h of
+    Nothing -> case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f
+    Just n -> n
+  f loc h is es = case (splitFourWay es) of
+    Pair (Pair dts dfs) (Pair cs ins) -> Module loc (name h loc) is dts cs (map (Pair '') ins) (foldl concat [] dfs)
+  in pure f <*> locP <*> opt headerP <*> many importP <*> some topLevelP
 
 parseModule = runParser moduleP
 parseImports = runParser (many importP)

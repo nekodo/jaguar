@@ -1,0 +1,229 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
+import {sccSorted} from '//compiler/graph.jg'
+import {replaceSkolems, normalizeForall, instanceMatches, Inst} from '//compiler/typeutil.jg'
+import * from '//compiler/ctx.jg'
+import * from '//compiler/result.jg'
+
+tapp = TApp emptyAnn
+tfun a b = tapp (tapp (TConst emptyAnn '->') a) b
+
+data SolverState = SS 
+  (Map String Type)   // vars
+  Number              // next fresh
+  (Array Type)        // required bounds
+  Number              // current depth
+  (Map String Number) // depth of each var
+
+setVar v t = let
+  updateDepth vars varDepth v d = case (lookup v varDepth)
+  in gets >>= \(SS vars nf rins d varDepth) ->
+    sets $ US (insert v t vars) n rins
+
+f = a -> c
+a = b -> c
+
+b:2,c:3,a:3,f:1
+
+// solverEq :: Type -> Type -> State SolverState (Result Error Type)
+// solverFresh :: State SolverState String
+// solverForce :: Type -> State SolverState Type
+// solverInstantiate :: Type -> State SolverState Type
+// solver
+
+varsInType t =
+  case t of
+    TConst _ _ -> Empty
+    TVar _ v -> setAdd v Empty
+    TSkolem _ _ -> Empty
+    TApp _ f a -> setUnion (varsInType f) (varsInType a)
+    TForall _ _ _ t -> varsInType t
+    _ -> error ('unsupported type in varsInType ' ++ jsonStringify t)
+
+skolemsInType t =
+  case t of
+    TConst _ _ -> Empty
+    TSkolem _ v -> setAdd v Empty
+    TVar _ _ -> Empty
+    TApp _ f a -> setUnion (skolemsInType f) (skolemsInType a)
+    TForall _ _ _ t -> skolemsInType t
+    _ -> error ('unsupported type in varsInType ' ++ jsonStringify t)
+
+skolemsInTypeBound (TCBound _ _ t) = skolemsInType t
+
+replaceVar v vt t =
+  case t of
+    TConst _ _ -> t
+    TSkolem _ _ -> t
+    TVar _ w -> case (v == w) of
+      True -> vt
+      False -> t
+    TApp ann f a -> TApp ann (replaceVar v vt f) (replaceVar v vt a)
+    TForall ann vs bs t -> TForall ann vs bs (replaceVar v vt t)
+    _ -> error ('unsupported type in replaceVar ' ++ jsonStringify t)
+
+forceType t = let
+  changed a b =
+    case a of
+      TVar _ v -> case b of
+        TVar _ w -> v /= w
+        _ -> True
+      _ -> False
+  in case t of
+    TVar _ v -> gets >>= \(US vars _ _) ->
+      case (lookup v vars) of
+        Nothing -> ret t
+        Just t -> forceType t >>= \t2 ->
+          case (changed t t2) of
+            True -> setVar v t2 >> ret t2
+            False -> ret t2
+    _ -> ret t
+
+unifyType ctx a b = let
+  ctx2 = push (UnifyCtx a b) ctx
+  ok a = ret $ Ok a
+  err m = ret $ Err (ctx2, m)
+  in forceType a >>= \a -> forceType b >>= \b -> case (a, b) of
+    (TUnknown, _) -> err 'unify with TUnknown'
+    (_, TUnknown) -> err 'unify with TUnknown'
+    (TVar _ v, TVar _ w) -> case (v == w) of
+      True -> ok a
+      False -> case (preferredVar v w) of
+        True -> setVar w a >> ok a
+        False -> setVar v b >> ok b
+    (TVar _ v, _) -> setVar v b >> ok b
+    (_, TVar _ w) -> setVar w a >> ok a
+    (TConst _ n, TConst _ m) -> case (n == m) of
+      True -> ok a
+      False -> err 'type name mismatch'
+    (TSkolem _ v, TSkolem _ w) -> case (v == w) of
+      True -> ok a
+      False -> err 'skolem mismatch'
+    (TApp _ fa xa, TApp _ fb xb) -> unifyType ctx2 fa fb >>=>> \fu -> 
+      unifyType ctx2 xa xb >>=>> \xu -> ok (tapp fu xu)
+    _ -> err ('cannot unify ' ++ printType a ++ ' and ' ++ printType b)
+
+freshName = gets >>= \(US vars n rins) -> let
+  v = '$' ++ intToString n
+  n2 = n + 1
+  in sets (US vars n2 rins) >> ret v
+
+namesUsed (US _ n _) (US _ m _) = let
+  f ns i = case (i < m) of
+    True -> f (setAdd ('$' ++ intToString i) ns) (i + 1)
+    False -> ns
+  in f Empty n
+
+freshVar = fmap (TVar emptyAnn) freshName
+
+preferredVar v w = case (length v == length w) of
+  True -> v < w
+  False -> length v < length w
+
+instantiate t = let
+  addRep reps v = freshVar >>= \t ->
+    ret $ insert v t reps
+  replaceSkolemsTB reps (TCBound ann clz t) = TCBound ann clz (replaceSkolems t reps)
+  in case t of
+    TForall _ vs bs t ->
+      foldM addRep Empty vs >>= \reps ->
+        resolveBounds bs >>= \bs ->
+          addRequiredBounds (map (replaceSkolemsTB reps) bs) >> let
+            t2 = replaceSkolems t reps
+            in debug2 ('**inst ' ++ printType t ++ ' => '++ printType t2) $ ret t2
+    _ -> ret t
+
+addRequiredBounds bs = debug2 ('**adding bounds: ' ++ join (map printTypeBound bs) ', ') $ gets >>= \(US vars n rins) ->
+  sets (US vars n (concat rins bs))
+
+consType dataType argTypes = foldr (\d t -> tfun t d) dataType argTypes
+
+resolveType t = let
+  resolve vars t =
+    case t of
+      TVar _ v -> case (lookup v vars) of
+        Nothing -> t
+        Just t -> resolve vars t
+      TApp ann f a -> TApp ann (resolve vars f) (resolve vars a)
+      _ -> t
+  in gets >>= \(US vars _ _) -> ret (resolve vars t)
+
+resolveBound (TCBound ann clz t) = resolveType t >>= \t -> ret (TCBound ann clz t)
+resolveBounds = mapM resolveBound
+
+resolveRins = gets >>= \(US vars n rins) ->
+  resolveBounds rins >>= \rins2 ->
+    sets (US vars n rins2)
+
+dropRins vs = let
+  match (TCBound _ _ t) = inType t
+  inType t =
+    case t of
+      TVar _ v -> setContains v vs
+      TApp _ f a -> inType f || inType a
+      _ -> False
+  in gets >>= \(US vars n rins) ->
+    sets (US vars n (filter (\i -> not (match i)) rins))
+
+boundsWithVars vs = let
+  match (TCBound _ _ t) = inType t
+  inType t =
+    case t of
+      TVar _ v -> setContains v vs
+      TApp _ f a -> inType f || inType a
+      _ -> False
+  in gets >>= \(US _ _ rins) ->
+    ret (filter match rins)
+
+// generalize
+// Forall can include any type vars which are entirely free (absent from vars map).
+generalize permittedVars t = let
+  gen t =
+    case t of
+      TConst _ _ -> ret (t, [])
+      TSkolem _ _ -> ret (t, [])
+      TApp ann f a ->
+        gen f >>= \(fg, fvs) ->
+          gen a >>= \(ag, avs) ->
+            ret (TApp ann fg ag, concat fvs avs)
+      TVar _ v -> gets >>= \(US vars _ _) ->
+        case (lookup v vars, setContains v permittedVars) of
+          (Just t, _) -> gen t
+          (_, False) -> ret (t, [])
+          (Nothing, True) -> let
+            sk = TSkolem emptyAnn v
+            in ret (sk, [v])
+  in case t of
+    TForall _ vs _ _ -> ret (vs, t) 
+    _ -> gen t >>= \(tg, vs) ->
+      case (length vs) of
+        0 -> ret ([], tg)
+        _ -> let
+          vsSet = setAddAll (vs) Empty
+          in boundsWithVars vsSet >>= \bs -> let
+            tr = TForall emptyAnn vs bs tg
+            in debug2 ('** generalized ' ++ printType t ++ ' => ' ++ printType tr) $ ret (vs, tr)
+
+finalizeType ctx vars t = let
+  ctx2 = push (FinTypeCtx t) ctx
+  ok e = Ok e
+  err m = Err (ctx2, m)
+  fin = finalizeType ctx2 vars
+  in case t of
+    TConst _ _ -> ok t
+    TSkolem _ _ -> ok t
+    TApp ann f a -> fin f >>= \ff ->
+      fin a >>= \af ->
+        ok (TApp ann ff af)
+    TForall ann vs bs t -> fin t >>= \tf ->
+      mapM (finalizeTypeBound ctx2 vars) bs >>= \bsf ->
+        ok (normalizeForall $ TForall ann vs bsf tf)
+    TVar _ v ->
+      case (lookup v vars) of
+        Just t -> fin t
+        Nothing -> err 'unknown type var found during finalization'
+
+finalizeTypeBound ctx vars (TCBound ann clz t) =
+  finalizeType ctx vars t >>= \t -> Ok (TCBound ann clz t)
+

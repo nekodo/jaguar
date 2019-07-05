@@ -96,3 +96,5 @@ printDef typed d = case d of
 indent = map (\l -> '  ' ++ l)
 
 reallyPrintExpr typed e = join (printExprTyped typed e) '\n'
+
+printInst (Inst vs b) = 'forall ' ++ join vs ' ' ++ '. ' ++ printTypeBound b

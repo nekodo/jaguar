@@ -1,5 +1,7 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
+import * from '//compiler/result.jg'
+import {TypeEquivCtx} from '//compiler/ctx.jg'
 
 replaceSkolems t reps =
   case t of
@@ -8,3 +10,67 @@ replaceSkolems t reps =
       Just v -> v
     TApp ann f a -> TApp ann (replaceSkolems f reps) (replaceSkolems a reps)
     _ -> t
+
+data OrderedSet a = OrderedSet (Map a Number) Number
+osetEmpty = OrderedSet Empty 0
+osetAdd x (OrderedSet m c) = case (lookup x m) of
+  Nothing -> OrderedSet (insert x c m) (c + 1)
+  _ -> OrderedSet m c
+osetContains x (OrderedSet m _) = isJust (lookup x m)
+osetToArray (OrderedSet m c) = map fst (sortBy (\a b -> compareOrd (snd a) (snd b)) (trieEntries m))
+osetIndexOf x (OrderedSet m _) = lookup x m
+
+normalizeForall t = let
+  skolemsInOrder sks t =
+    case t of
+      TSkolem _ s -> osetAdd s sks
+      TApp _ f a -> skolemsInOrder (skolemsInOrder sks f) a
+      TForall _ _ _ _ -> error 'unexpected TForall in skolemsInOrder'
+      _ -> sks
+  compareSkolems m a b = case (osetIndexOf a m, osetIndexOf b m) of
+    (Just i, Just j) -> i - j
+    (Just _, _) -> 0-1
+    (_, Just _) -> 1
+    _ -> compareOrd a b
+  in case t of
+    TForall ann vs bs t -> let
+      skolemsInType = skolemsInOrder osetEmpty t
+      vs2 = filter (\s -> contains s vs) (osetToArray skolemsInType)
+      in TForall ann vs2 (dedup $ sortBy (compareBound (compareType (compareSkolems skolemsInType))) bs) t
+    _ -> t
+
+instanceMatches ctx (TCBound _ nb tb) (Inst vs (TCBound _ ni ti)) =
+  (ni == nb) && isOk (evalState (foldl (\m v -> insert v TUnknown m) Empty vs) (checkEquivM ctx tb ti))
+
+checkEquiv ctx a b = evalState Empty (checkEquivM ctx a b)
+
+checkEquivM ctx toType fromType = let
+  ctx2 = push (TypeEquivCtx toType fromType) ctx
+  err m = ret $ Err (ctx2, m)
+  ok = ret $ Ok Unit
+  checkM = checkEquivM ctx2
+  in case fromType of
+      TConst _ n -> case toType of
+        TConst _ m -> case (n == m) of
+          True -> ok
+          False -> err 'type name mismatch'
+        _ -> err 'type mismatch'
+
+      TSkolem _ v -> gets >>= \bs -> case (lookup v bs) of
+        // Case 1: this is not a var we're instantiating.
+        Nothing -> case toType of
+          TSkolem _ w -> case (v == w) of
+            True -> ok
+            False -> err 'type name mismatch'
+          _ -> err 'type mismatch'
+        // Case 2: this is a var we're instantiating and it is
+        // the first time we encountered it.
+        Just (TUnknown) -> sets (insert v toType bs) >> ok
+        // Case 3: this is a var we're instantiating and
+        // we've seen it before.
+        Just t -> ret $ checkEquiv ctx2 t toType
+
+      TApp _ fb xb -> case toType of
+        TApp _ fa xa -> checkM fa fb >>>> checkM xa xb
+        _ -> err 'type mismatch'
+      _ -> err 'type cannot be equivalent'

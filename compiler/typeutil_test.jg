@@ -1,0 +1,98 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import {assertTrue, assertEq, runTests, Test, withMsg, changeMsg, prefixMsg, testOk, testFail} from '//compiler/test/test.jg'
+import * from '//compiler/typeutil.jg'
+import {Ok, Err} from '//compiler/result.jg'
+import {printCtx} from '//compiler/ctx.jg'
+
+ts x = TSkolem emptyAnn x
+tc x = TConst emptyAnn x
+tapp a b = TApp emptyAnn a b
+tfun a b = tapp (tapp (TConst emptyAnn '->') a) b
+tcb n t = TCBound emptyAnn n t
+
+printErr (Err (ctx, m)) = join (push m (concatMap printCtx ctx)) '\n'
+
+assertOk r = case r of
+  Ok _ -> testOk
+  e -> testFail ('want Ok, but got Err:\n' ++ printErr e)
+
+assertErr r = case r of
+  Ok _ -> testFail ('want Err, but got Ok')
+  Err _ -> testOk
+
+tests = [
+    Test 'OrderedSet' $ \_ -> let
+      s = osetAdd 'y' (osetAdd 'n' (osetAdd 'o' (osetAdd 'p' (osetEmpty))))
+
+      want = 'pony'
+
+      got = join (osetToArray s) ''
+      in [assertEq want got],
+
+    Test 'normalizeForall' $ \_ -> let
+      t = TForall emptyAnn ['b', 'c'] [tcb 'Ord' (ts 'b'), tcb 'Ord' (ts 'c')] (tfun (ts 'c') (tfun (ts 'd') (ts 'b')))
+
+      want = TForall emptyAnn ['c', 'b'] [tcb 'Ord' (ts 'c'), tcb 'Ord' (ts 'b')] (tfun (ts 'c') (tfun (ts 'd') (ts 'b')))
+
+      got = debug2 (sortBy compareOrd [4,7,3,5]) $ normalizeForall t
+      in [assertEq want got],
+
+    Test 'checkEquiv TConst' $ \_ -> let
+      a = TConst emptyAnn 'Number'
+      b = TConst emptyAnn 'Number'
+
+      got = checkEquiv [] a b
+      in [assertOk got],
+
+    Test 'checkEquiv TSkolem' $ \_ -> let
+      a = TSkolem emptyAnn 'x'
+      b = TSkolem emptyAnn 'x'
+
+      got = checkEquiv [] a b
+      in [assertOk got],
+
+    Test 'checkEquiv TApp' $ \_ -> let
+      a = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
+      b = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
+
+      got = checkEquiv [] a b
+      in [assertOk got],
+
+    Test 'checkEquiv TApp mismatch' $ \_ -> let
+      a = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
+      b = TApp emptyAnn (TConst emptyAnn 'a') (TSkolem emptyAnn 'x')
+
+      got = checkEquiv [] a b
+      in [assertErr got],
+
+    Test 'checkEquiv TVar' $ \_ -> let
+      a = TConst emptyAnn 'A'
+      b = TVar emptyAnn 'v'
+
+      got = checkEquiv [] a b
+      in [assertErr got],
+
+    Test 'checkEquivM TSkolem (ABB Avv)' $ \_ -> let
+      a = tapp (tapp (tc 'A') (tc 'B')) (tc 'B')
+      b = tapp (tapp (tc 'A') (ts 'v')) (ts 'v')
+
+      got = evalState (insert 'v' TUnknown Empty) $ checkEquivM [] a b
+      in [assertOk got],
+
+    Test 'checkEquivM TVar (ABC Avv)' $ \_ -> let
+      a = tapp (tapp (tc 'A') (tc 'B')) (tc 'C') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TConst emptyAnn 'B')) (TConst emptyAnn 'B')
+      b = tapp (tapp (tc 'A') (ts 'v')) (ts 'v') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TVar emptyAnn 'v')) (TVar emptyAnn 'v')
+
+      got = evalState (insert 'v' TUnknown Empty) $ checkEquivM [] a b
+      in [assertErr got],
+
+    Test 'checkEquivM TVar (ABC Avw)' $ \_ -> let
+      a = tapp (tapp (tc 'A') (tc 'B')) (tc 'C') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TConst emptyAnn 'B')) (TConst emptyAnn 'B')
+      b = tapp (tapp (tc 'A') (ts 'v')) (ts 'w') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TVar emptyAnn 'v')) (TVar emptyAnn 'v')
+
+      got = evalState (insert 'w' TUnknown (insert 'v' TUnknown Empty)) $ checkEquivM [] a b
+      in [assertOk got]
+  ]
+
+main argv = runTests 'typeutil_test' tests

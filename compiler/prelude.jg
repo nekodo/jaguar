@@ -222,6 +222,15 @@ uniq xs = case (length xs < 2) of
 
 reverse = foldl (\xs x -> enqueue x xs) []
 
+dedup xs = let
+  f xs x = case (last xs == x) of
+    True -> xs
+    False -> push x xs
+  in case (length xs) of
+    0 -> xs
+    1 -> xs
+    _ -> foldl f [head xs] (tail xs)
+
 toRecord = foldl (\r (k, v) -> set k v r) empty
 
 strToArray s = let

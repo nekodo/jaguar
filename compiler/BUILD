@@ -73,3 +73,10 @@ jaguar_test(
   srcs = ["test/test.jg", "typechecker_test.jg"] + SRCS,
   compiler = ":stage2",
 )
+
+jaguar_test(
+  name = "typeutil_test",
+  main = "//compiler/typeutil_test.jg",
+  srcs = ["test/test.jg", "typeutil_test.jg", "prelude.jg", "ast.jg", "typeutil.jg", "result.jg", "ctx.jg", "printer.jg"],
+  compiler = ":stage2",
+)

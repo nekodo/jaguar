@@ -1,55 +1,35 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
+import {printType, printTypeBound, reallyPrintExpr, printDef, printInst} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
-import {replaceSkolems} from '//compiler/typeutil.jg'
-
-data ICtx =
-  ModuleCtx String
-  | BindingCtx String
-  | ExprCtx Expr
-  | UnifyCtx Type Type
-  | UpdateCtx String Type
-  | PatCtx Pat
-  | MRGCtx (Array String)
-  | FinTypeCtx Type
-
-data InferenceResult a = IOk a | IErr (Array ICtx) String
-
-printIErr (IErr ctx m) = let
-  printCtx ctx = case ctx of
-    BindingCtx n -> ['in binding of <' ++ n ++ '>']
-    UnifyCtx a b -> ['in unify <' ++ printType a ++ '> and <' ++ printType b ++ '>']
-    ExprCtx (Var _ v) -> ['in var <' ++ v ++ '>']
-    _ -> []
-  in join (push m (concatMap printCtx ctx)) '\n'
-
-instance Functor InferenceResult where
-  fmap f a = case a of
-    IErr ctx m -> IErr ctx m
-    IOk a -> IOk (f a)
-
-instance Monad InferenceResult where
-  ret = IOk
-  (>>=) a f = case a of
-    IErr ctx m -> IErr ctx m
-    IOk a -> f a
-
-invert m = m >>= \a -> fmap ret a
-
-(>>=>>) m f = m >>= \r -> case r of
-  IErr ctx m -> ret (IErr ctx m)
-  IOk x -> f x
-
-(>>>>) m n = m >>=>> \_ -> n
-
-foldOk f r xs = foldl (\r x -> r >>=>> \r -> f r x) (ret $ IOk r) xs
-mapOk f xs = foldOk (\rs x -> f x >>=>> \r -> ret (IOk $ push r rs)) [] xs
+import {replaceSkolems, normalizeForall, instanceMatches} from '//compiler/typeutil.jg'
+import * from '//compiler/ctx.jg'
+import * from '//compiler/result.jg'
 
 tnum = TConst emptyAnn 'Number'
 tstr = TConst emptyAnn 'String'
 tapp = TApp emptyAnn
 tfun a b = tapp (tapp (TConst emptyAnn '->') a) b
+
+fixType t = let
+  fix t = let
+    vs = sort (setToArray $ varsInType t)
+    in case (fixSkolems t, length vs) of
+      (TForall ann _ bs t, _) -> //debug2 ('** t = ' ++ printType t ++ ', vars = ' ++ jsonStringify vs) $
+        TForall ann vs (map fixTypeBound bs) t
+      (t, 0) -> t
+      (t, _) -> TForall emptyAnn vs [] t
+  in case t of
+    TUnknown -> t
+    _ -> fix t
+
+fixSkolems t = case t of
+  TVar ann v -> TSkolem ann v
+  TApp ann f a -> TApp ann (fixSkolems f) (fixSkolems a)
+  TForall ann vs bs t -> TForall ann vs bs (fixSkolems t)
+  _ -> t
+
+fixTypeBound (TCBound ann clz t) = TCBound ann clz (fixSkolems t)
 
 varsInType t =
   case t of
@@ -59,6 +39,17 @@ varsInType t =
     TApp _ f a -> setUnion (varsInType f) (varsInType a)
     TForall _ _ _ t -> varsInType t
     _ -> error ('unsupported type in varsInType ' ++ jsonStringify t)
+
+skolemsInType t =
+  case t of
+    TConst _ _ -> Empty
+    TSkolem _ v -> setAdd v Empty
+    TVar _ _ -> Empty
+    TApp _ f a -> setUnion (skolemsInType f) (skolemsInType a)
+    TForall _ _ _ t -> skolemsInType t
+    _ -> error ('unsupported type in varsInType ' ++ jsonStringify t)
+
+skolemsInTypeBound (TCBound _ _ t) = skolemsInType t
 
 replaceVar v vt t =
   case t of
@@ -92,8 +83,8 @@ setVar v t = gets >>= \(US vars n rins) -> sets $ US (insert v t vars) n rins
 
 unifyType ctx a b = let
   ctx2 = push (UnifyCtx a b) ctx
-  ok a = ret $ IOk a
-  err m = ret $ IErr ctx2 m
+  ok a = ret $ Ok a
+  err m = ret $ Err (ctx2, m)
   in forceType a >>= \a -> forceType b >>= \b -> case (a, b) of
     (TUnknown, _) -> err 'unify with TUnknown'
     (_, TUnknown) -> err 'unify with TUnknown'
@@ -123,6 +114,12 @@ freshName = gets >>= \(US vars n rins) -> let
   n2 = n + 1
   in sets (US vars n2 rins) >> ret v
 
+namesUsed (US _ n _) (US _ m _) = let
+  f ns i = case (i < m) of
+    True -> f (setAdd ('$' ++ intToString i) ns) (i + 1)
+    False -> ns
+  in f Empty n
+
 freshVar = fmap (TVar emptyAnn) freshName
 
 preferredVar v w = case (length v == length w) of
@@ -136,24 +133,28 @@ instantiate t = let
   in case t of
     TForall _ vs bs t ->
       foldM addRep Empty vs >>= \reps ->
-        addRequiredBounds (map (replaceSkolemsTB reps) bs) >>
-          ret (replaceSkolems t reps)
+        resolveBounds bs >>= \bs ->
+          addRequiredBounds (map (replaceSkolemsTB reps) bs) >> let
+            t2 = replaceSkolems t reps
+            in ret t2 //debug2 ('**inst ' ++ printType t ++ ' => '++ printType t2) $ ret t2
     _ -> ret t
 
 resolveName ctx n scope =
   case (lookup n scope) of
-    Nothing -> ret $ IErr ctx 'name not in scope'
-    Just t -> fmap IOk $ instantiate t
+    Nothing -> ret $ Err (ctx, 'name not in scope: ' ++ n)
+    Just t -> fmap Ok $ instantiate t
 
-addRequiredBounds bs = debug2 ('**adding bounds: ' ++ join (map printTypeBound bs) ', ') $ gets >>= \(US vars n rins) ->
-  sets (US vars n (concat rins bs))
+addRequiredBounds bs = //debug2 ('**adding bounds: ' ++ join (map printTypeBound bs) ', ') $ 
+  gets >>= \(US vars n rins) ->
+    sets (US vars n (concat rins bs))
 
 inferExpr ctx scope e = let
   ctx2 = push (ExprCtx e) ctx
-  ok e = ret $ IOk e
-  err m = ret $ IErr ctx2 m
+  ok e = ret $ Ok e
+  err m = ret $ Err (ctx2, m)
   finalize e t = case (getType e) of
     TUnknown -> ok (setType t e)
+    TForall _ _ _ t2 -> unifyType ctx2 t t2 >>>> ok e
     t2 -> unifyType ctx2 t t2 >>>> ok e
   in case e of
     Const _ (CNum _) -> finalize e tnum
@@ -168,19 +169,13 @@ inferExpr ctx scope e = let
       freshVar >>= \v ->
         inferExpr ctx2 (insert p v scope) e >>=>> \ei ->
           finalize (Lam ann p ei) (tfun v (getType ei))
-    Gen ann e -> case (getAnnType ann) of
-      TForall _ _ _ t ->
-        inferExpr ctx2 scope e >>=>> \ei ->
-          unifyType ctx2 t (getType ei) >>>>
-            ok (Gen ann ei) 
-      _ -> err 'Gen expr without a TForall type'
     New ann 'Array' es ->
-      mapOk (inferExpr ctx2 scope) es >>=>> \esi ->
+      mapOkM (inferExpr ctx2 scope) es >>=>> \esi ->
         freshVar >>= \elemType ->
-          mapOk (unifyType ctx2 elemType) (map getType esi) >>>>
+          mapOkM (unifyType ctx2 elemType) (map getType esi) >>>>
             finalize (New ann 'Array' esi) (TApp emptyAnn (TConst emptyAnn 'Array') elemType)
     New ann c es ->
-      mapOk (inferExpr ctx2 scope) es >>=>> \esi ->
+      mapOkM (inferExpr ctx2 scope) es >>=>> \esi ->
         freshVar >>= \dt ->
           resolveName ctx2 c scope >>=>> \ct ->
             unifyType ctx2 ct (consType dt (map getType esi)) >>>>
@@ -199,7 +194,7 @@ inferExpr ctx scope e = let
                 ok (pi, ei)
       in inferExpr ctx2 scope e >>=>> \ei ->
         freshVar >>= \rt ->
-          mapOk (inferCase (getType ei) rt) ps >>=>> \psi ->
+          mapOkM (inferCase (getType ei) rt) ps >>=>> \psi ->
             finalize (Case ann ei psi) rt
     Let ann bs e ->
       inferBindings ctx2 scope bs >>=>> \(scope2, bsi) ->
@@ -210,8 +205,8 @@ consType dataType argTypes = foldr (\d t -> tfun t d) dataType argTypes
 
 inferPat ctx scope p = let
   ctx2 = push (PatCtx p) ctx
-  ok p = ret $ IOk p
-  err m = ret $ IErr ctx2 m
+  ok p = ret $ Ok p
+  err m = ret $ Err (ctx2, m)
   finalize p t = case (getPatType p) of
     TUnknown -> ok (setPatType t p)
     t2 -> unifyType ctx2 t t2 >>>> ok p
@@ -220,7 +215,7 @@ inferPat ctx scope p = let
     PConst _ (CNum _) -> finalize p tnum
     PConst _ (CStr _) -> finalize p tstr
     PData ann n ps ->
-      mapOk (inferPat ctx2 scope) ps >>=>> \psi ->
+      mapOkM (inferPat ctx2 scope) ps >>=>> \psi ->
         freshVar >>= \dt ->
           resolveName ctx2 n scope >>=>> \ct ->
             unifyType ctx2 ct (consType dt (map getPatType psi)) >>>>
@@ -234,7 +229,6 @@ freeVars scope e =
       True -> Empty
     App _ f a -> setUnion (freeVars scope f) (freeVars scope a)
     Lam _ p e -> freeVars (setAdd p scope) e
-    Gen _ e -> freeVars scope e
     New _ _ es -> foldl (\fvs e -> setUnion fvs (freeVars scope e)) Empty es
     Let _ bs e -> let
       scope2 = setAddAll (map fst bs) scope
@@ -251,12 +245,11 @@ freeVars scope e =
 bindingsToScope = foldl (\s (n, e) -> insert n (getType e) s)
 
 // Compute SCCs and split into mutually recursive groups.
-sortBindings bs = let
+computeSCC bs = let
   bsm = insertAll bs Empty
   g = foldl (\g (n, e) -> insert n (filter (\v -> (isJust $ lookup v bsm) && (v /= n)) (setToArray $ freeVars Empty e)) g) Empty bs
   ccs = sccSorted g
   in map (map (\v -> (v, fromJust $ lookup v bsm))) ccs
-
 
 splitBindings bs = let
   split (ubs, tbs) (n, e) =
@@ -268,7 +261,7 @@ splitBindings bs = let
 prepareBindings scope bs = let
   (ubs, tbs) = splitBindings bs
   scope2 = bindingsToScope scope tbs
-  sortedBs = concat (sortBindings ubs) (map (\b -> [b]) tbs)
+  sortedBs = concat (computeSCC ubs) (map (\b -> [b]) tbs)
   in (scope2, sortedBs)
 
 // Compute SCCs and split into mutually recursive groups.
@@ -278,13 +271,17 @@ inferBindings ctx scope bs = let
   (scope2, bs2) = prepareBindings scope bs
   infer (scope, rs) bs =
     inferMRG ctx scope bs >>=>> \bsi ->
-      ret (IOk (bindingsToScope scope bsi, concat rs bsi))
-  in foldOk infer (scope2, []) bs2
+      ret (Ok (bindingsToScope scope bsi, concat rs bsi))
+  fixOrder bs2 = let
+    m = insertAll bs2 Empty
+    in map (\(n, _) -> (n, fromJust $ lookup n m)) bs
+  in foldOkM infer (scope2, []) bs2 >>=>> \(scope, bs) ->
+    ret (Ok (scope, fixOrder bs))
 
 // inferMGR
 // run inference all the bindings together, then generalize each
 inferMRG ctx scope bs = let
-  ctx2 = push (MRGCtx (map fst bs)) ctx 
+  ctx2 = push (MRGCtx (map fst bs)) ctx
   add (scope, bs) (n, e) =
     case (getType e) of
       TUnknown -> freshVar >>= \t ->
@@ -292,29 +289,43 @@ inferMRG ctx scope bs = let
       t -> ret (insert n t scope, push (n, e) bs)
   inferB scope (n, e) =
     inferExpr (push (BindingCtx n) ctx2) scope e >>=>> \ei ->
-      ret (IOk (n, ei))
-  genB (rvs, rbs) (n, e) = generalize (getType e) >>= \(vs, t) ->
-    case (length vs) of
-      0 -> ret (rvs, push (n, setType t e) rbs)
-      _ -> ret (concat rvs vs, push (n, Gen (setAnnType t emptyAnn) e) rbs)
+      ret (Ok (n, ei))
+  genB (rvs, rbs) (n, e) = generalize (map snd $ trieEntries scope) (getType e) >>= \(vs, t) ->
+    ret (concat rvs vs, push (n, setType t e) rbs)
   setGenVar v = setVar v (TSkolem emptyAnn v)
   in foldM add (scope, []) bs >>= \(scope2, bst) ->
-    mapOk (inferB scope2) bst >>=>> \bsi ->
-      resolveRins >>= \_ ->
-        foldM genB ([], []) bsi >>= \(vs, bsg) ->
-          mapM setGenVar vs >>
-            ret (IOk bsg)
+      mapOkM (inferB scope2) bst >>=>> \bsi ->
+        resolveRins >>= \_ ->
+          foldM genB ([], []) bsi >>= \(vs, bsg) ->
+            dropRins (setAddAll vs Empty) >>
+              mapM setGenVar vs >>
+                ret (Ok bsg)
 
-inferTopMRG ctx scope bs = let
-  (US vars _ _, bsi) = runState (US Empty 1 []) (inferMRG ctx scope bs)
-  in bsi >>= finalizeBindings ctx vars
+hasMatchingInstance ctx ins b = case (length $ filter (instanceMatches [] b) ins) of
+  0 -> Ok False
+  1 -> Ok True
+  n -> Err (ctx, 'too many matching instances (' ++ intToString n ++ ')')
 
-inferTopBindings ctx scope bs = let
+inferTopMRG ctx scope ins bs = let
+  (US vars _ rins, bsi) = runState (US Empty 1 []) (inferMRG ctx scope bs)
+  checkSatisfied ctx b = let
+    ctx2 = push (TypeBoundCtx b) ctx
+    in hasMatchingInstance ctx2 ins b >>= \m -> case m of
+      True -> Ok Unit
+      False -> Err (ctx2, 'no matching instances among ' ++ jsonStringify (map printInst ins))
+  in bsi >>= finalizeBindings ctx vars ins >>= \bsf -> let
+    ctx2 = push (FinMRGCtx (map (\(n, e) -> (n, getType e)) bsf)) ctx 
+    in mapM (finalizeTypeBound ctx2 vars ins) rins >>= mapM (checkSatisfied ctx2) >> Ok bsf
+
+inferTopBindings ctx scope ins bs = let
   (scope2, bs2) = prepareBindings scope bs
   infer (scope, rs) bs =
-    inferTopMRG ctx scope bs >>= \bsi ->
-      IOk (bindingsToScope scope bsi, concat rs bsi)
-  in fmap snd $ foldM infer (scope2, []) bs2
+    inferTopMRG ctx scope ins bs >>= \bsi ->
+      Ok (bindingsToScope scope bsi, concat rs bsi)
+  fixOrder bs2 = let
+    m = insertAll bs2 Empty
+    in map (\(n, _) -> (n, fromJust $ lookup n m)) bs
+  in fmap (\(_, bs) -> fixOrder bs) $ foldM infer (scope2, []) bs2
 
 resolveType t = let
   resolve vars t =
@@ -333,6 +344,16 @@ resolveRins = gets >>= \(US vars n rins) ->
   resolveBounds rins >>= \rins2 ->
     sets (US vars n rins2)
 
+dropRins vs = let
+  match (TCBound _ _ t) = inType t
+  inType t =
+    case t of
+      TVar _ v -> setContains v vs
+      TApp _ f a -> inType f || inType a
+      _ -> False
+  in gets >>= \(US vars n rins) ->
+    sets (US vars n (filter (\i -> not (match i)) rins))
+
 boundsWithVars vs = let
   match (TCBound _ _ t) = inType t
   inType t =
@@ -345,36 +366,44 @@ boundsWithVars vs = let
 
 // generalize
 // Forall can include any type vars which are entirely free (absent from vars map).
-generalize t = let
-  gen t =
+generalize envTypes t = let
+  envVars = foldM (\vs t -> resolveType t >>= \t -> ret $ setUnion vs (varsInType t)) Empty envTypes
+  gen evs t =
     case t of
       TConst _ _ -> ret (t, [])
       TSkolem _ _ -> ret (t, [])
       TApp ann f a ->
-        gen f >>= \(fg, fvs) ->
-          gen a >>= \(ag, avs) ->
+        gen evs f >>= \(fg, fvs) ->
+          gen evs a >>= \(ag, avs) ->
             ret (TApp ann fg ag, concat fvs avs)
       TVar _ v -> gets >>= \(US vars _ _) ->
-        case (lookup v vars) of
-          Just t -> gen t
-          Nothing -> let
+        case (lookup v vars, setContains v evs) of
+          (Just t, _) -> gen evs t
+          (_, True) -> ret (t, [])
+          (Nothing, False) -> let
             sk = TSkolem emptyAnn v
             in ret (sk, [v])
   in case t of
-    TForall _ _ _ _ -> ret ([], t)
-    _ -> gen t >>= \(tg, vs) ->
-      case (length vs) of
-        0 -> ret ([], tg)
-        _ -> let
-          vsSet = setAddAll vs Empty
-          in boundsWithVars vsSet >>= \bs ->
-            ret (vs, TForall emptyAnn vs bs tg)
+    TForall _ vs _ _ -> ret (vs, t) 
+    _ -> envVars >>= \evs ->
+      gen evs t >>= \(tg, vs) ->
+        case (length vs) of
+          0 -> ret ([], tg)
+          _ -> let
+            vsSet = setAddAll (vs) Empty
+            in boundsWithVars vsSet >>= \bs -> let
+              tr = TForall emptyAnn vs bs tg
+              in ret (vs, tr) //debug2 ('** generalized ' ++ printType t ++ ' => ' ++ printType tr) $ ret (vs, tr)
 
-finalizeType ctx vars t = let
+finalizeType ctx vars ins t = let
   ctx2 = push (FinTypeCtx t) ctx
-  ok e = IOk e
-  err m = IErr ctx2 m
-  fin = finalizeType ctx2 vars
+  ok e = Ok e
+  err m = Err (ctx2, m)
+  fin = finalizeType ctx2 vars ins
+  filterBound bs b = hasMatchingInstance ctx2 ins b >>= \m ->
+    case m of
+      False -> ret (push b bs)
+      True -> ret bs
   in case t of
     TConst _ _ -> ok t
     TSkolem _ _ -> ok t
@@ -382,22 +411,23 @@ finalizeType ctx vars t = let
       fin a >>= \af ->
         ok (TApp ann ff af)
     TForall ann vs bs t -> fin t >>= \tf ->
-      mapM (finalizeTypeBound ctx2 vars) bs >>= \bsf ->
-        ok (TForall ann vs bsf tf)
+      mapM (finalizeTypeBound ctx2 vars ins) bs >>= \bsf ->
+        foldM filterBound [] bsf >>= \bsfFiltered ->
+          ok (normalizeForall $ TForall ann vs bsfFiltered tf)
     TVar _ v ->
       case (lookup v vars) of
         Just t -> fin t
         Nothing -> err 'unknown type var found during finalization'
 
-finalizeTypeBound ctx vars (TCBound ann clz t) =
-  finalizeType ctx vars t >>= \t -> IOk (TCBound ann clz t)
+finalizeTypeBound ctx vars ins (TCBound ann clz t) =
+  finalizeType ctx vars ins t >>= \t -> Ok (TCBound ann clz t)
 
-finalizeExpr ctx vars e = let
+finalizeExpr ctx vars ins e = let
   ctx2 = push (ExprCtx e) ctx
-  ok e = IOk e
-  err m = IErr ctx2 m
-  fin = finalizeExpr ctx2 vars
-  in finalizeType ctx2 vars (getType e) >>= \tf ->
+  ok e = Ok e
+  err m = Err (ctx2, m)
+  fin = finalizeExpr ctx2 vars ins
+  in finalizeType ctx2 vars ins (getType e) >>= \tf ->
     case e of
       App ann f a ->
         fin f >>= \ff ->
@@ -406,11 +436,8 @@ finalizeExpr ctx vars e = let
       Lam ann p e ->
         fin e >>= \ef ->
           ok (Lam (setAnnType tf ann) p ef)
-      Gen ann e ->
-        fin e >>= \ef ->
-          ok (Gen (setAnnType tf ann) ef)
       Let ann bs e ->
-        finalizeBindings ctx2 vars bs >>= \bsf ->
+        finalizeBindings ctx2 vars ins bs >>= \bsf ->
           fin e >>= \ef ->
             ok (Let (setAnnType tf ann) bsf ef)
       New ann c es ->
@@ -418,7 +445,7 @@ finalizeExpr ctx vars e = let
           ok (New (setAnnType tf ann) c esf) 
       Case ann e ps -> let
         finCase (p, e) =
-          finalizePat ctx2 vars p >>= \pf ->
+          finalizePat ctx2 vars ins p >>= \pf ->
             fin e >>= \ef ->
               ok (pf, ef)
         in fin e >>= \ef ->
@@ -426,19 +453,81 @@ finalizeExpr ctx vars e = let
             ok (Case (setAnnType tf ann) ef psf)
       _ -> ok (setType tf e)
 
-finalizePat ctx vars p = let
+finalizePat ctx vars ins p = let
   ctx2 = push (PatCtx p) ctx
-  in finalizeType ctx2 vars (getPatType p) >>= \tf ->
+  in finalizeType ctx2 vars ins (getPatType p) >>= \tf ->
     case p of
       PData ann n ps ->
-        mapM (finalizePat ctx2 vars) ps >>= \psf ->
-          IOk (PData (setAnnType tf ann) n psf)
-      _ -> IOk (setPatType tf p)
+        mapM (finalizePat ctx2 vars ins) ps >>= \psf ->
+          Ok (PData (setAnnType tf ann) n psf)
+      _ -> Ok (setPatType tf p)
 
-finalizeBindings ctx vars bs = let
+finalizeBindings ctx vars ins bs = let
   fin (n, e) = 
-    finalizeExpr (push (BindingCtx n) ctx) vars e >>= \ef ->
-      IOk (n, ef)
+    finalizeExpr (push (BindingCtx n) ctx) vars ins e >>= \ef ->
+      Ok (n, ef)
   in mapM fin bs
 
-// Top-level bindings
+processImports ms imports = let
+  processImport (ImportOpen _ f ns) = case (get f ms) of
+    ModuleInterface ts cs is -> let
+      bs = foldl (\m (n, a) -> insert a (get n ts) m) Empty ns
+      ins = map snd (trieEntries is)
+      in (bs, ins, cs)
+  in foldl (\(bs, ins, cs) i -> case (processImport i) of (bs2, ins2, cs2) -> (mergeTrie bs bs2, concat ins ins2, concat cs cs2)) (Empty, [], []) imports
+
+instFromDef (Instance _ n t _) =
+  case (fixType t) of
+    TForall _ vs _ t -> Inst vs (TCBound emptyAnn n t)
+    t -> Inst [] (TCBound emptyAnn n t)
+
+processInstances defs = map (\(_, i) -> instFromDef i) defs
+
+processClasses cs = let
+  processClass scope (Class _ n v bs) = let
+    tbs = [TCBound emptyAnn n (TSkolem emptyAnn v)]
+    process scope (n, t) = case (fixType t) of
+      TForall ann vs _ t -> insert n (TForall ann vs tbs t) scope
+    in foldl process scope bs
+  in foldl processClass Empty cs
+
+inferInstances ctx scope ins cs defs = let
+  findClass c = case (find (\(Class _ m _ _) -> c == m) cs) of
+    Just c -> Ok c
+    Nothing -> Err (ctx, 'no class found')
+  inferInstance (n, Instance ann c it bs) =
+    findClass c >>= \(Class _ _ v ts) -> let
+      bsts = foldl (\m (n, t) -> insert n (replaceVar v it t) m) Empty ts
+      bs2 = map (\(n, e) -> (n, setType (fromJust $ lookup n bsts) e)) bs
+      (US vars _ rins, bsi) = runState (US Empty 1 []) (inferMRG ctx scope bs2)
+      in bsi >>= \bsi -> finalizeBindings ctx vars ins bsi >>= \bsf -> ret (n, Instance ann c it bsf)
+  in mapM inferInstance defs
+
+printErr (Err (ctx, m)) = join (push m (concatMap printCtx ctx)) '\n'
+
+inferModule ms (Module ann fileName imports adts localClasses instanceDefs bindings) = let
+  ctx = [ModuleCtx fileName]
+  (importedScope, importedInstances, importedClasses) = processImports ms imports
+
+  classes = concat importedClasses localClasses
+
+  localInstances = processInstances instanceDefs
+  classScope = processClasses classes
+
+  instances = concat importedInstances localInstances
+  scope = mergeTrie importedScope classScope
+
+  result = inferTopBindings ctx scope instances bindings >>= \typedBindings ->
+    inferInstances ctx (bindingsToScope scope typedBindings) instances classes instanceDefs >>= \typedInstanceDefs ->
+      ret $ Module ann fileName imports adts localClasses typedInstanceDefs typedBindings
+
+  in case result of
+    Ok m -> m
+    Err _ -> error (printErr result)
+
+moduleExports (Module _ _ _ _ cs ins ds) = let
+  collectExports es (_, e) = case (getAnn 'export' (annOf e)) of
+    Nothing -> es
+    Just (AnnExport n) -> set n (getType e) es
+  bs = foldl collectExports empty ds
+  in ModuleInterface bs cs (foldl (\m (n, i) -> insert n (instFromDef i) m) Empty ins)

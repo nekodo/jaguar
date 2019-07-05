@@ -1,6 +1,7 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import * from '//compiler/js/ast.jg'
+import {printType} from '//compiler/printer.jg'
 
 binOp2 op a b = rewriteExpr a >>= \a -> rewriteExpr b >>= \b -> ret (JSBinOp op a b)
 
@@ -57,13 +58,15 @@ rewriteExpr e = case e of
   App _ f a -> rewriteExpr f >>= \f -> 
     rewriteExpr a >>= \a -> ret (JSCall f [a])
   Lam _ p e -> rewriteExprToStmts JSReturn e >>= \stmts -> ret (JSFun [p] stmts)
-  Case _ e ps -> newPhi >>= \phiOut ->
-    addStmt (JSLet phiOut Nothing) >> rewriteExpr e >>= \e -> (case e of
-      JSRef _ -> ret e
-      JSIndex _ _ -> ret e
-      _ -> newPhi >>= \p -> addConst p e >> ret (JSRef p)) >>= \phiIn ->
-        foldM (assemblePatternMatch2 phiIn phiOut) [JSExpr (JSCall (JSRef 'error') [JSString 'pattern match fail', phiIn])] (reverse ps) >>=
-          mapM addStmt >> ret (JSRef phiOut)
+  Case _ ie ps -> let
+    matchFailMsg = 'pattern match fail ' ++ exprLoc e
+    in newPhi >>= \phiOut ->
+      addStmt (JSLet phiOut Nothing) >> rewriteExpr ie >>= \ie -> (case ie of
+        JSRef _ -> ret ie
+        JSIndex _ _ -> ret ie
+        _ -> newPhi >>= \p -> addConst p ie >> ret (JSRef p)) >>= \phiIn ->
+          foldM (assemblePatternMatch2 phiIn phiOut) [JSExpr (JSCall (JSRef 'error') [JSString matchFailMsg, phiIn])] (reverse ps) >>=
+            mapM addStmt >> ret (JSRef phiOut)
   Let _ ds e->
     mapM (\d -> case d of Pair n e -> rewriteExpr e >>= addConst n) ds >> rewriteExpr e
   New _ '@closure' xs -> case (length xs) of
@@ -174,7 +177,9 @@ moduleToJs m = case m of
       f p = case p of
         Pair n e -> not (isJust (getAnn 'dead' (annOf e)))
       in filter f vs
-    defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM (\v -> case v of Pair n e -> rewriteExprToStmts (JSConst (opName n)) e) vs2)
+    bindingToStmts (n, e) = rewriteExprToStmts (JSConst (opName n)) e >>= \stmts ->
+      ret $ push (JSComment (n ++ ' :: ' ++ printType (getType e))) stmts
+    defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM bindingToStmts vs2)
     exportDef = JSConst 'exports' (exportObject vs2)
     in optStmts (push exportDef (concat imports defs))
 
@@ -235,6 +240,7 @@ optStmts ss = let
     //  True -> JSIf 
     JSIf p xs ys -> JSIf (optExpr p) (optStmts xs) (optStmts ys)
     JSReturn e -> JSReturn (optExpr e)
+    JSComment _ -> s
   hasLet v = let
     f s = case s of
       JSLet w _ -> v == w

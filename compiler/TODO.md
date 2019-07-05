@@ -8,3 +8,7 @@ Things tha need to be done (usually bugs or known issues):
     times is the same (e.g. (Pair a a) will match (Pair Number String)).
 -   No way to import classes and instances - for now all are implicitly pulled
     in when a module is imported.
+
+Newtyper:
+  - generalize needs to be more careful about not abtracting over vars which
+    are in an equation with non-abstracted vars. how to do it efficiently?

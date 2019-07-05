@@ -58,6 +58,7 @@ keyValueToString indent kv = case kv of
   Pair k v -> k ++ ':' ++ jsExprToString indent v
 
 jsStmtToString indent s = case s of
+  JSComment c -> '/* ' ++ c ++ '*/'
   JSExpr e -> jsExprToString indent e
   JSReturn e -> 'return ' ++ jsExprToString indent e
   JSVar v e -> 'var ' ++ v ++ ' = ' ++ jsExprToString indent e

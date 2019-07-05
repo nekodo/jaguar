@@ -2,33 +2,21 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
-import {replaceSkolems} from '//compiler/typeutil.jg'
+import {replaceSkolems, instanceMatches, checkEquiv, checkEquivM} from '//compiler/typeutil.jg'
+import * from '//compiler/ctx.jg'
+import * from '//compiler/result.jg'
 
-data TCtx =
-  ModuleCtx String
-  | BindingCtx String
-  | ExprCtx Expr
-  | TypeEquivCtx Type Type
-  | TypeInstCtx Type
-  | PatCtx Pat
+// data TypingResult = Result (Array Ctx, String) Unit
 
-data TypingResult = TOk | TErr (Array TCtx) String
+tOk = Ok Unit
+tErr ctx m = Err (ctx, m)
 
-isOk r = case r of
-  TOk -> True
-  _ -> False
-
-checkMany f xs = case (length xs) of
-  0 -> TOk
-  _ -> case (f (head xs)) of
-    TOk -> checkMany f (tail xs)
-    e -> e
+checkMany f xs = foldl (\r x -> r >> f x) tOk xs
 
 tnum = TConst emptyAnn 'Number'
 tstr = TConst emptyAnn 'String'
 tfun a b = TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b
 
-data Inst = Inst (Array String) TypeBound
 data Scope = Scope (Map String Type) (Array Inst) (Map String Unit)
 
 addBinding v t (Scope bs is sks) = Scope (insert v t bs) is sks
@@ -37,44 +25,8 @@ getBinding v (Scope bs _ _) = lookup v bs
 addSkolems vs (Scope bs is sks) = Scope bs is (setAddAll vs sks)
 allowedSkolem v (Scope _ _ sks) = setContains v sks
 
-instanceMatches ctx (TCBound _ nb tb) (Inst vs (TCBound _ ni ti)) =
-  (ni == nb) && isOk (evalState (foldl (\m v -> insert v TUnknown m) Empty vs) (checkEquivM ctx tb ti))
 addInstances vs tbs (Scope bs is sks) = Scope bs (concat is (map (Inst vs) tbs)) sks
 findInstances ctx b (Scope _ is _) = filter (instanceMatches ctx b) is
-
-checkEquiv ctx a b = evalState Empty (checkEquivM ctx a b)
-
-checkEquivM ctx toType fromType = let
-  ctx2 = push (TypeEquivCtx toType fromType) ctx
-  err m = ret $ TErr ctx2 m
-  ok = ret $ TOk
-  checkM = checkEquivM ctx2
-  in case fromType of
-      TConst _ n -> case toType of
-        TConst _ m -> case (n == m) of
-          True -> ok
-          False -> err 'type name mismatch'
-        _ -> err 'type mismatch'
-
-      TSkolem _ v -> gets >>= \bs -> case (lookup v bs) of
-        // Case 1: this is not a var we're instantiating.
-        Nothing -> case toType of
-          TSkolem _ w -> case (v == w) of
-            True -> ok
-            False -> err 'type name mismatch'
-          _ -> err 'type mismatch'
-        // Case 2: this is a var we're instantiating and it is
-        // the first time we encountered it.
-        Just (TUnknown) -> sets (insert v toType bs) >> ok
-        // Case 3: this is a var we're instantiating and
-        // we've seen it before.
-        Just t -> ret $ checkEquiv ctx2 t toType
-
-      TApp _ fb xb -> case toType of
-        TApp _ fa xa -> checkM fa fb >>= \fr -> case fr of
-          TOk -> checkM xa xb
-          e -> ret e
-      _ -> err 'type cannot be equivalent'
 
 instantiateBound reps (TCBound ann className t) =
   TCBound ann className (replaceSkolems t reps)
@@ -82,33 +34,30 @@ instantiateBound reps (TCBound ann className t) =
 checkBound ctx scope b = let
   matchingInstances = findInstances ctx b scope
   in case (length matchingInstances) of
-    0 -> TErr ctx ('no matching instances found (out of ' ++ intToString (length (case scope of (Scope _ ins _) -> ins)) ++ ')')
-    1 -> TOk
-    n -> TErr ctx ('too many matching instances found (' ++ intToString n ++ ')')
+    0 -> tErr ctx ('no matching instances found (out of ' ++ intToString (length (case scope of (Scope _ ins _) -> ins)) ++ ')')
+    1 -> tOk
+    n -> tErr ctx ('too many matching instances found (' ++ intToString n ++ ')')
 
 checkCanInstantiate ctx scope toType fromType =
   case fromType of
     TForall _ vs typeBounds t -> let
       bs = foldl (\bs v -> insert v TUnknown bs) Empty vs
       ctx2 = push (TypeInstCtx fromType) ctx
-      in case (runState bs (checkEquivM ctx2 toType t)) of
-        (reps, TOk) -> checkMany (checkBound ctx scope) (map (instantiateBound reps) typeBounds) 
-        (_, e) -> e
+      (reps, r) = runState bs (checkEquivM ctx2 toType t)
+      in r >> checkMany (checkBound ctx scope) (map (instantiateBound reps) typeBounds)
     _ -> checkEquiv ctx toType fromType
 
 checkAllowedSkolems ctx scope t = let
   check = checkAllowedSkolems ctx scope
   in case t of
     TSkolem _ n -> case (allowedSkolem n scope) of
-      True -> TOk
-      False -> TErr ctx ('unknown skolem ' ++ n)
-    TApp _ a b -> case (check a) of
-      TOk -> check b
-      e -> e
+      True -> tOk
+      False -> tErr ctx ('unknown skolem ' ++ n)
+    TApp _ a b -> check a >> check b
     TForall _ vs bs t -> let
       scope2 = addSkolems vs scope
       in checkMany (checkAllowedSkolems ctx scope2) (push t (map (\(TCBound _ _ t) -> t) bs))
-    _ -> TOk
+    _ -> tOk
 
 checkBindings ctx scope bs = let
   scope2 = foldl (\scope (n, e) -> addBinding n (getType e) scope) scope bs
@@ -122,8 +71,10 @@ checkTopBindings ctx scope bs = snd (checkBindings ctx scope bs)
 // asks: allowed skolems, things that we generalize over
 checkExpr ctx scope e = let
   ctx2 = push (ExprCtx e) ctx
-  err = TErr ctx2
-  et = getType e
+  err = tErr ctx2
+  (et, scope2) = case (getType e) of
+    TForall _ vs bs t -> (t, addInstances vs bs $ addSkolems vs scope)
+    t -> (t, scope)
   check = checkExpr ctx2
 
   checkDataRef ctx scope consName dataType argTypes = let
@@ -132,48 +83,32 @@ checkExpr ctx scope e = let
       Just consType -> checkCanInstantiate ctx scope refType consType
       _ -> err 'unrecognized identifier'
 
-  in case (checkAllowedSkolems ctx2 scope et) of
-    TOk -> case e of
-      Var _ n ->  case (getBinding n scope) of
+  in checkAllowedSkolems ctx2 scope2 et >>= \_ ->
+    case e of
+      Var _ n ->  case (getBinding n scope2) of
         Nothing -> err 'unrecognized identifier'
-        Just t -> checkCanInstantiate ctx2 scope et t
+        Just t -> checkCanInstantiate ctx2 scope2 et t
       Const _ (CNum _) -> checkEquiv ctx2 et tnum
       Const _ (CStr _) -> checkEquiv ctx2 et tstr
-      Gen _ e -> case et of
-        TForall _ vs bs t -> let
-          scope2 = addInstances vs bs $ addSkolems vs scope
-          in case (check scope2 e) of
-            TOk -> checkEquiv ctx2 t (getType e)
-            e -> e
-        _ -> err 'Gen expr with non-TForall type'
-      App _ f a -> case (check scope f) of
-        TOk -> case (check scope a) of
-          TOk -> checkEquiv ctx2 (tfun (getType a) et) (getType f)
-          e -> e
-        e -> e
+      App _ f a ->
+        check scope2 f >> check scope2 a >> checkEquiv ctx2 (tfun (getType a) et) (getType f)
       Lam _ v e ->
         case et of
           TApp _ (TApp _ (TConst _ '->') ta) tb -> let
-            scope2 = addBinding v ta scope
-            in case (check scope2 e) of
-              TOk -> checkEquiv ctx2 tb (getType e)
-              e -> e
+            scope3 = addBinding v ta scope2
+            in check scope3 e >> checkEquiv ctx2 tb (getType e)
           _ -> err 'Lam expr with non-function type'
       New _ 'Array' es ->
         case et of
           TApp _ (TConst _ 'Array') t -> let
-            checkElem e = case (checkEquiv ctx2 t (getType e)) of
-              TOk -> check scope e
-              e -> e
+            checkElem e = checkEquiv ctx2 t (getType e) >> check scope2 e
             in checkMany checkElem es
           _ -> err 'New<Array> with non Array type'
       New _ d es ->
-        case (checkMany (check scope) es) of
-          TOk -> checkDataRef ctx2 scope d et (map getType es)
-          e -> e
-      Let _ bs e -> case (checkBindings ctx2 scope bs) of
-        (scope2, TOk) -> check scope2 e
-        (_, err) -> err
+        checkMany (check scope2) es >> checkDataRef ctx2 scope2 d et (map getType es)
+      Let _ bs e -> let
+        (scope3, r) = checkBindings ctx2 scope2 bs
+        in r >> check scope3 e
 
       // Checks to do:
       // 1. Check the expr
@@ -193,12 +128,12 @@ checkExpr ctx scope e = let
           ctx2 = push (PatCtx p) ctx
           patType = getPatType p
           in case p of
-            PData _ d ps -> case (checkDataRef ctx2 scope d patType (map getPatType ps)) of
-              TOk -> checkMany (checkPat ctx2) ps
-              e -> e
+            PData _ d ps ->
+              checkDataRef ctx2 scope2 d patType (map getPatType ps) >>
+                checkMany (checkPat ctx2) ps
             PConst _ (CNum _) -> checkEquiv ctx2 tnum patType
             PConst _ (CStr _) -> checkEquiv ctx2 tstr patType
-            PVar _ _ -> TOk
+            PVar _ _ -> tOk
 
         // Checks specific case branch, in particular the branch expr
         // with pattern bindings and consistency of the branch expr type and
@@ -208,17 +143,11 @@ checkExpr ctx scope e = let
             PVar _ v -> addBinding v (getPatType p) scope
             PData _ _ ps -> foldl getBs scope ps
             PConst _ _ -> scope
-          scope2 = getBs scope p
+          scope3 = getBs scope2 p
           branchType = getType e
-          in case (check scope2 e) of
-            TOk -> checkEquiv ctx2 caseType branchType
-            e -> e
+          in check scope3 e >> checkEquiv ctx2 caseType branchType
 
-        in case (check scope e) of
-          TOk -> case (checkMany (checkEquiv ctx2 exprType) topPatTypes) of
-            TOk -> case (checkMany (checkPat ctx2) topPats) of
-              TOk -> checkMany checkBranch ps
-              e -> e
-            e -> e
-          e -> e
-    e -> e
+        in check scope2 e >>
+          checkMany (checkEquiv ctx2 exprType) topPatTypes >>
+            checkMany (checkPat ctx2) topPats >>
+              checkMany checkBranch ps

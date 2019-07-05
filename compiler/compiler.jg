@@ -4,7 +4,7 @@ import {Success, Error} from '//compiler/parsers.jg'
 import {parseExpr, parseModule, parseType, ParserState} from '//compiler/jaguarParser.jg'
 import {compileModule as generateJs} from '//compiler/js/backend.jg'
 import {printType, reallyPrintExpr} from '//compiler/printer.jg'
-import {newCtx, inferTypeModule, getTypedExports, generalizeStandalone, skolemizeType, emptyEnv} from '//compiler/typer.jg'
+import {generalizeStandalone, skolemizeType, emptyEnv} from '//compiler/typer.jg'
 import {dfs} from '//compiler/graph.jg'
 import {ArgBool, ArgString, parseArgs, getPositional, getString, getBool} from '//compiler/args.jg'
 import {declassModule} from '//compiler/declasser.jg'
@@ -16,6 +16,7 @@ import {translateAdts} from '//compiler/adt.jg'
 import * from '//compiler/pass.jg'
 import {splitLetsPass} from '//compiler/let_splitter.jg'
 import {liftModule} from '//compiler/lambdaLifter.jg'
+import {inferModule, moduleExports} from '//compiler/newtyper.jg'
 
 moduleFile m = case m of
   Module _ n _ _ _ _ _ -> n
@@ -63,8 +64,8 @@ normalizeImportsPass m = getExports >>= \es ->
   ret (normalizeImports es m)
 
 typerPass m = getExports >>= \es -> let
-  typed = inferTypeModule es m
-  e = getTypedExports typed
+  typed = inferModule es m
+  e = moduleExports typed
   in setExports (set (moduleFile m) e es) >> ret typed
 
 declasserPass m = getExports >>= \es ->

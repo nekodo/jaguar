@@ -1,15 +1,16 @@
 import * from '//compiler/prelude.jg'
-import {assertTrue, assertEq, runTests, Test, withMsg, Ok, Fail} from '//compiler/test/test.jg'
+import {assertTrue, assertEq, runTests, Test, withMsg, testOk, testFail} from '//compiler/test/test.jg'
 import * from '//compiler/typechecker.jg'
 import * from '//compiler/ast.jg'
+import * from '//compiler/result.jg'
 
 assertTOk r = case r of
-  TOk -> Ok
-  TErr _ m -> Fail ('want TOk, but got TErr: ' ++ jsonStringify r)
+  Ok _ -> testOk
+  Err (_, m) -> testFail ('want TOk, but got TErr: ' ++ jsonStringify r)
 
 assertTFail r = case r of
-  TOk -> Fail ('want TFail, but got TOk')
-  TErr _ m -> Ok
+  Ok _ -> testFail ('want TFail, but got TOk')
+  Err (_, m) -> testOk
 
 tc = TConst emptyAnn
 tv = TVar emptyAnn
@@ -20,62 +21,6 @@ tforall vs = TForall emptyAnn vs []
 ant t = setAnnType t emptyAnn
 
 tests = [
-    Test 'checkEquiv TConst' $ \_ -> let
-      a = TConst emptyAnn 'Number'
-      b = TConst emptyAnn 'Number'
-
-      got = checkEquiv [] a b
-      in [assertTOk got],
-
-    Test 'checkEquiv TSkolem' $ \_ -> let
-      a = TSkolem emptyAnn 'x'
-      b = TSkolem emptyAnn 'x'
-
-      got = checkEquiv [] a b
-      in [assertTOk got],
-
-    Test 'checkEquiv TApp' $ \_ -> let
-      a = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
-      b = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
-
-      got = checkEquiv [] a b
-      in [assertTOk got],
-
-    Test 'checkEquiv TApp mismatch' $ \_ -> let
-      a = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
-      b = TApp emptyAnn (TConst emptyAnn 'a') (TSkolem emptyAnn 'x')
-
-      got = checkEquiv [] a b
-      in [assertTFail got],
-
-    Test 'checkEquiv TVar' $ \_ -> let
-      a = TConst emptyAnn 'A'
-      b = TVar emptyAnn 'v'
-
-      got = checkEquiv [] a b
-      in [assertTFail got],
-
-    Test 'checkEquivM TSkolem (ABB Avv)' $ \_ -> let
-      a = tapp (tapp (tc 'A') (tc 'B')) (tc 'B')
-      b = tapp (tapp (tc 'A') (ts 'v')) (ts 'v')
-
-      got = evalState (insert 'v' TUnknown Empty) $ checkEquivM [] a b
-      in [assertTOk got],
-
-    Test 'checkEquivM TVar (ABC Avv)' $ \_ -> let
-      a = tapp (tapp (tc 'A') (tc 'B')) (tc 'C') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TConst emptyAnn 'B')) (TConst emptyAnn 'B')
-      b = tapp (tapp (tc 'A') (ts 'v')) (ts 'v') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TVar emptyAnn 'v')) (TVar emptyAnn 'v')
-
-      got = evalState (insert 'v' TUnknown Empty) $ checkEquivM [] a b
-      in [assertTFail got],
-
-    Test 'checkEquivM TVar (ABC Avw)' $ \_ -> let
-      a = tapp (tapp (tc 'A') (tc 'B')) (tc 'C') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TConst emptyAnn 'B')) (TConst emptyAnn 'B')
-      b = tapp (tapp (tc 'A') (ts 'v')) (ts 'w') //TApp emptyAnn (TApp emptyAnn (TConst emptyAnn 'A') (TVar emptyAnn 'v')) (TVar emptyAnn 'v')
-
-      got = evalState (insert 'w' TUnknown (insert 'v' TUnknown Empty)) $ checkEquivM [] a b
-      in [assertTOk got],
-
     Test 'checkCanInstantiate TConst' $ \_ -> let
       a = TConst emptyAnn 'Number'
       b = TConst emptyAnn 'Number'
@@ -225,9 +170,8 @@ tests = [
       asks = setAdd 't' Empty
 
       // forall g. g t
-      exprType = tapp (ts 'g') (ts 't')
       genType = tforall ['g'] $ tapp (ts 'g') (ts 't')
-      e = Gen (ant genType) $ Var (ant exprType) 'pony'
+      e = Var (ant genType) 'pony'
 
       got = checkExpr ctx (Scope env [] asks) e
       in [assertTOk got],
@@ -238,45 +182,19 @@ tests = [
       asks = Empty
 
       // forall g. g t
-      exprType = ts 't'
       genType = TForall emptyAnn ['t'] [TCBound emptyAnn 'Pony' (ts 't')] $ ts 't'
-      e = Gen (ant genType) $ Var (ant exprType) 'pony'
+      e = Var (ant genType) 'pony'
 
       got = checkExpr ctx (Scope env [] asks) e
       in [assertTOk got],
-
-    Test 'checkExpr Gen (mismatched wrapped type)' $ \_ -> let
-      ctx = []
-      env = insert 'pony' (tforall ['a'] (ts 'a')) Empty
-      asks = setAdd 't' Empty
-
-      exprType = tapp (tc 'Maybe') (ts 't')
-      genType = tforall ['g'] $ tapp (ts 'g') (ts 't')
-      e = Gen (ant genType) $ Var (ant exprType) 'pony'
-
-      got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
-
-    Test 'checkExpr Gen (non-forall)' $ \_ -> let
-      ctx = []
-      env = insert 'pony' (tforall ['a'] (ts 'a')) Empty
-      asks = setAdd 't' Empty
-
-      exprType = (ts 't')
-      genType = (ts 't')
-      e = Gen (ant genType) $ Var (ant exprType) 'pony'
-
-      got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
 
     Test 'checkExpr Gen (error in wrapped expr)' $ \_ -> let
       ctx = []
       env = insert 'pony' tnum Empty
       asks = setAdd 't' Empty
 
-      exprType = tapp (ts 'g') (ts 't')
       genType = tforall ['g'] $ tapp (ts 'g') (ts 't')
-      e = Gen (ant genType) $ Var (ant exprType) 'pony'
+      e = Var (ant genType) 'pony'
 
       got = checkExpr ctx (Scope env [] asks) e
       in [assertTFail got],

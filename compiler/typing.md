@@ -173,17 +173,82 @@ Type class checking
   - env needs to contain a new list of available instances
   - when a type is instantiated we check that there is exactly one matching instance in the env
     for each bound
-  - when descending into a Gen, for each bound we:
+  - when descending into an expr with TForall type, for each bound we:
     - add (Instance [] b) to the env
   - instance matching rules:
     - use checkEquivM targetBound candidateBound with state reflecting which skolems are free
 
 Type class inference
-  - while instantiating we add the list of instantiated type bounds to required bounds [DONE]
+  - while instantiating we add the list of instantiated type bounds to required bounds
   - when generalizing MRG:
-    - add all any bounds which mention the abstracted tvars to the tforalls as appropriate [DONE]
-    - carry over any bounds which do not mention the abstracted tvars over to the parent [TODO]
+    - add all any bounds which mention the abstracted tvars to the tforalls as appropriate
+    - carry over any bounds which do not mention the abstracted tvars over to the parent
   - finalization:
-    - updated bounds [DONE]
-    - remove satisfied bounds [TODO]
+    - updated bounds
+    - normalize the forall (sort and dedup)
 
+Type class translation
+
+Ideas for implicits
+  f = \@x -> x :: @a -> a
+  c = f :: Int // look up @Int in the env and use it
+  
+  What syntax to use to explicitly provide an implicit arg?
+    f @foo // pass foo to f as the value for the implicit
+  How about translating something with multiple constraints?
+  mapM :: @(Traversable t) -> @(Monad m) -> ...
+  foo :: Traversable x
+  bar :: Monad y
+  // To resolve both implicitly:
+  x = mapM
+  x = mapM @
+  x = mapM @ @
+  x = mapM @ @ @ // Error, too many implicit args.
+  // To resolve first one explicitly.
+  x = mapM @foo
+  x = mapM @foo @
+  // To resolve both explicitly.
+  x = mapM @foo @bar
+
+  // Syntax for declaring implicits.
+  @x = ... // implicit value x made available
+  @f @a @b = ... // implicit value f made available with two implicit params
+
+  // Types
+  Traversable t @> Monad m @> x // Better, enforces that it is really a magic on the LHS of a fun
+
+  Handling in type checking:
+    - if we have explicit @ application then check the type, otherwise resolve from scope
+      as with the original type class handling, any ambiguity is an error
+    - only rank 1 implicits are ever inferred
+
+  f @a b @c = ...
+
+# First class modules
+
+Treat the module simply as a record/data instance. Importing can use less custom syntax:
+  Foo = import '//foo.jg' // closed import
+  {a, b} = import '//foo.jg' // open import
+  {fooA = a, fooB = b} = import '//foo.jg' // open import with renaming
+  {...} = import '//foo.jg' // open import everything
+
+The syntax above is based on patter matching on records, which we do not have yet.
+
+We will keep imports as legal only in the top scope, no dynamic imports (yet).
+
+This will require record types, but we can then pass these around.
+
+Type instances will be imported implicitly when either the class or the type is imported.
+
+We will need dot syntax for accessing members (Foo.bar). This will also have to work in
+types (e.g. Foo.Bar -> String).
+
+We will need some magic for handling type classes. E.g. (Functor Foo) and (Functor Foo.Foo)
+should conflict. We should be able to normalize type names for disambiguation, maybe to
+(modulepath, typename). So Foo and Foo.Foo could both be (//foo.jg, Foo).
+
+The alternative is to 
+
+# Simple improvements
+  
+  - represent type bounds as normal types (Functor Maybe, forall a. Foo (Array a)).

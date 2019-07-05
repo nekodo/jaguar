@@ -1,8 +1,10 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {classToBindings, unify, applySubsBound, instanceToTypeBound, satisfiesBound, skolemizeSubs, instantiate} from '//compiler/typer.jg'
-import {printType, printTypeBound, reallyPrintExpr} from '//compiler/printer.jg'
+import {printType, printTypeBound, reallyPrintExpr, printInst} from '//compiler/printer.jg'
 import {mkConFun} from '//compiler/adt.jg'
+import {instanceMatches} from '//compiler/typeutil.jg'
+import {instFromDef} from '//compiler/newtyper.jg'
 
 declassModule ms m = case m of
   Module ann fn imps dt cs ins ds -> let
@@ -20,7 +22,7 @@ declassModule ms m = case m of
     // List of pairs of (instance name, type bound)
     availableInstances = concat
       importedInstances
-      (map (mapSnd instanceToTypeBound) ins)
+      (map (mapSnd instFromDef) ins)
 
     // Construct the environment, i.e. map of (name -> type)
     env = let
@@ -115,7 +117,7 @@ rewriteInstance is env n i = case i of
 // State of the rewriter which keeps track of:
 // - environment
 // - available instance bounds
-data State = S (Array (Record Type)) (Array (Pair String TypeBound)) Number
+data State = S (Array (Record Type)) (Array (Pair String Inst)) Number
 getEnv s = case s of
   S env _ _ -> env
 setEnv env s = case s of
@@ -128,27 +130,34 @@ rewriteExpr is env e = let
   // On the descent when we find a forall with bounds then replace the bounds
   // with explicit lambdas and add the new locally available instances to the state.
   boundsToLam a e = let
-    addInstance b a = case a of
+    addInstance vs b a = case a of
       S env is n -> let
         name = instanceNameFromBound n b
-        in Pair (S env (push (Pair name b) is) (n + 1)) name
-    rewriteBound ae ib = case ib of
+        in Pair (S env (push (Pair name (Inst [] b)) is) (n + 1)) name
+    rewriteBound vs ae ib = case ib of
       Pair ix b -> case ae of
-        Pair a e -> case (addInstance b a) of
+        Pair a e -> case (addInstance vs b a) of
           Pair a name -> Pair a (Lam emptyAnn name e)
     in case (getType e) of
       TForall _ vs bs t -> case (length bs > 0) of
         False -> Pair a e
         True -> let
-          rewritten = foldr rewriteBound (Pair a (setType t e)) (zipWithIndex bs)
+          rewritten = foldr (rewriteBound vs) (Pair a (setType t e)) (zipWithIndex bs)
           in mapSnd (\re -> withAnn (copyAnn ['export'] (annOf e)) re) rewritten
       _ -> Pair a e
   rewriteVar a e = case e of
-    Var _ v -> case (getType e) of
+    Var _ v ->
+      //case (getType e) of
       // Not 100% why this was added, but it seems necessary.
       // Might be for fully polymorphic invocations of data constructors.
-      TForall _ _ _ _ -> Pair a e
-      tv -> let
+      //TForall _ _ _ _ -> case v of
+      //  'pure' -> debug2 ('**dcls: pure not rewritten') (a, e) 
+      //  _ -> Pair a e
+      //tv -> 
+      let
+        tv = case (getType e) of
+          TForall _ _ _ t -> t
+          t -> t
         // We might be dealing with a class accessor.
         fromEnv n envs = let
           env = head envs
@@ -157,13 +166,14 @@ rewriteExpr is env e = let
             True -> get n env
         findMatching b a = case a of
           S _ is _ -> let
-            matching = filter (\p -> case p of Pair _ ib -> satisfiesBound ib b) is
+            matching = filter (\p -> case p of Pair _ i -> instanceMatches [] b i) is
             in case (length matching) of
               0 -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b ++ ' ' ++ exprLoc e ++
                             '\nKnown type class instances:' ++
-                            concatMap (\(_, ib) -> '\n  # ' ++ printTypeBound ib) is)
+                            concatMap (\(_, i) -> '\n  # ' ++ printInst i) is)
               1 -> fst (getIx 0 matching)
-              _ -> error ('declasser found more than 1 satisfying instance for ' ++ printTypeBound b  ++ ' ' ++ exprLoc e)
+              _ -> error ('declasser found more than 1 satisfying instance for ' ++ printTypeBound b  ++ ' ' ++ exprLoc e ++
+                '\n' ++ join (map (\m -> printInst (snd m)) matching) ',')
         requiredInstances tv td = case (instantiate Unit (\_ v -> Pair Unit $ TVar emptyAnn ('$ins$' ++ v)) td) of
           Pair (Pair t bs) _ -> let
             subs = unify (\s -> 'declasser: ' ++ s) tv t

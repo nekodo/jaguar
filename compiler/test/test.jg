@@ -1,24 +1,22 @@
 import * from '//compiler/prelude.jg'
+import * from '//compiler/result.jg'
 
-data Result = Ok | Fail String
+failMsg = maybeErr
 
-failMsg r = case r of
-  Ok -> Nothing
-  Fail m -> Just m
-
-changeMsg f r = case r of
-  Ok -> Ok
-  Fail m -> Fail (f m)
+changeMsg = mapErr
 
 withMsg m = changeMsg (\_ -> m)
 
 prefixMsg p = changeMsg (\m -> p ++ ': ' ++ m)
 
-data Test = Test String (Unit -> Array Result)
+data Test = Test String (Unit -> Array (Result String Unit))
+
+testOk = Ok Unit
+testFail m = Err m
 
 assertTrue p = case p of
-  True -> Ok
-  False -> Fail 'want True, got False'
+  True -> testOk
+  False -> testFail 'want True, got False'
 
 assertEq a b =
   withMsg ('want ' ++ jsonStringify a ++ ', got ' ++ jsonStringify b) $ assertTrue (a == b)
@@ -29,8 +27,8 @@ runTests topMsg tests = let
     rs = f Unit
     fs = mapJust failMsg rs
     in case (length fs) of
-      0 -> debug2 ('  PASS: ' ++ desc) Ok
-      _ -> debug2 ('  FAIL: ' ++ desc) (Fail ('  FAIL: ' ++ desc ++ '\n' ++ join (map (\f -> '    ' ++ f) fs) '\n'))
+      0 -> debug2 ('  PASS: ' ++ desc) testOk
+      _ -> debug2 ('  FAIL: ' ++ desc) (testFail ('  FAIL: ' ++ desc ++ '\n' ++ join (map (\f -> '    ' ++ f) fs) '\n'))
   rs = map runTest tests
   fs = mapJust failMsg rs
   in case (length fs) of

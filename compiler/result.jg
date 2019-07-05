@@ -1,0 +1,47 @@
+import * from '//compiler/prelude.jg'
+
+data Result e a = Ok a | Err e
+
+instance Functor (Result e) where
+  fmap f r = case r of
+    Err e -> Err e
+    Ok a -> Ok (f a)
+
+instance Monad (Result e) where
+  ret = Ok
+  (>>=) r f = case r of
+    Err e -> Err e
+    Ok a -> f a
+
+maybeOk r = case r of
+  Ok a -> Just a
+  _ -> Nothing
+
+maybeErr r = case r of
+  Ok _ -> Nothing
+  Err r -> Just r
+
+mapOk = fmap
+
+mapErr f r = case r of
+  Ok a -> Ok a
+  Err e -> Err (f e)
+
+isOk r = case r of
+  Ok _ -> True
+  _ -> False
+
+isErr r = not (isOk r)
+
+(>>=>>) m f = m >>= \r -> case r of
+  Err e -> ret (Err e)
+  Ok a -> f a
+
+(>>>>) m n = m >>=>> \_ -> n
+
+foldOkM f r xs = foldl (\r x -> r >>=>> \r -> f r x) (ret $ Ok r) xs
+mapOkM f xs = foldOkM (\rs x -> f x >>=>> \r -> ret (Ok $ push r rs)) [] xs
+
+mapResult okF errF r = case r of
+  Ok a -> okF a
+  Err e -> errF e

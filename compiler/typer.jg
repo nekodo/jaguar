@@ -87,7 +87,7 @@ errorM s = gets >>= \ctx -> case ctx of
 onError e = gets >>= \ctx -> case ctx of
   ICtx subs bs i _ -> sets (ICtx subs bs i e)
 
-withError e f = getErrorF >>= \old -> onError e >> f >>= \r -> onError old >> ret r
+withError e f = getErrorF >>= \old -> onError (\s -> old (e s)) >> f >>= \r -> onError old >> ret r
 
 getErrorF = gets >>= \ctx -> case ctx of
   ICtx _ _ _ e -> ret e
@@ -449,42 +449,6 @@ classToBindings (Class _ n tv bs) = let
       False -> error ('invalid clas definition ' ++ n ++ ', binding ' ++ v)
       True -> (v, skolemizeType (mkTForall emptyAnn (setToArray ftv) [TCBound emptyAnn n (TVar emptyAnn tv)] t))
   in map process bs
-
-inferTypeModule ms (Module ann fn is ts cs ins ds) = let
-  addImports env (ImportOpen _ f ns) = case (get f ms) of
-    ModuleInterface bs cs is -> let
-      env2 = foldl (\env (n, a) -> addBinding a (get n bs) env) env ns
-      env3 = foldl addClass env2 cs
-      env4 = foldTrie (\env _ i -> addInstance i env) env3 is
-      in env4
-  addClass env c = foldl (\env (n, t) -> addBinding n t env) env (classToBindings c)
-  addIns env (_, i) = addInstance (instanceToTypeBound i) env
-  checkForUnsatisfiedBounds (n, e) = case (getType e) of
-    TForall _ _ bs t -> case t of
-      TApp _ (TApp _ (TConst _ '->') _) _ -> (n, e)
-      _ -> case (length bs) of
-        0 -> (n, e)
-        _ -> error ('unsatisfied bounds in def of ' ++ n ++ ' :: ' ++ printType (getType e))
-    _ -> (n, e)
-  // compute stuff!
-  env = emptyEnv
-  env2 = foldl addImports env is
-  env3 = foldl addClass env2 cs
-  env4 = foldl addIns env3 ins
-  ds2 = evalState newCtx (inferDefs env4 ds)
-  ds3 = map checkForUnsatisfiedBounds ds2
-  env5 = foldl (\env (n, e) -> addBinding n (getType e) env) env4 ds3
-  ins2 = let
-    allCls = concat cs (concatMap (\(ImportOpen _ f _) -> case (get f ms) of ModuleInterface _ cs _ -> cs) is)
-    in map (mapSnd (inferInstance env5 allCls)) ins
-  in Module ann fn is ts cs ins2 ds3
-
-getTypedExports (Module _ _ _ _ cs ins ds) = let
-  collectExports es (_, e) = case (getAnn 'export' (annOf e)) of
-    Nothing -> es
-    Just (AnnExport n) -> set n (getType e) es
-  bs = foldl collectExports empty ds
-  in ModuleInterface bs cs (foldl (\m (n, i) -> insert n (instanceToTypeBound i) m) Empty ins)
 
 satisfies a b = // :: Type -> Type -> Pair Bool subs
   let

@@ -43,7 +43,6 @@ data Expr =
   | Case (Map String Ann) Expr (Array (Pair Pat Expr))
   | Let (Map String Ann) (Array (Pair String Expr)) Expr
   | New (Map String Ann) String (Array Expr)
-  | Gen (Map String Ann) Expr
 
 data CVal =
   CNum Number
@@ -71,7 +70,7 @@ data Module = Module
 data ModuleInterface = ModuleInterface
   (Record Type)      // exported bindings, includes ADT constructors
   (Array Class)      // exported classes
-  (Map String TypeBound)  // exported class instances
+  (Map String Inst)  // exported class instances
 
 data Data = Data (Map String Ann) String (Array String) (Array DataCon)
 data DataCon = DataCon (Map String Ann) String (Array Type)
@@ -87,6 +86,8 @@ data Instance = Instance
   String     // class name
   Type       // type for which we're defining the instanc
   (Array (Pair String Expr))
+
+data Inst = Inst (Array String) TypeBound
 
 data TypeBound =
   TCBound  // type class bound
@@ -107,6 +108,52 @@ data Type =
   | TBot
   | TForall (Map String Ann) (Array String) (Array TypeBound) Type
   | TUnknown
+
+compareOrd a b = case (a == b) of
+  True -> 0
+  False -> case (a < b) of
+    True -> 0-1
+    False -> 1
+
+compareArr f xs ys = let
+  diffs = filter ((/=) 0) $ map (\(x, y) -> f x y) (zip xs ys)
+  in case (length diffs) of
+    0 -> length xs - length ys
+    _ -> head diffs
+
+compareType compareS a b = let
+  cmp = compareType compareS
+  in case (a, b) of
+    (TConst _ n, TConst _ n2) -> compareOrd n n2
+    (TConst _ _, _) -> 0-1
+    (_, TConst _ _) -> 1
+    (TVar _ v, TVar _ v2) -> compareOrd v v2
+    (TVar _ _, _) -> 0-1
+    (_, TVar _ _) -> 1
+    (TSkolem _ v, TSkolem _ v2) -> compareS v v2
+    (TSkolem _ _, _) -> 0-1
+    (_, TSkolem _ _) -> 1
+    (TApp _ f a, TApp _ f2 a2) -> case (cmp f f2) of
+      0 -> cmp a a2
+      n -> n
+    (TApp _ _ _, _) -> 0-1
+    (_, TApp _ _ _) -> 1
+    (TBot, TBot) -> 0
+    (TBot, _) -> 0-1
+    (_, TBot) -> 1
+    (TUnknown, TUnknown) -> 0
+    (TUnknown, _) -> 0-1
+    (_, TUnknown) -> 1
+    (TForall _ vs bs t, TForall _ vs2 bs2 t2) -> case (cmp t t2) of
+      0 -> case (compareArr compareOrd vs vs2) of
+        0 -> compareArr (compareBound cmp) bs bs2
+        x -> x
+      x -> x
+    _ -> error 'unsupported type in compareType'
+
+compareBound compareT (TCBound _ n a) (TCBound _ m b) = case (compareOrd n m) of
+  0 -> compareT a b
+  x -> x
 
 equivType a b = case a of
   TConst _ n -> case b of
@@ -135,6 +182,12 @@ equivType a b = case a of
       in rvs && rbs && equivType t t2
     _ -> False
 
+instance Eq TypeBound where
+  (==) a b = equivBound a b
+
+instance Eq Type where
+  (==) a b = equivType a b
+
 data Import =
   ImportClosed (Map String Ann) String String
   | ImportOpen (Map String Ann) String (Array (Pair String String))
@@ -151,7 +204,6 @@ setType t e = case e of
   Case ann e ps -> Case (setAnnType t ann) e ps
   Let ann ds e -> Let (setAnnType t ann) ds e
   New ann tag es -> New (setAnnType t ann) tag es
-  Gen ann e -> Gen (setAnnType t ann) e
 
 annOf e = case e of
   Var ann v -> ann
@@ -161,7 +213,6 @@ annOf e = case e of
   Case ann e ps -> ann
   Let ann ds e -> ann
   New ann _ _ -> ann
-  Gen ann _ -> ann
 
 withAnn ann e = case e of
   Var _ v -> Var ann v
@@ -171,7 +222,6 @@ withAnn ann e = case e of
   Case _ e ps -> Case ann e ps
   Let _ ds e -> Let ann ds e
   New _ tag es -> New ann tag es
-  Gen _ e -> Gen ann e
 
 getType e = getAnnType $ annOf e
 

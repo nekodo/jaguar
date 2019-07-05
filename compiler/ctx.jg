@@ -1,0 +1,27 @@
+import * from '//compiler/prelude.jg'
+import * from '//compiler/ast.jg'
+import {printType, printTypeBound} from '//compiler/printer.jg'
+
+data Ctx =
+  ModuleCtx String
+  | BindingCtx String
+  | ExprCtx Expr
+  | UnifyCtx Type Type
+  | UpdateCtx String Type
+  | PatCtx Pat
+  | MRGCtx (Array String)
+  | FinTypeCtx Type
+  | TypeEquivCtx Type Type
+  | TypeInstCtx Type
+  | TypeBoundCtx TypeBound
+  | FinMRGCtx (Array (Pair String Type))
+
+
+printCtx ctx = case ctx of
+  ModuleCtx m -> ['in module <' ++ m ++ '>']
+  BindingCtx n -> ['in binding of <' ++ n ++ '>']
+  UnifyCtx a b -> ['in unify <' ++ printType a ++ '> and <' ++ printType b ++ '>']
+  ExprCtx (Var _ v) -> ['in var <' ++ v ++ '>']
+  TypeBoundCtx b -> ['for type bound <' ++ printTypeBound b ++ '>']
+  FinMRGCtx bs -> enqueue 'finalizing bindings:' (map (\(n, t) -> n ++ ' :: ' ++ printType t) bs)
+  _ -> []

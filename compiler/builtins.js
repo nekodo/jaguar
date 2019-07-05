@@ -279,6 +279,14 @@ builtins.sort = function(arr) {
 	return arr.slice(0).sort();
 }
 
+builtins.sortBy = function(f) {
+  return function(arr) {
+    return arr.slice(0).sort(function(a, b) {
+      return f(a)(b);
+    });
+  }
+}
+
 builtins.error = function(s, x) {
     debugger;
     if (x) console.log(JSON.stringify(x));
@@ -484,6 +492,7 @@ builtins.$TYPE = {
     foldl: '(b -> a -> b) -> b -> Array a -> b',
     foldl1: '(a -> a -> a) -> Array a -> a',
     sort: 'Array a -> Array a',
+    sortBy: '(a -> a -> Number) -> Array a -> Array a',
     error: 'a -> b',
     debug: 'a -> a',
     jsonStringify: 'a -> String',
