@@ -24,4 +24,11 @@ printCtx ctx = case ctx of
   ExprCtx (Var _ v) -> ['in var <' ++ v ++ '>']
   TypeBoundCtx b -> ['for type bound <' ++ printTypeBound b ++ '>']
   FinMRGCtx bs -> enqueue 'finalizing bindings:' (map (\(n, t) -> n ++ ' :: ' ++ printType t) bs)
+  FinTypeCtx t -> ['finilizing type <' ++ printType t ++ '>']
   _ -> []
+
+(<<) ctxsF ctxF = \(Unit) -> push (ctxF Unit) (ctxsF Unit)
+
+emptyCtx = \(Unit) -> []
+
+resolveCtx ctxsF = ctxsF Unit

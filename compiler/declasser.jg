@@ -1,10 +1,10 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {classToBindings, unify, applySubsBound, instanceToTypeBound, satisfiesBound, skolemizeSubs, instantiate} from '//compiler/typer.jg'
 import {printType, printTypeBound, reallyPrintExpr, printInst} from '//compiler/printer.jg'
 import {mkConFun} from '//compiler/adt.jg'
-import {instanceMatches} from '//compiler/typeutil.jg'
-import {instFromDef} from '//compiler/newtyper.jg'
+import {instanceMatches, instantiateBound, checkEquivM} from '//compiler/typeutil.jg'
+import {instFromDef, processClass} from '//compiler/newtyper.jg'
+import {emptyCtx} from '//compiler/ctx.jg'
 
 declassModule ms m = case m of
   Module ann fn imps dt cs ins ds -> let
@@ -29,7 +29,7 @@ declassModule ms m = case m of
       importedSymbols = importsToTypeEnv ms imps
       localBindings = concat classFuns ds
       in foldl
-        (\env b -> case b of Pair v e -> set v (getType e) env)
+        (\env (v, e) -> insert v (getType e) env)
         importedSymbols
         localBindings
 
@@ -85,9 +85,9 @@ mkClassDictConstructor c = case c of
     name = className n
     // Get the bindings with types from the class def, sort to ensure stable
     // mapping (because ADTs have no field labels) then get the types.
-    params = map snd (sort (classToBindings c))
+    params = map snd (sort (trieEntries $ processClass Empty c))
     // All classes have the form (ClassName tvar)
-    type = TApp emptyAnn (TConst emptyAnn n) (TVar emptyAnn tvn)
+    type = TApp emptyAnn (TConst emptyAnn n) (TSkolem emptyAnn tvn)
     // Make the constructor function, note no tag since there is only one variant.
     in mkConFun Nothing type [tvn] name params
 
@@ -103,7 +103,7 @@ mkClassDictAccessors c = case c of
     v = 'x_' ++ name
     rewrite b = case b of
       Pair n t -> Pair n (setType t (Lam (setAnn 'export' (AnnExport n) emptyAnn) v (Case emptyAnn (Var emptyAnn v) [Pair (PData emptyAnn name bsForPat) (Var emptyAnn (n ++ '_'))])))
-    in map rewrite (classToBindings c)
+    in map rewrite (trieEntries $ processClass Empty c)
 
 // Translates the instance into a class dict by calling the constructor.
 // We sort the bindings by name (the need to match what the constructor is doing).
@@ -117,7 +117,7 @@ rewriteInstance is env n i = case i of
 // State of the rewriter which keeps track of:
 // - environment
 // - available instance bounds
-data State = S (Array (Record Type)) (Array (Pair String Inst)) Number
+data State = S (Array (Map String Type)) (Array (Pair String Inst)) Number
 getEnv s = case s of
   S env _ _ -> env
 setEnv env s = case s of
@@ -161,12 +161,12 @@ rewriteExpr is env e = let
         // We might be dealing with a class accessor.
         fromEnv n envs = let
           env = head envs
-          in case (has n env) of
-            False -> error ('no ' ++ n ++ ' in env ' ++ jsonStringify (keys env))
-            True -> get n env
+          in case (lookup n env) of
+            Nothing -> error ('no ' ++ n ++ ' in env ' ++ jsonStringify (trieKeys env))
+            Just x -> x
         findMatching b a = case a of
           S _ is _ -> let
-            matching = filter (\p -> case p of Pair _ i -> instanceMatches [] b i) is
+            matching = filter (\p -> case p of Pair _ i -> instanceMatches emptyCtx b i) is
             in case (length matching) of
               0 -> error ('declasser failed to find satisfying instance for ' ++ printTypeBound b ++ ' ' ++ exprLoc e ++
                             '\nKnown type class instances:' ++
@@ -174,11 +174,6 @@ rewriteExpr is env e = let
               1 -> fst (getIx 0 matching)
               _ -> error ('declasser found more than 1 satisfying instance for ' ++ printTypeBound b  ++ ' ' ++ exprLoc e ++
                 '\n' ++ join (map (\m -> printInst (snd m)) matching) ',')
-        requiredInstances tv td = case (instantiate Unit (\_ v -> Pair Unit $ TVar emptyAnn ('$ins$' ++ v)) td) of
-          Pair (Pair t bs) _ -> let
-            subs = unify (\s -> 'declasser: ' ++ s) tv t
-            in map (applySubsBound subs) bs
-          _ -> []
         t = fromEnv v (getEnv a)
         is = requiredInstances tv t
         mis = map (\b -> findMatching b a) is
@@ -199,11 +194,19 @@ rewriteExpr is env e = let
     rewriteVar
     (S [env] is 0) e)
 
+requiredInstances toType fromType =
+  case fromType of
+    TForall _ vs typeBounds t -> let
+      bs = foldl (\bs v -> insert v TUnknown bs) Empty vs
+      (reps, _) = runState bs (checkEquivM emptyCtx toType t)
+      in  map (instantiateBound reps) typeBounds
+    _ -> []
+
 breakableDownAndUpWithEnv getEnv setEnv down up a e = let
   go a e = breakableDownAndUp processDown processUp a e
   enterScope bs a = let
     es = getEnv a
-    e = merge (head es) bs
+    e = mergeTrie (head es) bs
     in setEnv (enqueue e es) a
   exitScope a = setEnv (tail (getEnv a)) a
   processDown a e = case (down a e) of
@@ -214,9 +217,9 @@ breakableDownAndUpWithEnv getEnv setEnv down up a e = let
           TApp _ (TApp _ (TConst _ '->') t) _ -> t
           TForall _ _ _ (TApp _ (TApp _ (TConst _ '->') t) _) -> t
           _ -> TUnknown
-        in Left (Pair (enterScope (set p t empty) a) e)
+        in Left (Pair (enterScope (insert p t Empty) a) e)
       Let _ bs _ -> let
-        ts = foldl (\ts b -> case b of Pair n e -> set n (getType e) ts) empty bs
+        ts = foldl (\ts (n, e) -> insert n (getType e) ts) Empty bs
         in Left (Pair (enterScope ts a) e)
       Case ann e ps -> case (go a e) of
         Pair a e -> case (foldl processPat (Pair a []) ps) of
@@ -235,9 +238,9 @@ breakableDownAndUpWithEnv getEnv setEnv down up a e = let
       _ -> a
     in up a2 e
   patBindings p = case p of
-    PConst _ _ -> empty
-    PVar ann v -> set v (getAnnType ann) empty
-    PData _ _ ps -> foldr (\env p -> merge (patBindings p) env) empty ps
+    PConst _ _ -> Empty
+    PVar ann v -> insert v (getAnnType ann) Empty
+    PData _ _ ps -> foldl (\env p -> mergeTrie (patBindings p) env) Empty ps
   in go a e
 
 importsToTypeEnv ms is = let
@@ -245,16 +248,15 @@ importsToTypeEnv ms is = let
     ImportAll _ f -> f
     ImportOpen _ f _ -> f
     ImportClosed _ f _ -> f
-  addClass env c = foldl (\env b -> set (fst b) (snd b) env) env (classToBindings c)
   addImports env i = case (get (getFile i) ms) of
     ModuleInterface bs cs _ -> let
       env2 = case i of
-        ImportAll _ f -> merge env bs
-        ImportOpen _ f ns -> foldl (\env n -> case n of Pair n a -> set a (get n bs) env) env ns
+        ImportAll _ f -> mergeTrie env bs
+        ImportOpen _ f ns -> foldl (\env n -> case n of Pair n a -> insert a (fromJust $ lookup n bs) env) env ns
         _ -> error 'import type not supported in type inference'
-      env3 = foldl addClass env2 cs
+      env3 = foldl processClass env2 cs
       in env3
-  in foldl addImports empty (enqueue (ImportAll emptyAnn './builtins.js') is)
+  in foldl addImports Empty (enqueue (ImportAll emptyAnn './builtins.js') is)
 
 className n = '$class$' ++ n
 

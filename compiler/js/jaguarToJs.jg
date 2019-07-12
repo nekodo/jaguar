@@ -129,11 +129,11 @@ processPattern cons pm p = case p of
     (Pair [] [])
   PData _ 'True' ps -> Pair pm (Pair [] [])
   PData _ 'False' ps -> Pair (JSUnOp '!' pm) (Pair [] [])
-  PData _ t ps ->let
+  PData ann t ps ->let
     tagCheck = case (lookup t cons) of
       Just (Nothing) -> JSBool True
       Just (Just tag) -> JSBinOp '==' (JSIndex pm (JSString '$tag')) (JSNum tag)
-      _ -> error ('unknown data type in code gen: ' ++ t)
+      _ -> error ('unknown data type in code gen: ' ++ t ++ ' ' ++ justOr '?' (fmap printCodeLoc (getAnnCodeLoc ann)))
     in foldl
       (\a b -> case a of
         Pair fa (Pair na va) -> case b of
@@ -177,8 +177,8 @@ moduleToJs m = case m of
       f p = case p of
         Pair n e -> not (isJust (getAnn 'dead' (annOf e)))
       in filter f vs
-    bindingToStmts (n, e) = rewriteExprToStmts (JSConst (opName n)) e >>= \stmts ->
-      ret $ push (JSComment (n ++ ' :: ' ++ printType (getType e))) stmts
+    bindingToStmts (n, e) = rewriteExprToStmts (JSConst (opName n)) e //>>= \stmts ->
+      //ret $ push (JSComment (n ++ ' :: ' ++ printType (getType e))) stmts
     defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM bindingToStmts vs2)
     exportDef = JSConst 'exports' (exportObject vs2)
     in optStmts (push exportDef (concat imports defs))

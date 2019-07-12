@@ -6,9 +6,9 @@ import {printType} from '//compiler/printer.jg'
 import {parseModule, parseExpr, parseType, parseScope} from '//compiler/jaguarParser.jg'
 import {Success, Error} from '//compiler/parsers.jg'
 import {checkTopBindings, Scope} from '//compiler/typechecker.jg'
-import {normalizeForall} from '//compiler/typeutil.jg'
+import {normalizeForall, wrapForall} from '//compiler/typeutil.jg'
 import {Ok, Err} from '//compiler/result.jg'
-import {printCtx} from '//compiler/ctx.jg'
+import {printCtx, emptyCtx} from '//compiler/ctx.jg'
 
 mustParseExpr s = case (parseExpr s 'test') of
   Error e -> error e
@@ -21,7 +21,7 @@ mustParseModule s = case (parseModule s 'test') of
 mustParseScope s =
   case (parseScope s 'test') of
     Error e -> error e
-    Success bs _ -> foldl (\s (n, t) -> insert n (fixType t) s) Empty bs
+    Success bs _ -> foldl (\s (n, t) -> insert n (wrapForall t) s) Empty bs
 
 mustParseBindings s = case (mustParseModule s) of
   Module _ _ _ _ _ _ bs -> bs
@@ -78,7 +78,7 @@ bsToScope = foldl (\m (n, e) -> insert n (getType e) m) Empty
 assertInferredTypes want got = assertOkAnd got (\got -> assertTypeMapEq want (bsToScope got))
 
 assertTypecheckOk scope ins got =
-  assertOkAnd got (\got -> assertOk (checkTopBindings [] (Scope scope ins Empty) got))
+  assertOkAnd got (\got -> assertOk (checkTopBindings emptyCtx (Scope scope ins Empty) got))
 
 tc = TConst emptyAnn
 tv = TVar emptyAnn
@@ -95,7 +95,7 @@ tests = [
 
       want = tnum
 
-      got = evalState (US vars 0 []) (forceType t)
+      got = evalState (US Empty vars 0 []) (forceType t)
       in [assertTypeEq want got],
 
     Test 'forceType (check shorting)' $ \_ -> let
@@ -105,7 +105,7 @@ tests = [
       wantT = tv 'c'
       wantVars = insert 'a' (tv 'c') (insert 'b' (tv 'c') Empty)
 
-      (US gotVars _ _, gotT) = runState (US vars 0 []) (forceType t)
+      (US _ gotVars _ _, gotT) = runState (US Empty vars 0 []) (forceType t)
       in [
         prefixMsg 'type' $ assertTypeEq wantT gotT,
         prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
@@ -117,13 +117,13 @@ tests = [
       wantT = tapp (tv 'b') (tv 'c') // note tha b did not get forced
       wantVars = vars // unchanged
 
-      (US gotVars _ _, gotT) = runState (US vars 0 []) (forceType t)
+      (US _ gotVars _ _, gotT) = runState (US Empty vars 0 []) (forceType t)
       in [
         prefixMsg 'type' $ assertTypeEq wantT gotT,
         prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
 
     Test 'unifyType (pick tvar to keep)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       vars = Empty
       
       a = tv '$1'
@@ -132,37 +132,37 @@ tests = [
       wantT = tv '$1'
       wantVars = insert '$11' (tv '$1') Empty
 
-      (US gotVars _ _, gotT) = runState (US vars 0 []) (unifyType ctx a b)
+      (US _ gotVars _ _, gotT) = runState (US Empty vars 0 []) (unifyType ctx a b)
       in [
         prefixMsg 'type' $ assertOkAnd gotT (assertTypeEq wantT),
         prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
 
     Test 'unifyType (Strings keep spreading)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       vars = insert 'a' (tv 'x') (insert 'b' (tv 'x') Empty)
       
       a = tfun (tv 'a') (tv 'b')
       b = tfun tstr (tv 'x')
 
       wantT = tfun tstr tstr
-      wantVars = insert 'a' (tv 'x') (insert 'b' tstr (insert 'x' tstr Empty))
+      wantVars = insert 'a' (tv 'x') (insert 'b' (tv 'x') (insert 'x' tstr Empty))
       wantA = tstr
 
-      (US gotVars _ _, gotT) = runState (US vars 0 []) (unifyType ctx a b)
-      gotA = evalState (US gotVars 0 []) (forceType (tv 'a'))
+      (US _ gotVars _ _, gotT) = runState (US Empty vars 0 []) (unifyType ctx a b)
+      gotA = evalState (US Empty gotVars 0 []) (forceType (tv 'a'))
       in [
         prefixMsg 'type' $ assertOkAnd gotT (assertTypeEq wantT),
         prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars,
         prefixMsg 'forced a' $ assertTypeEq wantA gotA],
 
     Test 'unifyType (mismatch in TApp)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       vars = insert 'a' (tv 'x') (insert 'b' (tv 'x') Empty)
       
       a = tfun (tv 'a') (tv 'b')
       b = tfun tstr tnum
 
-      got = evalState (US vars 0 []) (unifyType ctx a b)
+      got = evalState (US Empty vars 0 []) (unifyType ctx a b)
       in [assertErr got],
 
     Test 'generalize' $ \_ -> let
@@ -172,13 +172,13 @@ tests = [
       wantT = tforall ['x'] (tfun (ts 'x') (ts 'x'))
       wantVars = vars
 
-      (US gotVars _ _, (_, gotT)) = runState (US vars 0 []) (generalize [] t)
+      (US _ gotVars _ _, (_, gotT)) = runState (US Empty vars 0 []) (generalize [] t)
       in [
         prefixMsg 'type' $ assertTypeEq wantT gotT,
         prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
 
     Test 'infer simple' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = insertAll [
         ('id', tforall ['x'] (tfun (ts 'x') (ts 'x')))
         ] Empty
@@ -196,7 +196,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer simple with parsed data' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         id :: a -> a
       '
@@ -214,7 +214,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer fib' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         sub :: Number -> Number -> Number
         add :: Number -> Number -> Number
@@ -236,7 +236,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer fib mutually recursive' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         sub :: Number -> Number -> Number
         add :: Number -> Number -> Number
@@ -264,7 +264,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'polymorphic let binding' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         Pair :: a -> b -> Pair a b
       '
@@ -284,7 +284,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer array' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = Empty
 
       want = mustParseScope '
@@ -302,7 +302,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer map based on fold' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         foldl :: (b -> a -> b) -> b -> Array a -> b
         push :: a -> Array a -> Array a
@@ -321,7 +321,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer recursive fold impl' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         length :: Array a -> Number
         head :: Array a -> a
@@ -343,7 +343,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer mutually recursive fold impl' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         length :: Array a -> Number
         head :: Array a -> a
@@ -369,7 +369,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer polymorphic data types' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         Just :: a -> Maybe a
         Nothing :: Maybe a
@@ -395,7 +395,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer type classes' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         fmap :: (Functor f) => (a -> b) -> f a -> f b
         show :: (Show a) => a -> String
@@ -414,7 +414,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope [] got],
 
     Test 'infer type classes (instances from scope)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         fmap :: (Functor f) => (a -> b) -> f a -> f b
         read :: (Read a) => String -> a
@@ -437,7 +437,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope ins got],
 
     Test 'infer with explicit type' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = Empty
       ins = []
 
@@ -456,7 +456,7 @@ tests = [
         prefixMsg 'full check' $ assertTypecheckOk scope ins got],
 
     Test 'infer find' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       scope = mustParseScope '
         length :: Array a -> Number
         getIx :: Number -> Array a -> a

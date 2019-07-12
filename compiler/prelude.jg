@@ -152,7 +152,7 @@ contains x xs = let
       False -> f (i + 1)
   in f 0
 
-find predicate xs = let
+find predicate xs :: (a -> Bool) -> Array a -> Maybe a = let
   f i = case (i < length xs) of
     False -> Nothing
     True -> case (predicate (getIx i xs)) of
@@ -222,7 +222,7 @@ uniq xs = case (length xs < 2) of
 
 reverse = foldl (\xs x -> enqueue x xs) []
 
-dedup xs = let
+dedup xs :: (Eq a) => Array a -> Array a = let
   f xs x = case (last xs == x) of
     True -> xs
     False -> push x xs
@@ -412,6 +412,14 @@ setIntersection a b = let
   in foldTrie f emptySet b
 
 debug2 p x = snd (Pair (debug p) x)
+
+debugIf p m x = case p of
+  False -> x
+  True -> debug2 m x
+
+debugMaybe m x = case m of
+  Nothing -> x
+  Just m -> debug2 m x
 
 debugWrap tag f = debug2 ('** start: ' ++ tag) $ let
   x = f Unit

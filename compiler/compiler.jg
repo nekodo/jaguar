@@ -15,7 +15,8 @@ import {translateAdts} from '//compiler/adt.jg'
 import * from '//compiler/pass.jg'
 import {splitLetsPass} from '//compiler/let_splitter.jg'
 import {liftModule} from '//compiler/lambdaLifter.jg'
-import {inferModule, moduleExports, fixType} from '//compiler/newtyper.jg'
+import {wrapForall} from '//compiler/typeutil.jg'
+import {inferModule} from '//compiler/newtyper.jg'
 
 moduleFile m = case m of
   Module _ n _ _ _ _ _ -> n
@@ -43,11 +44,11 @@ findImports m = let
     Module _ _ is ds cs ins vs -> map importFileName is
 
 parseT s = case (parseType s '') of
-  Success t ps -> t
+  Success t ps -> wrapForall t
   e -> error e
 
 parseExports e = let
-  bs = mapRecord (\s -> fixType (parseT s)) e
+  bs = foldRecord (\m n s -> insert n (parseT s) m) Empty e
   in ModuleInterface bs [] Empty
 
 builtinsPathArg = ArgString 'builtins' Nothing
@@ -63,8 +64,7 @@ normalizeImportsPass m = getExports >>= \es ->
   ret (normalizeImports es m)
 
 typerPass m = getExports >>= \es -> let
-  typed = inferModule es m
-  e = moduleExports typed
+  (typed, e) = inferModule es m
   in setExports (set (moduleFile m) e es) >> ret typed
 
 declasserPass m = getExports >>= \es ->

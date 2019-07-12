@@ -2,7 +2,7 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
-import {replaceSkolems, instanceMatches, checkEquiv, checkEquivM} from '//compiler/typeutil.jg'
+import {replaceSkolems, instanceMatches, checkEquiv, checkEquivM, instantiateBound} from '//compiler/typeutil.jg'
 import * from '//compiler/ctx.jg'
 import * from '//compiler/result.jg'
 
@@ -28,9 +28,6 @@ allowedSkolem v (Scope _ _ sks) = setContains v sks
 addInstances vs tbs (Scope bs is sks) = Scope bs (concat is (map (Inst vs) tbs)) sks
 findInstances ctx b (Scope _ is _) = filter (instanceMatches ctx b) is
 
-instantiateBound reps (TCBound ann className t) =
-  TCBound ann className (replaceSkolems t reps)
-
 checkBound ctx scope b = let
   matchingInstances = findInstances ctx b scope
   in case (length matchingInstances) of
@@ -42,7 +39,7 @@ checkCanInstantiate ctx scope toType fromType =
   case fromType of
     TForall _ vs typeBounds t -> let
       bs = foldl (\bs v -> insert v TUnknown bs) Empty vs
-      ctx2 = push (TypeInstCtx fromType) ctx
+      ctx2 = ctx << \_ -> TypeInstCtx fromType
       (reps, r) = runState bs (checkEquivM ctx2 toType t)
       in r >> checkMany (checkBound ctx scope) (map (instantiateBound reps) typeBounds)
     _ -> checkEquiv ctx toType fromType
@@ -61,7 +58,7 @@ checkAllowedSkolems ctx scope t = let
 
 checkBindings ctx scope bs = let
   scope2 = foldl (\scope (n, e) -> addBinding n (getType e) scope) scope bs
-  check (n, e) = checkExpr (push (BindingCtx n) ctx) scope2 e
+  check (n, e) = checkExpr (ctx << \_ -> BindingCtx n) scope2 e
   in (scope2, checkMany check bs)
 
 checkTopBindings ctx scope bs = snd (checkBindings ctx scope bs)
@@ -70,7 +67,7 @@ checkTopBindings ctx scope bs = snd (checkBindings ctx scope bs)
 // scope: bindings, name -> type
 // asks: allowed skolems, things that we generalize over
 checkExpr ctx scope e = let
-  ctx2 = push (ExprCtx e) ctx
+  ctx2 = ctx << \_ -> ExprCtx e
   err = tErr ctx2
   (et, scope2) = case (getType e) of
     TForall _ vs bs t -> (t, addInstances vs bs $ addSkolems vs scope)
@@ -125,7 +122,7 @@ checkExpr ctx scope e = let
         // Checks type consistency between the pattern, sub-patterns
         // and referenced data type constructors.
         checkPat ctx p = let
-          ctx2 = push (PatCtx p) ctx
+          ctx2 = ctx << \_ -> PatCtx p
           patType = getPatType p
           in case p of
             PData _ d ps ->

@@ -3,7 +3,7 @@ import * from '//compiler/ast.jg'
 import {reallyPrintExpr} from '//compiler/printer.jg'
 import {rewriteExpr as renameExpr} from '//compiler/uniquifier.jg'
 import {getUid, setUid} from '//compiler/pass.jg'
-import {bindingsScc} from '//compiler/typer.jg'
+import {computeSCC} from '//compiler/newtyper.jg'
 
 inline enable m = getUid >>= \uid -> case m of
   Module ann fn is ds cs ins bs -> let
@@ -13,18 +13,20 @@ inline enable m = getUid >>= \uid -> case m of
     in ret (Module ann fn is ds cs ins obs)
 
 optBindings env bs = let
-  scc = bindingsScc bs
+  scc = computeSCC bs
   optCc env bs = let
-    f oe b = case oe of
-      (outBs, outEnv) -> case b of
-        (n, e) -> let e2 = optExpr env e in case e2 of
-          Var _ _ -> (outBs, insert n e2 outEnv)
-          Const _ _ -> (outBs, insert n e2 outEnv)
-          _ -> (push (n, e2) outBs, insert n e2 outEnv)
-    in foldl f ([], env) bs
-  f oe bs = case oe of (out, env) -> let
-    be = optCc env bs
-    in (concat out (fst be), snd be)
+    optB (bs, env) (n, e) = let
+      e2 = optExpr env e
+      in case e2 of
+        Var _ _ -> //debugIf (dbgMatch n) ('** dropping ' ++ n) $
+          (bs, insert n e2 env)
+        Const _ _ -> //debug2 ('** dropping ' ++ n) $
+          (bs, insert n e2 env)
+        _ -> (push (n, e2) bs, insert n e2 env)
+    in foldl optB ([], env) bs
+  f (out, env) bs = let
+    (bs2, env2) = optCc env bs
+    in (concat out bs2, env2)
   in foldl f ([], env) scc
 
 optExpr env e = case e of
@@ -45,7 +47,7 @@ optExpr env e = case e of
 optPat env pe = case pe of (p, e) -> let
   f p = case p of
     PData ann c ps -> case (lookup c env) of
-      Just (Var _ c) -> PData ann c (map f ps)
+      Just (Var _ c2) -> PData ann c2 (map f ps)
       _ -> PData ann c (map f ps)
     _ -> p
   in (f p, optExpr env e)
@@ -142,7 +144,7 @@ inlineCode always e = let
   inlineExpr e = case e of
     Var ann v -> case (lookup v always) of
       Nothing -> ret (Left e)
-      Just e -> fmap (\e -> Left (withAnnCopy ann e)) (renameExpr empty e)
+      Just e -> fmap (\e -> Left (withAnnCopy ann e)) (renameExpr Empty e)
     Let ann bs e -> let
       always2 = mergeTrie always (chooseForInlining (getCount e) bs)
       in mapBindingsM (\n e -> inlineCode (remove n always2) e) bs >>= \bs ->
@@ -173,6 +175,6 @@ dropDeadBindings useCount bs = let
       in case keep of
         True -> Just (Pair n e)
         False -> let ann = annOf e in case (getAnn 'data' ann) of
-          Nothing -> Nothing
+          Nothing -> debug2 ('** dropping ' ++ n) Nothing
           Just _ -> Just (Pair n (withAnn (setAnn 'dead' AnnTag ann) e))
   in mapJust f bs

@@ -2,7 +2,7 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import {getUid, setUid} from '//compiler/pass.jg'
-import {freeVars} from '//compiler/typer.jg'
+import {freeVars} from '//compiler/newtyper.jg'
 
 mkClosure captured lam = case (length captured) of
   0 -> lam
@@ -21,7 +21,7 @@ addTop e = gets >>= \s -> case s of
 
 lift top e = case e of
   Lam ann p b -> let
-    captured = filter (\v -> not (isJust $ lookup v top)) (freeVars e)
+    captured = filter (\v -> not (isJust $ lookup v top)) (setToArray $ freeVars Empty e)
     closure = mkClosure captured e
     in addTop closure >>= \id -> ret (mkBind ann id captured)
   _ -> ret e

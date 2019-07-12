@@ -2,7 +2,7 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import * from '//compiler/parsers.jg'
 import {tokenize, Token, WsTok, SymTok, NumTok, StrTok, OpTok, IdTok, ComTok} from '//compiler/jaguarLexer.jg'
-import {fixType} from '//compiler/newtyper.jg'
+import {wrapForall, skolemsInOrder} from '//compiler/typeutil.jg'
 
 data ParserState = ParserState
   (Array Token) // input (ts)
@@ -204,7 +204,7 @@ caseP = pure Case <*>
 
 mkDefs mt l p e = case p of
   PVar _ n -> case mt of
-    Just t -> [(n, setType (fixType t) e)]
+    Just t -> [(n, setType (wrapForall t) e)]
     Nothing -> [(n, e)]
   _ -> let
     id = case (getAnnCodeLoc l) of
@@ -234,7 +234,7 @@ typeBoundP = pure (TCBound emptyAnn) <*> upperCaseId <*> typeP
 
 tconstP = pure (TConst emptyAnn) <*> upperCaseId
 
-tvarP = pure (TVar emptyAnn) <*> notUpperCaseId
+tvarP = pure (TSkolem emptyAnn) <*> notUpperCaseId
 
 simpleTypeP = tconstP <|> tvarP <|> parenP typeP
 
@@ -247,7 +247,7 @@ tfunP = pure (\t ts -> foldr1 (\b a -> TApp emptyAnn (TApp emptyAnn (TConst empt
 boundTFunP = let
   f mbs t = case mbs of
     Nothing -> t
-    Just bs -> TForall emptyAnn [] bs t
+    Just bs -> TForall emptyAnn (skolemsInOrder t) bs t
   in pure f <*>
     opt (symP '(' |> sepBy1 typeBoundP (symP ',') <| symP ')' <| operatorP '=>') <*> tfunP
 

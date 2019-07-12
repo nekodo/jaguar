@@ -1,22 +1,9 @@
 # Roadmap
 
 ## TODO
--   module merging pass
--   inlining pass
 -   beta reduction pass
--   patterns in bindings and lambda and fun params
--   optimizations to get the compilation of the compiler below 10s
 -   row types for extensible records and maybe other things
--   flexible 
 -   proper associativity for operators
--   tests
-    -   Unit tests: for the compiler modules from lexer through parser
-        to optimization passes and JS backend. These can be more picky
-        but we should still strive to keep this stuff relatively quiet.
-    -   We can start with tests written in JS but the long term goal is
-        to have them in JG.
--   improve JS backend
--   cross-module optimization as an option
 
 ## Done
 -   bazel integration so that I can have a real build system
@@ -34,6 +21,20 @@
 -   user-defined operators
 -   Hash-Array-Mapped-Tries as the data structure of choice:)
 -   better error messages from the typer
+-   module merging pass
+-   inlining pass
+-   patterns in bindings and lambda and fun params
+-   optimizations to get the compilation of the compiler below 10s
+    - it's now < 2s
+-   tests
+    -   Unit tests: for the compiler modules from lexer through parser
+        to optimization passes and JS backend. These can be more picky
+        but we should still strive to keep this stuff relatively quiet.
+    -   We can start with tests written in JS but the long term goal is
+        to have them in JG.
+-   cross-module optimization as an option
+    - not an option, but it exists
+
 
 # Ideas
 

@@ -1,7 +1,7 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import * from '//compiler/result.jg'
-import {TypeEquivCtx} from '//compiler/ctx.jg'
+import * from '//compiler/ctx.jg'
 
 replaceSkolems t reps =
   case t of
@@ -20,13 +20,26 @@ osetContains x (OrderedSet m _) = isJust (lookup x m)
 osetToArray (OrderedSet m c) = map fst (sortBy (\a b -> compareOrd (snd a) (snd b)) (trieEntries m))
 osetIndexOf x (OrderedSet m _) = lookup x m
 
-normalizeForall t = let
-  skolemsInOrder sks t =
+skolemsInOrder t = osetToArray (skolemsInOrderAsSet t)
+
+skolemsInOrderAsSet t = let
+  gather sks t =
     case t of
       TSkolem _ s -> osetAdd s sks
-      TApp _ f a -> skolemsInOrder (skolemsInOrder sks f) a
+      TApp _ f a -> gather (gather sks f) a
       TForall _ _ _ _ -> error 'unexpected TForall in skolemsInOrder'
       _ -> sks
+  in gather osetEmpty t
+
+wrapForall t = case t of
+  TForall _ _ _ _ -> t //error 'wrapForall cannot be called on a forall'
+  _ -> let
+    sks = skolemsInOrder t
+    in case (length sks) of
+      0 -> t
+      _ -> TForall emptyAnn sks [] t
+
+normalizeForall t = let
   compareSkolems m a b = case (osetIndexOf a m, osetIndexOf b m) of
     (Just i, Just j) -> i - j
     (Just _, _) -> 0-1
@@ -34,7 +47,7 @@ normalizeForall t = let
     _ -> compareOrd a b
   in case t of
     TForall ann vs bs t -> let
-      skolemsInType = skolemsInOrder osetEmpty t
+      skolemsInType = skolemsInOrderAsSet t
       vs2 = filter (\s -> contains s vs) (osetToArray skolemsInType)
       in TForall ann vs2 (dedup $ sortBy (compareBound (compareType (compareSkolems skolemsInType))) bs) t
     _ -> t
@@ -42,10 +55,13 @@ normalizeForall t = let
 instanceMatches ctx (TCBound _ nb tb) (Inst vs (TCBound _ ni ti)) =
   (ni == nb) && isOk (evalState (foldl (\m v -> insert v TUnknown m) Empty vs) (checkEquivM ctx tb ti))
 
+instantiateBound reps (TCBound ann className t) =
+  TCBound ann className (replaceSkolems t reps)
+
 checkEquiv ctx a b = evalState Empty (checkEquivM ctx a b)
 
 checkEquivM ctx toType fromType = let
-  ctx2 = push (TypeEquivCtx toType fromType) ctx
+  ctx2 = ctx << \_ -> TypeEquivCtx toType fromType
   err m = ret $ Err (ctx2, m)
   ok = ret $ Ok Unit
   checkM = checkEquivM ctx2

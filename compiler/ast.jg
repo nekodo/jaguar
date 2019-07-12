@@ -68,7 +68,7 @@ data Module = Module
   (Array (Pair String Expr)) // value definitions
 
 data ModuleInterface = ModuleInterface
-  (Record Type)      // exported bindings, includes ADT constructors
+  (Map String Type)      // exported bindings, includes ADT constructors
   (Array Class)      // exported classes
   (Map String Inst)  // exported class instances
 

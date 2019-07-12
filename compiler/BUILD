@@ -6,7 +6,7 @@ SRCS = glob(["*.jg", "js/*.jg"], exclude = ["*_test.jg"])
 
 jaguar_binary(
     name = "stage1",
-    main = "compiler/compiler.jg",
+    main = "//compiler/compiler.jg",
     srcs = SRCS,
     visibility = ["//visibility:public"],
 )
@@ -33,7 +33,7 @@ jaguar_js_bundle(
     main = "//compiler/compiler.jg",
     srcs = SRCS,
     compiler = ":opt",
-    compiler_args = ["--opt"],
+    #compiler_args = ["--opt"],
 )
 
 exports_files(
@@ -50,13 +50,6 @@ jaguar_test(
   name = "basicop_test",
   main = "//compiler/test/basicop_test.jg",
   srcs = ["test/test.jg", "test/basicop_test.jg", "prelude.jg"],
-  compiler = ":stage2",
-)
-
-jaguar_test(
-  name = "typer_test",
-  main = "//compiler/typer_test.jg",
-  srcs = ["test/test.jg", "typer_test.jg"] + SRCS,
   compiler = ":stage2",
 )
 
