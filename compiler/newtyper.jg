@@ -42,23 +42,6 @@ replaceSkolem v vt t =
     TForall ann vs bs t -> TForall ann vs bs (replaceSkolem v vt t)
     _ -> error ('unsupported type in replaceSkolem ' ++ jsonStringify t)
 
-forceType t = let
-  changed a b =
-    case a of
-      TVar _ v -> case b of
-        TVar _ w -> v /= w
-        _ -> True
-      _ -> False
-  in case t of
-    TVar _ v -> getVars >>= \vars ->
-      case (lookup v vars) of
-        Nothing -> ret t
-        Just t -> forceType t >>= \t2 ->
-          case (changed t t2) of
-            True -> setVar v t2 >> ret t2
-            False -> ret t2
-    _ -> ret t
-
 setVar v t = gets >>= \(US top vars n rins) -> sets $ US top (insert v t vars) n rins
 getVars = gets >>= \(US _ vars _ _) -> ret vars
 
@@ -316,9 +299,10 @@ inferMRG ctx scope bs = let
       mapOkM (inferB scope2) bst >>=>> \bsi ->
         resolveRins >>= \_ ->
           foldM genB ([], []) bsi >>= \(vs, bsg) ->
-            dropRins (setAddAll vs Empty) >>
-              mapM setGenVar vs >>
-                ret (Ok bsg)
+            mapM setGenVar vs >>
+              resolveRins >>
+                  dropRins (setAddAll vs Empty) >>
+                      ret (Ok bsg)
 
 hasMatchingInstance ctx ins b = case (length $ filter (instanceMatches ctx b) ins) of
   0 -> Ok False
@@ -364,37 +348,6 @@ resolveType t = let
       _ -> ret Nothing
   in fmap (justOr t) (resolve t)
 
-resolveType3 t = let
-  resolve t =
-    case t of
-      TVar _ v -> getVars >>= \vars ->
-        case (lookup v vars) of
-          Nothing -> ret t
-          Just t -> resolve t >>= \t2 -> setVar v t2 >> ret t2
-      TApp ann f a -> resolve f >>= \fr -> resolve a >>= \ar -> ret $ TApp ann fr ar
-      _ -> ret t
-  in resolve t
-
-esolveType2 t = let
-  changed a b =
-    case a of
-      TVar _ v -> case b of
-        TVar _ w -> v /= w
-        _ -> True
-      _ -> True
-  resolve t =
-    case t of
-      TVar _ v -> getVars >>= \vars ->
-        case (lookup v vars) of
-          Nothing -> ret t
-          Just t -> resolve t >>= \t2 -> 
-            case (changed t t2) of
-              False -> ret t
-              True -> setVar v t2 >> ret t2
-      TApp ann f a -> resolve f >>= \fr -> resolve a >>= \ar -> ret $ TApp ann fr ar
-      _ -> ret t
-  in resolve t
-
 resolveBound (TCBound ann clz t) = resolveType t >>= \t -> ret (TCBound ann clz t)
 resolveBounds = mapM resolveBound
 
@@ -406,7 +359,7 @@ dropRins vs = let
   match (TCBound _ _ t) = inType t
   inType t =
     case t of
-      TVar _ v -> setContains v vs
+      TSkolem _ v -> setContains v vs
       TApp _ f a -> inType f || inType a
       _ -> False
   in gets >>= \(US top vars n rins) ->

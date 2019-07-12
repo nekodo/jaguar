@@ -222,7 +222,7 @@ uniq xs = case (length xs < 2) of
 
 reverse = foldl (\xs x -> enqueue x xs) []
 
-dedup xs :: (Eq a) => Array a -> Array a = let
+dedup xs = let //:: (Eq a) => Array a -> Array a = let
   f xs x = case (last xs == x) of
     True -> xs
     False -> push x xs

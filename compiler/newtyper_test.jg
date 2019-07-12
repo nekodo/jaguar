@@ -89,39 +89,6 @@ tforall vs = TForall emptyAnn vs []
 ant t = setAnnType t emptyAnn
 
 tests = [
-    Test 'forceType (Number)' $ \_ -> let
-      vars = Empty
-      t = tnum
-
-      want = tnum
-
-      got = evalState (US Empty vars 0 []) (forceType t)
-      in [assertTypeEq want got],
-
-    Test 'forceType (check shorting)' $ \_ -> let
-      vars = insert 'a' (tv 'b') (insert 'b' (tv 'c') Empty)
-      t = tv 'a'
-
-      wantT = tv 'c'
-      wantVars = insert 'a' (tv 'c') (insert 'b' (tv 'c') Empty)
-
-      (US _ gotVars _ _, gotT) = runState (US Empty vars 0 []) (forceType t)
-      in [
-        prefixMsg 'type' $ assertTypeEq wantT gotT,
-        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
-
-    Test 'forceType (check shorting and TApp)' $ \_ -> let
-      vars = insert 'a' (tapp (tv 'b') (tv 'c')) (insert 'b' (tc 'Maybe') Empty)
-      t = tv 'a'
-
-      wantT = tapp (tv 'b') (tv 'c') // note tha b did not get forced
-      wantVars = vars // unchanged
-
-      (US _ gotVars _ _, gotT) = runState (US Empty vars 0 []) (forceType t)
-      in [
-        prefixMsg 'type' $ assertTypeEq wantT gotT,
-        prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars],
-
     Test 'unifyType (pick tvar to keep)' $ \_ -> let
       ctx = emptyCtx
       vars = Empty
@@ -149,11 +116,11 @@ tests = [
       wantA = tstr
 
       (US _ gotVars _ _, gotT) = runState (US Empty vars 0 []) (unifyType ctx a b)
-      gotA = evalState (US Empty gotVars 0 []) (forceType (tv 'a'))
+      gotA = evalState (US Empty gotVars 0 []) (resolveType (tv 'a'))
       in [
         prefixMsg 'type' $ assertOkAnd gotT (assertTypeEq wantT),
         prefixMsg 'vars' $ assertTypeMapEq wantVars gotVars,
-        prefixMsg 'forced a' $ assertTypeEq wantA gotA],
+        prefixMsg 'resolved a' $ assertTypeEq wantA gotA],
 
     Test 'unifyType (mismatch in TApp)' $ \_ -> let
       ctx = emptyCtx
