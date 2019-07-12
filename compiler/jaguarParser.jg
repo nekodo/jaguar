@@ -230,7 +230,7 @@ opP = pure (\e oes -> foldl (\a lob -> case lob of Pair l (Pair op b) -> App l (
 
 typeP = Parser (\s -> applyParser boundTFunP s)
 
-typeBoundP = pure (TCBound emptyAnn) <*> upperCaseId <*> typeP
+typeBoundP = pure (\n t -> TApp emptyAnn (TConst emptyAnn n) t) <*> upperCaseId <*> typeP
 
 tconstP = pure (TConst emptyAnn) <*> upperCaseId
 

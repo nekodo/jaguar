@@ -3,20 +3,26 @@ import {assertTrue, assertEq, runTests, Test, withMsg, testOk, testFail} from '/
 import * from '//compiler/typechecker.jg'
 import * from '//compiler/ast.jg'
 import * from '//compiler/result.jg'
+import {printCtx, resolveCtx, emptyCtx} from '//compiler/ctx.jg'
 
-assertTOk r = case r of
+
+printErr (Err (ctx, m)) = join (push m (concatMap printCtx (resolveCtx ctx))) '\n'
+
+assertOk r = case r of
   Ok _ -> testOk
-  Err (_, m) -> testFail ('want TOk, but got TErr: ' ++ jsonStringify r)
+  e -> testFail ('want Ok, but got Err:\n' ++ printErr e)
 
-assertTFail r = case r of
-  Ok _ -> testFail ('want TFail, but got TOk')
-  Err (_, m) -> testOk
+assertErr r = case r of
+  Ok _ -> testFail ('want Err, but got Ok')
+  Err _ -> testOk
 
 tc = TConst emptyAnn
 tv = TVar emptyAnn
 ts = TSkolem emptyAnn
 tapp = TApp emptyAnn
 tforall vs = TForall emptyAnn vs []
+tcb n t = tapp (tc n) t
+inst vs n t = TForall emptyAnn vs [] (tcb n t)
 
 ant t = setAnnType t emptyAnn
 
@@ -25,125 +31,125 @@ tests = [
       a = TConst emptyAnn 'Number'
       b = TConst emptyAnn 'Number'
 
-      got = checkCanInstantiate [] (Scope Empty [] Empty) a b
-      in [assertTOk got],
+      got = checkCanInstantiate emptyCtx (Scope Empty [] Empty) a b
+      in [assertOk got],
 
     Test 'checkCanInstantiate TSkolem' $ \_ -> let
       a = TSkolem emptyAnn 'x'
       b = TSkolem emptyAnn 'x'
 
-      got = checkCanInstantiate [] (Scope Empty [] Empty) a b
-      in [assertTOk got],
+      got = checkCanInstantiate emptyCtx (Scope Empty [] Empty) a b
+      in [assertOk got],
 
     Test 'checkCanInstantiate TApp' $ \_ -> let
       a = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
       b = TApp emptyAnn (TConst emptyAnn 'A') (TSkolem emptyAnn 'x')
 
-      got = checkCanInstantiate [] (Scope Empty [] Empty) a b
-      in [assertTOk got],
+      got = checkCanInstantiate emptyCtx (Scope Empty [] Empty) a b
+      in [assertOk got],
 
     Test 'checkCanInstantiate TForall' $ \_ -> let
       a = tapp (tc 'A') (ts 'b')
       b = tforall ['v'] (tapp (tc 'A') (ts 'v'))
 
-      got = checkCanInstantiate [] (Scope Empty [] Empty) a b
-      in [assertTOk got],
+      got = checkCanInstantiate emptyCtx (Scope Empty [] Empty) a b
+      in [assertOk got],
 
     Test 'checkCanInstantiate TVar' $ \_ -> let
       a = tapp (tc 'A') (ts 'b')
       b = tapp (tc 'A') (ts 'v')
 
-      got = checkCanInstantiate [] (Scope Empty [] Empty) a b
-      in [assertTFail got],
+      got = checkCanInstantiate emptyCtx (Scope Empty [] Empty) a b
+      in [assertErr got],
 
     Test 'checkCanInstantiate with type bounds' $ \_ -> let
       a = tapp (tc 'A') (ts 'b')
-      b = TForall emptyAnn ['v'] [TCBound emptyAnn 'Pony' (ts 'v')] (tapp (tc 'A') (ts 'v'))
+      b = TForall emptyAnn ['v'] [tcb 'Pony' (ts 'v')] (tapp (tc 'A') (ts 'v'))
 
-      got = checkCanInstantiate [] (Scope Empty [Inst ['a'] (TCBound emptyAnn 'Pony' (ts 'a'))] Empty) a b
-      in [assertTOk got],
+      got = checkCanInstantiate emptyCtx (Scope Empty [inst ['a'] 'Pony' (ts 'a')] Empty) a b
+      in [assertOk got],
 
     Test 'checkCanInstantiate with type bounds (rigid)' $ \_ -> let
       a = tapp (tc 'A') (ts 'b')
-      b = TForall emptyAnn ['v'] [TCBound emptyAnn 'Pony' (ts 'v')] (tapp (tc 'A') (ts 'v'))
+      b = TForall emptyAnn ['v'] [tcb 'Pony' (ts 'v')] (tapp (tc 'A') (ts 'v'))
 
-      got = checkCanInstantiate [] (Scope Empty [Inst [] (TCBound emptyAnn 'Pony' (ts 'b'))] Empty) a b
-      in [assertTOk got],
+      got = checkCanInstantiate emptyCtx (Scope Empty [tcb 'Pony' (ts 'b')] Empty) a b
+      in [assertOk got],
 
     Test 'checkCanInstantiate with type bounds (no matching)' $ \_ -> let
       a = tapp (tc 'A') (ts 'b')
-      b = TForall emptyAnn ['v'] [TCBound emptyAnn 'Pony' (ts 'v')] (tapp (tc 'A') (ts 'v'))
+      b = TForall emptyAnn ['v'] [tcb 'Pony' (ts 'v')] (tapp (tc 'A') (ts 'v'))
 
-      got = checkCanInstantiate [] (Scope Empty [Inst [] (TCBound emptyAnn 'Pony' (ts 'a'))] Empty) a b
-      in [assertTFail got],
+      got = checkCanInstantiate emptyCtx (Scope Empty [tcb 'Pony' (ts 'a')] Empty) a b
+      in [assertErr got],
 
     Test 'checkCanInstantiate with type bounds (conflict)' $ \_ -> let
       a = tapp (tc 'A') (ts 'b')
-      b = TForall emptyAnn ['v'] [TCBound emptyAnn 'Pony' (ts 'v')] (tapp (tc 'A') (ts 'v'))
+      b = TForall emptyAnn ['v'] [tcb 'Pony' (ts 'v')] (tapp (tc 'A') (ts 'v'))
 
       insts = [
-        Inst ['a'] (TCBound emptyAnn 'Pony' (ts 'a')),
-        Inst [] (TCBound emptyAnn 'Pony' (ts 'b'))]
+        inst ['a'] 'Pony' (ts 'a'),
+        tcb 'Pony' (ts 'b')]
 
-      got = checkCanInstantiate [] (Scope Empty insts Empty) a b
-      in [assertTFail got],
+      got = checkCanInstantiate emptyCtx (Scope Empty insts Empty) a b
+      in [assertErr got],
 
     Test 'checkExpr CNum' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = Empty
       asks = Empty
       e = Const (ant tnum) (CNum 13)
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr CNum fail' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = Empty
       asks = Empty
       e = Const (ant tstr) (CNum 13)
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr CStr' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = Empty
       asks = Empty
       e = Const (ant tstr) (CStr 'jaguar')
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr TVar (Num)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = insert 'pony' tnum Empty
       asks = Empty
       e = Var (ant tnum) 'pony'
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr TVar (skolem)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = insert 'pony' (ts 't') Empty
       asks = setAdd 't' Empty
       e = Var (ant $ ts 't') 'pony'
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr TVar (unexpected skolem)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = insert 'pony' (ts 't') Empty
       asks = Empty
       e = Var (ant $ ts 't') 'pony'
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr TVar (forall)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = insert 'pony' (tforall ['a', 'b'] (tapp (ts 'a') (ts 'b'))) Empty
       asks = setAdd 't' Empty
       e = Var (ant $ tapp (ts 't') tnum) 'pony'
@@ -151,10 +157,10 @@ tests = [
       // Instantiating (forall a b. a b) into (t Num)
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr TVar (forall fail)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = insert 'pony' (tforall ['a'] (tapp (ts 'a') (ts 'a'))) Empty
       asks = setAdd 't' Empty
       e = Var (ant $ tapp (ts 't') tnum) 'pony'
@@ -162,10 +168,10 @@ tests = [
       // Instantiating (forall a. a a) into (t Num), should fail
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr Gen' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = insert 'pony' (tforall ['a'] (ts 'a')) Empty
       asks = setAdd 't' Empty
 
@@ -174,22 +180,22 @@ tests = [
       e = Var (ant genType) 'pony'
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr Gen (with type bound)' $ \_ -> let
-      ctx = []
-      env = insert 'pony' (TForall emptyAnn ['a'] [TCBound emptyAnn 'Pony' (ts 'a')] (ts 'a')) Empty
+      ctx = emptyCtx
+      env = insert 'pony' (TForall emptyAnn ['a'] [tcb 'Pony' (ts 'a')] (ts 'a')) Empty
       asks = Empty
 
       // forall g. g t
-      genType = TForall emptyAnn ['t'] [TCBound emptyAnn 'Pony' (ts 't')] $ ts 't'
+      genType = TForall emptyAnn ['t'] [tcb 'Pony' (ts 't')] $ ts 't'
       e = Var (ant genType) 'pony'
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr Gen (error in wrapped expr)' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = insert 'pony' tnum Empty
       asks = setAdd 't' Empty
 
@@ -197,12 +203,12 @@ tests = [
       e = Var (ant genType) 'pony'
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr App' $ \_ -> let
       funType = tfun tstr tnum
 
-      ctx = []
+      ctx = emptyCtx
       env = insert 'f' funType Empty
       asks = Empty
 
@@ -211,12 +217,12 @@ tests = [
       e = App (ant tnum) (Var (ant funType) 'f') (Const (ant tstr) (CStr 'pony'))
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr App (wrong arg type)' $ \_ -> let
       funType = tfun tstr tnum
 
-      ctx = []
+      ctx = emptyCtx
       env = insert 'f' funType Empty
       asks = Empty
 
@@ -225,12 +231,12 @@ tests = [
       e = App (ant tnum) (Var (ant funType) 'f') (Const (ant tnum) (CNum 13))
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr App (wrong ret type)' $ \_ -> let
       funType = tfun tstr tnum
 
-      ctx = []
+      ctx = emptyCtx
       env = insert 'f' funType Empty
       asks = Empty
 
@@ -239,11 +245,11 @@ tests = [
       e = App (ant tstr) (Var (ant funType) 'f') (Const (ant tnum) (CNum 13))
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr Lam' $ \_ -> let
       funType = tfun (tc 'A') (tc 'B')
-      ctx = []
+      ctx = emptyCtx
       env = insert 'f' funType Empty
       asks = Empty
 
@@ -251,11 +257,11 @@ tests = [
       e = Lam (ant lamType) 'x' (App (ant $ tc 'B') (Var (ant funType) 'f') (Var (ant $ tc 'A') 'x'))
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr Lam (non-fun type)' $ \_ -> let
       funType = tfun (tc 'A') (tc 'B')
-      ctx = []
+      ctx = emptyCtx
       env = insert 'f' funType Empty
       asks = Empty
 
@@ -263,11 +269,11 @@ tests = [
       e = Lam (ant lamType) 'x' (App (ant $ tc 'B') (Var (ant funType) 'f') (Var (ant $ tc 'A') 'x'))
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr Lam (wrong param type)' $ \_ -> let
       funType = tfun (tc 'A') (tc 'B')
-      ctx = []
+      ctx = emptyCtx
       env = insert 'f' funType Empty
       asks = Empty
 
@@ -275,11 +281,11 @@ tests = [
       e = Lam (ant lamType) 'x' (App (ant $ tc 'B') (Var (ant funType) 'f') (Var (ant $ tc 'A') 'x'))
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr Lam (wrong ret type)' $ \_ -> let
       funType = tfun (tc 'A') (tc 'B')
-      ctx = []
+      ctx = emptyCtx
       env = insert 'f' funType Empty
       asks = Empty
 
@@ -287,11 +293,11 @@ tests = [
       e = Lam (ant lamType) 'x' (App (ant $ tc 'B') (Var (ant funType) 'f') (Var (ant $ tc 'A') 'x'))
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr New' $ \_ -> let
       consType = tforall ['a'] $ tfun (ts 'a') (tapp (tc 'Maybe') (ts 'a'))
-      ctx = []
+      ctx = emptyCtx
       env = insert 'Just' consType Empty
       asks = Empty
 
@@ -300,11 +306,11 @@ tests = [
       e = New (ant newType) 'Just' [Const (ant tnum) (CNum 13)]
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr New (mistyped arg)' $ \_ -> let
       consType = tforall ['a'] $ tfun (ts 'a') (tapp (tc 'Maybe') (ts 'a'))
-      ctx = []
+      ctx = emptyCtx
       env = insert 'Just' consType Empty
       asks = Empty
 
@@ -313,11 +319,11 @@ tests = [
       e = New (ant newType) 'Just' [Const (ant tstr) (CNum 13)]
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr New (mistyped cons)' $ \_ -> let
       consType = tforall ['a'] $ tfun (ts 'a') (tapp (tc 'Maybe') (ts 'a'))
-      ctx = []
+      ctx = emptyCtx
       env = insert 'Just' consType Empty
       asks = Empty
 
@@ -326,10 +332,10 @@ tests = [
       e = New (ant newType) 'Just' [Const (ant tnum) (CNum 13)]
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTFail got],
+      in [assertErr got],
 
     Test 'checkExpr Let' $ \_ -> let
-      ctx = []
+      ctx = emptyCtx
       env = insert 'f' (tfun tnum tstr) Empty
       asks = Empty
 
@@ -337,12 +343,12 @@ tests = [
       e = Let (ant tstr) [('x', Const (ant tnum) (CNum 13)), ('y', App (ant tstr) (Var (ant $ tfun tnum tstr) 'f') (Var (ant tnum) 'x'))] (Var (ant tstr) 'y')
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got],
+      in [assertOk got],
 
     Test 'checkExpr Case' $ \_ -> let
       maybeStr = tapp (tc 'Maybe') tstr
       justCons = tforall ['a'] $ tfun (ts 'a') (tapp (tc 'Maybe') (ts 'a'))
-      ctx = []
+      ctx = emptyCtx
       env = insert 'Just' justCons $ insert 'x' maybeStr Empty
       asks = Empty
 
@@ -352,7 +358,7 @@ tests = [
         (PData (ant maybeStr) 'Just' [PVar (ant tstr) 'x'], Var (ant tstr) 'x')]
 
       got = checkExpr ctx (Scope env [] asks) e
-      in [assertTOk got]
+      in [assertOk got]
   ]
 
 main argv = runTests 'typechecker_test' tests

@@ -70,7 +70,7 @@ data Module = Module
 data ModuleInterface = ModuleInterface
   (Map String Type)      // exported bindings, includes ADT constructors
   (Array Class)      // exported classes
-  (Map String Inst)  // exported class instances
+  (Map String Type)  // exported class instances
 
 data Data = Data (Map String Ann) String (Array String) (Array DataCon)
 data DataCon = DataCon (Map String Ann) String (Array Type)
@@ -87,18 +87,6 @@ data Instance = Instance
   Type       // type for which we're defining the instanc
   (Array (Pair String Expr))
 
-data Inst = Inst (Array String) TypeBound
-
-data TypeBound =
-  TCBound  // type class bound
-    (Map String Ann)    // annotation
-    String // name of the type class
-    Type   // param
-
-equivBound a b = case a of
-  TCBound _ n t -> case b of
-    TCBound _ n2 t2 -> (n == n2) && equivType t t2
-
 data Type =
   TConst (Map String Ann) String
   | TVar (Map String Ann) String
@@ -106,7 +94,7 @@ data Type =
   | TApp (Map String Ann) Type Type
   | TRow (Map String Ann) (Array (Pair Type Type)) (Maybe Type)
   | TBot
-  | TForall (Map String Ann) (Array String) (Array TypeBound) Type
+  | TForall (Map String Ann) (Array String) (Array Type) Type
   | TUnknown
 
 compareOrd a b = case (a == b) of
@@ -146,14 +134,10 @@ compareType compareS a b = let
     (_, TUnknown) -> 1
     (TForall _ vs bs t, TForall _ vs2 bs2 t2) -> case (cmp t t2) of
       0 -> case (compareArr compareOrd vs vs2) of
-        0 -> compareArr (compareBound cmp) bs bs2
+        0 -> compareArr cmp bs bs2
         x -> x
       x -> x
     _ -> error 'unsupported type in compareType'
-
-compareBound compareT (TCBound _ n a) (TCBound _ m b) = case (compareOrd n m) of
-  0 -> compareT a b
-  x -> x
 
 equivType a b = case a of
   TConst _ n -> case b of
@@ -178,12 +162,9 @@ equivType a b = case a of
   TForall _ vs bs t -> case b of
     TForall _ vs2 bs2 t2 -> let
       rvs = all (\p -> fst p == snd p) (zip vs vs2)
-      rbs = all (\p -> equivBound (fst p) (snd p)) (zip bs bs2)
+      rbs = all (\p -> equivType (fst p) (snd p)) (zip bs bs2)
       in rvs && rbs && equivType t t2
     _ -> False
-
-instance Eq TypeBound where
-  (==) a b = equivBound a b
 
 instance Eq Type where
   (==) a b = equivType a b

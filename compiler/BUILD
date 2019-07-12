@@ -49,7 +49,7 @@ TESTS = [
 jaguar_test(
   name = "basicop_test",
   main = "//compiler/test/basicop_test.jg",
-  srcs = ["test/test.jg", "test/basicop_test.jg", "prelude.jg"],
+  srcs = ["test/test.jg", "test/basicop_test.jg", "prelude.jg", "result.jg"],
   compiler = ":stage2",
 )
 

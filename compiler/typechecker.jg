@@ -1,8 +1,8 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {printType, printTypeBound, reallyPrintExpr, printDef} from '//compiler/printer.jg'
+import {printType, reallyPrintExpr, printDef} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
-import {replaceSkolems, instanceMatches, checkEquiv, checkEquivM, instantiateBound} from '//compiler/typeutil.jg'
+import {replaceSkolems, instanceMatches, checkEquiv, checkEquivM} from '//compiler/typeutil.jg'
 import * from '//compiler/ctx.jg'
 import * from '//compiler/result.jg'
 
@@ -17,7 +17,7 @@ tnum = TConst emptyAnn 'Number'
 tstr = TConst emptyAnn 'String'
 tfun a b = TApp emptyAnn (TApp emptyAnn (TConst emptyAnn '->') a) b
 
-data Scope = Scope (Map String Type) (Array Inst) (Map String Unit)
+data Scope = Scope (Map String Type) (Array Type) (Map String Unit)
 
 addBinding v t (Scope bs is sks) = Scope (insert v t bs) is sks
 getBinding v (Scope bs _ _) = lookup v bs
@@ -25,7 +25,7 @@ getBinding v (Scope bs _ _) = lookup v bs
 addSkolems vs (Scope bs is sks) = Scope bs is (setAddAll vs sks)
 allowedSkolem v (Scope _ _ sks) = setContains v sks
 
-addInstances vs tbs (Scope bs is sks) = Scope bs (concat is (map (Inst vs) tbs)) sks
+addInstances vs tbs (Scope bs is sks) = Scope bs (concat is (map (TForall emptyAnn vs []) tbs)) sks
 findInstances ctx b (Scope _ is _) = filter (instanceMatches ctx b) is
 
 checkBound ctx scope b = let
@@ -41,7 +41,7 @@ checkCanInstantiate ctx scope toType fromType =
       bs = foldl (\bs v -> insert v TUnknown bs) Empty vs
       ctx2 = ctx << \_ -> TypeInstCtx fromType
       (reps, r) = runState bs (checkEquivM ctx2 toType t)
-      in r >> checkMany (checkBound ctx scope) (map (instantiateBound reps) typeBounds)
+      in r >> checkMany (checkBound ctx scope) (map (\b -> replaceSkolems b reps) typeBounds)
     _ -> checkEquiv ctx toType fromType
 
 checkAllowedSkolems ctx scope t = let
@@ -53,7 +53,7 @@ checkAllowedSkolems ctx scope t = let
     TApp _ a b -> check a >> check b
     TForall _ vs bs t -> let
       scope2 = addSkolems vs scope
-      in checkMany (checkAllowedSkolems ctx scope2) (push t (map (\(TCBound _ _ t) -> t) bs))
+      in checkMany (checkAllowedSkolems ctx scope2) (push t bs)
     _ -> tOk
 
 checkBindings ctx scope bs = let

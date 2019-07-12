@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {printType, printTypeBound, reallyPrintExpr, printDef, printInst} from '//compiler/printer.jg'
+import {printType, reallyPrintExpr, printDef} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
 import {replaceSkolems, normalizeForall, instanceMatches, wrapForall} from '//compiler/typeutil.jg'
 import * from '//compiler/ctx.jg'
@@ -28,8 +28,6 @@ skolemsInType t =
     TApp _ f a -> setUnion (skolemsInType f) (skolemsInType a)
     TForall _ _ _ t -> skolemsInType t
     _ -> error ('unsupported type in varsInType ' ++ jsonStringify t)
-
-skolemsInTypeBound (TCBound _ _ t) = skolemsInType t
 
 replaceSkolem v vt t =
   case t of
@@ -71,7 +69,7 @@ unifyType ctx a b = let
 
 // State for type unification.
 // First map is type var to type.
-data UnifierState = US (Map String Type) (Map String Type) Number (Array TypeBound)
+data UnifierState = US (Map String Type) (Map String Type) Number (Array Type)
 
 freshName = gets >>= \(US top vars n rins) -> let
   v = '$' ++ intToString n
@@ -87,12 +85,11 @@ preferredVar v w = case (length v == length w) of
 instantiate t = let
   addRep reps v = freshVar >>= \t ->
     ret $ insert v t reps
-  replaceSkolemsTB reps (TCBound ann clz t) = TCBound ann clz (replaceSkolems t reps)
   in case t of
     TForall _ vs bs t ->
       foldM addRep Empty vs >>= \reps ->
-        resolveBounds bs >>= \bs ->
-          addRequiredBounds (map (replaceSkolemsTB reps) bs) >> let
+        mapM resolveType bs >>= \bs ->
+          addRequiredBounds (map (\b -> replaceSkolems b reps) bs) >> let
             t2 = replaceSkolems t reps
             in ret t2 //debug2 ('**inst ' ++ printType t ++ ' => '++ printType t2) $ ret t2
     _ -> ret t
@@ -315,10 +312,10 @@ inferTopMRG ctx scope ins bs = let
     ctx2 = ctx << \_ -> TypeBoundCtx b
     in hasMatchingInstance ctx2 ins b >>= \m -> case m of
       True -> Ok Unit
-      False -> Err (ctx2, 'no matching instances among ' ++ jsonStringify (map printInst ins))
+      False -> Err (ctx2, 'no matching instances among ' ++ jsonStringify (map printType ins))
   in bsi >>= finalizeBindings ctx vars ins >>= \bsf -> let
     ctx2 = ctx << \_ -> FinMRGCtx (map (\(n, e) -> (n, getType e)) bsf)
-    in mapM (finalizeTypeBound ctx2 vars ins) rins >>= mapM (checkSatisfied ctx2) >> Ok bsf
+    in mapM (finalizeType ctx2 vars ins) rins >>= mapM (checkSatisfied ctx2) >> Ok bsf
 
 inferTopBindings ctx scope ins bs = let
   (scope2, bs2) = prepareBindings scope bs
@@ -348,32 +345,27 @@ resolveType t = let
       _ -> ret Nothing
   in fmap (justOr t) (resolve t)
 
-resolveBound (TCBound ann clz t) = resolveType t >>= \t -> ret (TCBound ann clz t)
-resolveBounds = mapM resolveBound
-
 resolveRins = gets >>= \(US top vars n rins) ->
-  resolveBounds rins >>= \rins2 ->
+  mapM resolveType rins >>= \rins2 ->
     sets (US top vars n rins2)
 
 dropRins vs = let
-  match (TCBound _ _ t) = inType t
   inType t =
     case t of
       TSkolem _ v -> setContains v vs
       TApp _ f a -> inType f || inType a
       _ -> False
   in gets >>= \(US top vars n rins) ->
-    sets (US top vars n (filter (\i -> not (match i)) rins))
+    sets (US top vars n (filter (\i -> not (inType i)) rins))
 
 boundsWithVars vs = let
-  match (TCBound _ _ t) = inType t
   inType t =
     case t of
       TVar _ v -> setContains v vs
       TApp _ f a -> inType f || inType a
       _ -> False
   in gets >>= \(US _ _ _ rins) ->
-    ret (filter match rins)
+    ret (filter inType rins)
 
 // generalize
 // Forall can include any type vars which are entirely free (absent from vars map).
@@ -422,16 +414,13 @@ finalizeType ctx vars ins t = let
       fin a >>= \af ->
         ok (TApp ann ff af)
     TForall ann vs bs t -> fin t >>= \tf ->
-      mapM (finalizeTypeBound ctx2 vars ins) bs >>= \bsf ->
+      mapM (finalizeType ctx2 vars ins) bs >>= \bsf ->
         foldM filterBound [] bsf >>= \bsfFiltered ->
           ok (normalizeForall $ TForall ann vs bsfFiltered tf)
     TVar _ v ->
       case (lookup v vars) of
         Just t -> fin t
         Nothing -> err 'unknown type var found during finalization'
-
-finalizeTypeBound ctx vars ins (TCBound ann clz t) =
-  finalizeType ctx vars ins t >>= \t -> Ok (TCBound ann clz t)
 
 finalizeExpr ctx vars ins e = let
   ctx2 = ctx << \_ -> ExprCtx e
@@ -489,13 +478,13 @@ processImports ms imports = let
 
 instFromDef (Instance _ n t _) =
   case (wrapForall t) of
-    TForall _ vs _ t -> Inst vs (TCBound emptyAnn n t)
-    t -> Inst [] (TCBound emptyAnn n t)
+    TForall _ vs _ t ->  TForall emptyAnn vs [] (TApp emptyAnn (TConst emptyAnn n) t)
+    t -> TApp emptyAnn (TConst emptyAnn n) t
 
 processInstances defs = map (\(_, i) -> instFromDef i) defs
 
 processClass scope (Class _ n v bs) = let
-  tbs = [TCBound emptyAnn n (TSkolem emptyAnn v)]
+  tbs = [TApp emptyAnn (TConst emptyAnn n) (TSkolem emptyAnn v)]
   process scope (n, t) = case (wrapForall t) of
     TForall ann vs _ t -> insert n (TForall ann vs tbs t) scope
   in foldl process scope bs

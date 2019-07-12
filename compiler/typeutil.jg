@@ -49,14 +49,14 @@ normalizeForall t = let
     TForall ann vs bs t -> let
       skolemsInType = skolemsInOrderAsSet t
       vs2 = filter (\s -> contains s vs) (osetToArray skolemsInType)
-      in TForall ann vs2 (dedup $ sortBy (compareBound (compareType (compareSkolems skolemsInType))) bs) t
+      in TForall ann vs2 (dedup $ sortBy (compareType (compareSkolems skolemsInType)) bs) t
     _ -> t
 
-instanceMatches ctx (TCBound _ nb tb) (Inst vs (TCBound _ ni ti)) =
-  (ni == nb) && isOk (evalState (foldl (\m v -> insert v TUnknown m) Empty vs) (checkEquivM ctx tb ti))
-
-instantiateBound reps (TCBound ann className t) =
-  TCBound ann className (replaceSkolems t reps)
+instanceMatches ctx b i =
+  case i of
+    TForall _ vs _ t ->
+      isOk (evalState (foldl (\m v -> insert v TUnknown m) Empty vs) (checkEquivM ctx b t))
+    _ -> isOk (checkEquiv ctx b i)
 
 checkEquiv ctx a b = evalState Empty (checkEquivM ctx a b)
 

@@ -29,16 +29,13 @@ printType t =
     TForall _ vs bs a -> let
       bounds = case (length bs) of
         0 -> ''
-        _ -> ' with ' ++ intercalate ', ' (map printTypeBound bs)
+        _ -> ' with ' ++ intercalate ', ' (map printType bs)
       in 'forall ' ++ intercalate ', ' vs ++ bounds ++ '. ' ++ printType a
     TRow _ kvs (Nothing) -> let
       f (k, v) = printType k ++ ' : ' ++ printType v
       pkvs = map f kvs
       in '{' ++ intercalate ', ' pkvs ++ '}'
     _ -> error ('cannot print ' ++ jsonStringify t)
-
-printTypeBound b = case b of
-  TCBound _ n t -> n ++ ' ' ++ '(' ++ printType t ++ ')'
 
 printExprTyped typed e = 
   let
@@ -96,5 +93,3 @@ printDef typed d = case d of
 indent = map (\l -> '  ' ++ l)
 
 reallyPrintExpr typed e = join (printExprTyped typed e) '\n'
-
-printInst (Inst vs b) = 'forall ' ++ join vs ' ' ++ '. ' ++ printTypeBound b

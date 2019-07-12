@@ -58,8 +58,7 @@ forallEquiv (TForall _ vsa bsa a) (TForall _ vsb bsb b) = let
         Just r -> r == b
       (TApp _ fa xa, TApp _ fb xb) -> equivT fa fb && equivT xa xb
       _ -> False
-  equivB (TCBound _ n a) (TCBound _ m b) = (n == m) && equivT a b
-  in (length vsa == length vsb) && equivT a b && all (\(a, b) -> equivB a b) (zip bsa bsb)
+  in (length vsa == length vsb) && equivT a b && all (\(a, b) -> equivT a b) (zip bsa bsb)
 
 assertTypeEq want got =
   case (typeEq want got) of
@@ -388,7 +387,7 @@ tests = [
         x :: Maybe String
       '
       ins = [
-          Inst [] (TCBound emptyAnn 'Functor' (tc 'Maybe'))
+          tforall [] (tapp (tc 'Functor') (tc 'Maybe'))
         ]
 
       want = mustParseScope '
