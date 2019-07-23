@@ -65,6 +65,16 @@ unifyType ctx a b = let
       False -> err 'skolem mismatch'
     (TApp _ fa xa, TApp _ fb xb) -> unifyType ctx2 fa fb >>=>> \fu -> 
       unifyType ctx2 xa xb >>=>> \xu -> ok (tapp fu xu)
+//    (TRow _ kvsa ra, TRow _ kvsb rb) -> let
+  //    (shared, onlyA, onlyB) = split kvsa kvsb
+    //  unifyRest ru kvs r = case r of
+      //  Nothing -> // if every v in onlyA is _ then OK, else error
+        //Just t -> // unify t with row of {onlyA | ru}
+      //in freshVar >>= \ru -> // don't need it if either (onlyA is empty or rb is absent) and vice versa
+        //unifyShared shared >>=>> \kvs ->
+          //unifyRest ru onlyA rb >>=>> \_ ->
+            //unifyRest ru onlyB ra >>=>> \_ ->
+              //ok (TRow emptyAnn kvs (Just ru))
     _ -> err ('cannot unify ' ++ printType a ++ ' and ' ++ printType b)
 
 // State for type unification.
@@ -208,7 +218,7 @@ inferPat ctx scope p = let
             unifyType ctx2 ct (consType dt (map getPatType psi)) >>>>
               finalize (PData ann n psi) dt
 
-freeVarsAcc fvs scope e = let
+freeVarsAcc strict fvs scope e = let
   addFree scope n fvs = case (setContains n scope) of
     False -> //debug2 ('** adding ' ++ n) $
       setAdd n fvs
@@ -216,13 +226,16 @@ freeVarsAcc fvs scope e = let
   in case e of
     Const _ _ -> fvs
     Var _ v -> addFree scope v fvs
-    App _ f a -> freeVarsAcc (freeVarsAcc fvs scope f) scope a
-    Lam _ p e -> freeVarsAcc fvs (setAdd p scope) e
-    New _ 'Array' es -> foldl (\fvs e -> freeVarsAcc fvs scope e) fvs es
-    New _ c es -> foldl (\fvs e -> freeVarsAcc fvs scope e) (addFree scope c fvs) es
+    App _ f a -> freeVarsAcc strict (freeVarsAcc strict fvs scope f) scope a
+    App _ f a -> freeVarsAcc strict (freeVarsAcc strict fvs scope f) scope a
+    Lam _ p e -> case strict of
+      False -> freeVarsAcc strict fvs (setAdd p scope) e
+      True -> fvs
+    New _ 'Array' es -> foldl (\fvs e -> freeVarsAcc strict fvs scope e) fvs es
+    New _ c es -> foldl (\fvs e -> freeVarsAcc strict fvs scope e) (addFree scope c fvs) es
     Let _ bs e -> let
       scope2 = setAddAll (map fst bs) scope
-      in foldl (\fvs (_, e) -> freeVarsAcc fvs scope2 e) (freeVarsAcc fvs scope2 e) bs
+      in foldl (\fvs (_, e) -> freeVarsAcc strict fvs scope2 e) (freeVarsAcc strict fvs scope2 e) bs
     Case _ e ps -> let
       fromPat (scope, fvs) p =
         case p of
@@ -233,10 +246,11 @@ freeVarsAcc fvs scope e = let
             in (scope2, addFree scope c fvs2)
       processPat fvs (p, e) = let
         (scope2, fvs2) = fromPat (scope, fvs) p
-        in freeVarsAcc fvs2 scope2 e
-      in foldl processPat (freeVarsAcc fvs scope e) ps
+        in freeVarsAcc strict fvs2 scope2 e
+      in foldl processPat (freeVarsAcc strict fvs scope e) ps
 
-freeVars = freeVarsAcc Empty
+freeVars = freeVarsAcc False Empty
+freeVarsStrict = freeVarsAcc True Empty
 
 bindingsToScope = foldl (\s (n, e) -> scopeInsert n (getType e) s)
 
@@ -244,14 +258,11 @@ bindingsToScope = foldl (\s (n, e) -> scopeInsert n (getType e) s)
 computeSCC bs = let
   bsm = //debug2 ('** bindings = ' ++ jsonStringify (map fst bs)) $
     insertAll bs Empty
-  ixs = foldl (\m (i, n) -> insert n i m) Empty (zipWithIndex (map fst bs))
   g = foldl (\g (n, e) -> insert n (filter (\v -> (isJust $ lookup v bsm) && (v /= n)) (setToArray $ freeVars Empty e)) g) Empty bs
 
   ccs = sccSorted g
 
-  cmp n m = (fromJust $ lookup n ixs) - (fromJust $ lookup m ixs)
-
-  in map (\cc -> map (\v -> (v, fromJust $ lookup v bsm)) (sortBy cmp cc)) ccs
+  in map (\cc -> map (\v -> (v, fromJust $ lookup v bsm)) cc) ccs
 
 splitBindings bs = let
   split (ubs, tbs) (n, e) =

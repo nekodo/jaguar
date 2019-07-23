@@ -4,6 +4,30 @@
 		"selected_items":
 		[
 			[
+				"get",
+				"getIx"
+			],
+			[
+				"zip",
+				"zipWithIndex"
+			],
+			[
+				"fresh",
+				"freshVar"
+			],
+			[
+				"empt",
+				"emptyCtx"
+			],
+			[
+				"ms",
+				"ms_8633"
+			],
+			[
+				"main",
+				"mainName_8632"
+			],
+			[
 				"add",
 				"addFree"
 			],
@@ -312,11 +336,13 @@
 	"buffers":
 	[
 		{
+			"contents": "# Current state\n\nImplementation of algorithm W with support for recursive lets.\n\nThings that caused issues:\n  - SCC algorithms can be subtle\n  - recursive lets require very principled approach to composing substitutions\n  - keeping all substitution forever in a massive map is not a good plan\n\n# Type classes\n## Idea 1\nAdd bounds (Array ClassName) to type variables and foralls. Instantiating\na forall copies the bounds over to tvars. Generalizing moves them the other way.\nUnification with non-tvar checks existence of matching instance. With a tvar\nproduces a sub with the union of bounds. Applying subs again takes a union of\nbounds.\n\nIssues:\n  - bounds on non-tvar type might need to be preserved for type-directed\n    code transformations (e.g. handling type classes). See needing an instance\n    of Show for Expr.\n  - unify (c[Show]) (App a b\n\n## Idea 2\nBounds only on TForall. Separate list of required instances stored in the\ncontext. When we find we need (Foo a) instance (or Foo String or whatever) we\nadd it to the context. It's subject to the same substitutions. Instance\nrequirements are resolved when generalizing as an extra step. Once the type\nis generalized we find which instances involve the type vars that we quantify\nover and add those as bounds. When we instantiate a TForall with bounds we\nadd the bounds to the context.\n\n### Issues\n  - Associated types might be hard to implement. Though maybe it's just a\n    special derived instance of a two-param type class.\n\nGoing to try this one!\n\n### Algorithm changes for typing a module\n\n1.  Bring into env bindings from imports.\n2.  Type check new class defs (each binding mentions the class var at least once).\n3.  Bring into env bindings from new classes with bounds.\n4.  Bring into env new instances (do not type-check yet).\n5.  Infer types for bindings\n    -   When instantiate finds a bound, add it to bounds in ctx.\n    -   When generalizing:\n        -   Find all satisfied bounds and drop them.\n        -   Find all bounds involving quantified vars + vars from env, all vars\n            involved in these contexts are not free.\n        -   Find all bounds involving only the quantified vars, add those to the\n            forall. Drop these bounds from ctx.\n6.  For all non-lambda module bindings, if there are any remaining bounds then\n    these are unsatisfied - error.\n7.  Type check instance declarations.\n\nAnd it seems to work!^^\n\n## Type class translation\n\n### Idea 1\nEach instance compiles down to an object containing the functions. The functions\nare accessed on that object.\n\nWhen the instance is determined statically within the module we can just access\nthe instance directly. When the bound is present on the binding though, we will\nneed to rewrite the function to take an extra param - the instance object.\nWhen generating function calls to such a function we will need to supply these\nextra instance objects from the callers' scope.\n\nWe can represent the dict with a data definition and we can perform the rewrite\nahead of time. E.g.:\n  class Foo a where bar :: a -> Bool\n  instance Foo Number where bar x = x == 0\n  baz = bar 77\n  boz y = bar y\ntranslates into:\ndata $Class$Foo a = $Class$Foo (a -> Bool)\n$Foo$Number = $Class$Foo (\\x -> x == 0)\nbaz = (case $Foo$Number of $Class$Foo bar -> bar) 77\nboz = \\$instance$Foo -> \\y -> (case $instance$Foo of $Class$Foo bar -> bar) y\n\n\n# Heterogenous records\n\nTRow (Array (Pair Type (Maybe Type))) (Maybe Type)\nTLabel String\n\nr :: Record {foo :: Number | a}\n\nget :: k -> Rec { k :: v | r } -> v\nadd :: k -> v -> Rec r -> Rec { k :: v | r }\nset :: k -> v -> Rec { k :: w | r} -> Rec { k :: v | r }\ndel :: k -> Rec { k :: v | r } -> Rec r\n\nor\n\nget :: k -> Rec { k :: v | r } -> v\nadd :: k -> v -> Rec { k :: _ | r } -> Rec { k :: v | r }\nset :: k -> v -> Rec { k :: w | r } -> Rec { k :: v | r }\ndel :: k -> Rec { k :: v | r } -> Rec { k :: _ | r }\n\nunification rules:\n  - {a :: b} = {c :: d} => error a/=c\n  - {a :: b} = {a :: c} => b = c\n  - {a :: b | r} = {a :: c} => b = c, r = {}\n  - {a :: b | r} = {c :: d} => r = {c :: d}, error a absent\n  - {a :: b | r} = {c :: d | r2} => r = {c :: d | r3}, r2 = {a :: b | r3}\n  - split keys into shared, onlyA, onlyB\n  - for shared keys unify the types\n  - allocate var for restU\n  - restA = onlyB | restU\n  - restB = onlyA | restU\n  - unified = {shared + onlyA + onlyB | restU}\n\nget \n\n{a: b} = {c: d} => a = c, b = d\n{a: b | r} = {c: d} => a = c, b = d\n\n{a: b | r} = {c: d | r2} => (r2 = {a: b | r3}, r = {c: d | r3})\n\n\n{a: b | r} = {c: d, e: f} => (a = c, b = d, r = {e: f}) or (a = e, b = f, r = {c: d})\n\nfoo k1 k2 v2 k3 v3 = get k1 {k2: v2, k3: v3}\n\nSolvable:\n{a: b} = {c: d}\n{a: b | r} = {c: d | r2}\n\nUnsolvable:\n{a: b, c: d} = {e: f, g: h}\n{a: b}\n\nupdate :: k -> v -> {k :: v2 | r} -> {k :: v | r}\ninsert ::\n\nNon-polymorphic keys only, no insert or delete\n\n{r ~ a, b, c}\n\nset :: k -> v -> {k :: v2 | r} -> {k :: v | r}\nget :: k -> {k :: v | r} -> v\ndel :: k -> {k :: v | r} -> r\nadd :: k -> v -> {r} -> {k :: v | r}\n\n{a: b | r} = {\"c\": d | r2}\n\nCases we can solve:\n 1. when there are no row vars and:\n    1. cardinality of both sides is 1\n    2. cardinality of both sides is equal and there is only one tvar as key\n 2. when there are row vars and:\n    1. there are no tvars as keys\n\n# Newtyper - a clean and unit-tested reimplementation\n\nFeatures that need to be supported:\n  - recursive lets\n  - partial existing type information\n  - type classes\n\nGeneral idea:\n  - split all bindings into mutually recursive groups\n  - solve each group in dep order\n  - error in a given group stops inference for that\n    group and all dependent groups - others proceed\n\nSkolem vs tvar\n  - skolems are known generic variables, cannot be\n    eliminated - basically means that there is a\n    forall somewhere above which defines them\n  - tvars are unknown types which can be unified with\n    other types to resolve them\n\nGeneralization\n  - when a full mutually recursive group (MGR) is\n    typed, then we are left with several bindings.\n    We generalize each independently, which means\n    replacing tvars with skolems and giving the\n    entire thing a Forall.\n    If there are any tvars in the body not represented in the\n    binding type, the we have two options:\n      1. Reject the binding as mistyped.\n      2. Keep inferring on the assumption that they\n         will get settled. We can try this option first and see if things behave reasonably.\n  - When top-level binding is generalized, we must\n    have all the tvars resolved. Otherwise it is an error.\n\nSpecialization\n  - when a generalized type is used, we need to\n    replace each skolem with a new tvar\n\nType class checking\n  - env needs to contain a new list of available instances\n  - when a type is instantiated we check that there is exactly one matching instance in the env\n    for each bound\n  - when descending into an expr with TForall type, for each bound we:\n    - add (Instance [] b) to the env\n  - instance matching rules:\n    - use checkEquivM targetBound candidateBound with state reflecting which skolems are free\n\nType class inference\n  - while instantiating we add the list of instantiated type bounds to required bounds\n  - when generalizing MRG:\n    - add all any bounds which mention the abstracted tvars to the tforalls as appropriate\n    - carry over any bounds which do not mention the abstracted tvars over to the parent\n  - finalization:\n    - updated bounds\n    - normalize the forall (sort and dedup)\n\nType class translation\n\nIdeas for implicits\n  f = \\@x -> x :: @a -> a\n  c = f :: Int // look up @Int in the env and use it\n  \n  What syntax to use to explicitly provide an implicit arg?\n    f @foo // pass foo to f as the value for the implicit\n  How about translating something with multiple constraints?\n  mapM :: @(Traversable t) -> @(Monad m) -> ...\n  foo :: Traversable x\n  bar :: Monad y\n  // To resolve both implicitly:\n  x = mapM\n  x = mapM @\n  x = mapM @ @\n  x = mapM @ @ @ // Error, too many implicit args.\n  // To resolve first one explicitly.\n  x = mapM @foo\n  x = mapM @foo @\n  // To resolve both explicitly.\n  x = mapM @foo @bar\n\n  // Syntax for declaring implicits.\n  @x = ... // implicit value x made available\n  @f @a @b = ... // implicit value f made available with two implicit params\n\n  // Types\n  Traversable t @> Monad m @> x // Better, enforces that it is really a magic on the LHS of a fun\n\n  Handling in type checking:\n    - if we have explicit @ application then check the type, otherwise resolve from scope\n      as with the original type class handling, any ambiguity is an error\n    - only rank 1 implicits are ever inferred\n\n  f @a b @c = ...\n\n# First class modules\n\nTreat the module simply as a record/data instance. Importing can use less custom syntax:\n  Foo = import '//foo.jg' // closed import\n  {a, b} = import '//foo.jg' // open import\n  {fooA = a, fooB = b} = import '//foo.jg' // open import with renaming\n  {...} = import '//foo.jg' // open import everything\n\nThe syntax above is based on patter matching on records, which we do not have yet.\n\nWe will keep imports as legal only in the top scope, no dynamic imports (yet).\n\nThis will require record types, but we can then pass these around.\n\nType instances will be imported implicitly when either the class or the type is imported.\n\nWe will need dot syntax for accessing members (Foo.bar). This will also have to work in\ntypes (e.g. Foo.Bar -> String).\n\nWe will need some magic for handling type classes. E.g. (Functor Foo) and (Functor Foo.Foo)\nshould conflict. We should be able to normalize type names for disambiguation, maybe to\n(modulepath, typename). So Foo and Foo.Foo could both be (//foo.jg, Foo).\n\nThe alternative is to \n\n# Simple improvements\n  \n  - represent type bounds as normal types (Functor Maybe, forall a. Foo (Array a)).\n",
 			"file": "compiler/typing.md",
+			"file_size": 9038,
+			"file_write_time": 132067964166568804,
 			"settings":
 			{
-				"buffer_size": 9038,
-				"encoding": "UTF-8",
+				"buffer_size": 9784,
 				"line_ending": "Unix"
 			}
 		},
@@ -324,16 +350,16 @@
 			"file": "compiler/newtyper.jg",
 			"settings":
 			{
-				"buffer_size": 21302,
+				"buffer_size": 20207,
 				"encoding": "UTF-8",
 				"line_ending": "Unix"
 			}
 		},
 		{
-			"file": "compiler/BUILD",
+			"file": "compiler/declasser.jg",
 			"settings":
 			{
-				"buffer_size": 1693,
+				"buffer_size": 10785,
 				"encoding": "UTF-8",
 				"line_ending": "Unix"
 			}
@@ -343,15 +369,6 @@
 			"settings":
 			{
 				"buffer_size": 179,
-				"encoding": "UTF-8",
-				"line_ending": "Unix"
-			}
-		},
-		{
-			"file": "compiler/bin/c0.39.jg.js",
-			"settings":
-			{
-				"buffer_size": 390907,
 				"encoding": "UTF-8",
 				"line_ending": "Unix"
 			}
@@ -369,7 +386,16 @@
 			"file": "compiler/ast.jg",
 			"settings":
 			{
-				"buffer_size": 8754,
+				"buffer_size": 8263,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "compiler/printer.jg",
+			"settings":
+			{
+				"buffer_size": 2996,
 				"encoding": "UTF-8",
 				"line_ending": "Unix"
 			}
@@ -378,7 +404,7 @@
 			"file": "compiler/inliner.jg",
 			"settings":
 			{
-				"buffer_size": 6801,
+				"buffer_size": 6785,
 				"encoding": "UTF-8",
 				"line_ending": "Unix"
 			}
@@ -387,35 +413,27 @@
 			"file": "compiler/prelude.jg",
 			"settings":
 			{
-				"buffer_size": 10911,
+				"buffer_size": 10738,
 				"encoding": "UTF-8",
 				"line_ending": "Unix"
 			}
 		},
 		{
-			"file": "compiler/js/jaguarToJs.jg",
+			"contents": "# Roadmap\n\n## TODO\n-   beta reduction pass\n-   row types for extensible records and maybe other things\n-   proper associativity for operators\n\n## Done\n-   bazel integration so that I can have a real build system\n-   E2E tests run against both stage1 and stage2 compilers\n-   slightly saner handling of builtins thanks to bazel\n-   workspace-relative imports (//)\n-   0.10\n    -   let expressions xD\n    -   syntax sugar for function defs\n-   0.11 (TBD)\n-   type inference - done!\n-   I should start writing these relases notes again xD\n-   we're at 0.15 now\n-   type classes\n-   user-defined operators\n-   Hash-Array-Mapped-Tries as the data structure of choice:)\n-   better error messages from the typer\n-   module merging pass\n-   inlining pass\n-   patterns in bindings and lambda and fun params\n-   optimizations to get the compilation of the compiler below 10s\n    - it's now < 2s\n-   tests\n    -   Unit tests: for the compiler modules from lexer through parser\n        to optimization passes and JS backend. These can be more picky\n        but we should still strive to keep this stuff relatively quiet.\n    -   We can start with tests written in JS but the long term goal is\n        to have them in JG.\n-   cross-module optimization as an option\n    - not an option, but it exists\n\n\n# Ideas\n\n## Record syntax for ADTs\n\n### Motivation\n\nAdding a new filed to an ADT is a pain as I need to go through all the existing\npattern matches and update them. Furthermore, with larger data types it becomes\na pain to pack and unpack them all the time.\n\ndata Foo = FooA | FooB String Number\ndata Foo =\n  FooA\n  | FooB\n    name :: String\n    size :: Number\n\ncase f of\n  {FooB with name} -> name\n  {FooB with name = v} -> v\n  {FooB with name, size = s} -> bar name s\n  {FooB with name = 'Kuro', size} -> size\n  FooB 'Kuro' size -> size\n\nname f\nsize f\n\nf[name = 'Kuro', size = 7]\nFooB[name = 'Kuro', size = 7]\n\n## Separate lower level core language\n\nCurrently we have things that either get desugared very early (when parsing) or we have things in the\ninternal representation which should never appear after a certain point in the compilation.\n\nAdditionally, the jump from Jaguar to the output (JS) is quite big, which will make multiple\nbackends harder.\n\nWe could define a simpler core language (Fang? Panther?) so that we could do:\nstring -> [parse] -> jaguar -> [type] -> [rectify] -> fang -> [optimize] -> [backend] -> output\n\nFang:\n  - motivated by efficient opt and translation to output\n  - explicitly typed? or untyped?\n  - no type classes\n  - explicit tagged unions support\n\ncase x of\n  Foo q -> q\n\ncase x of\n  Foo.{query = 7} -> x\n\na.{foo = 7}\nFoo.{query = a}\n\nFoo.new :: a -> Foo a\nFoo.query :: Foo a -> a\n\nx.boo // if we do not require unique labels this might not be typeable without making x :: {boo :: a | r}",
+			"file": "compiler/roadmap.md",
+			"file_size": 2805,
+			"file_write_time": 132074910505286689,
 			"settings":
 			{
-				"buffer_size": 10063,
-				"encoding": "UTF-8",
+				"buffer_size": 2813,
 				"line_ending": "Unix"
 			}
 		},
 		{
-			"file": "compiler/ctx.jg",
+			"file": "compiler/jaguarParser.jg",
 			"settings":
 			{
-				"buffer_size": 1042,
-				"encoding": "UTF-8",
-				"line_ending": "Unix"
-			}
-		},
-		{
-			"file": "compiler/TODO.md",
-			"settings":
-			{
-				"buffer_size": 557,
-				"encoding": "UTF-8",
+				"buffer_size": 10729,
 				"line_ending": "Unix"
 			}
 		}
@@ -482,27 +500,29 @@
 	[
 		"/home/orczykm/projects/jaguar",
 		"/home/orczykm/projects/jaguar/compiler",
-		"/home/orczykm/projects/jaguar/compiler/bin",
-		"/home/orczykm/projects/jaguar/compiler/e2e",
-		"/home/orczykm/projects/jaguar/compiler/js",
 		"/home/orczykm/projects/jaguar/compiler/test"
 	],
 	"file_history":
 	[
-		"/home/orczykm/projects/jaguar/compiler/bin/c0.39.jg.js",
-		"/home/orczykm/projects/jaguar/compiler/newtyper_test.jg",
+		"/home/orczykm/projects/jaguar/compiler/typeutil.jg",
 		"/home/orczykm/projects/jaguar/compiler/typechecker.jg",
-		"/home/orczykm/projects/jaguar/compiler/uniquifier.jg",
+		"/home/orczykm/projects/jaguar/compiler/BUILD",
+		"/home/orczykm/projects/jaguar/compiler/js/jaguarToJs.jg",
+		"/home/orczykm/projects/jaguar/compiler/ctx.jg",
+		"/home/orczykm/projects/jaguar/compiler/newtyper_test.jg",
+		"/home/orczykm/projects/jaguar/compiler/bin/c0.40.jg.js",
+		"/home/orczykm/projects/jaguar/compiler/jaguarParser.jg",
 		"/home/orczykm/projects/jaguar/compiler/typechecker_test.jg",
+		"/home/orczykm/projects/jaguar/compiler/typeutil_test.jg",
+		"/home/orczykm/projects/jaguar/compiler/TODO.md",
+		"/home/orczykm/projects/jaguar/compiler/roadmap.md",
+		"/home/orczykm/projects/jaguar/compiler/bin/c0.39.jg.js",
+		"/home/orczykm/projects/jaguar/compiler/uniquifier.jg",
 		"/home/orczykm/projects/jaguar/compiler/adt.jg",
 		"/home/orczykm/projects/jaguar/compiler/prelude.jg",
 		"/home/orczykm/projects/jaguar/compiler/printer.jg",
-		"/home/orczykm/projects/jaguar/compiler/typeutil.jg",
-		"/home/orczykm/projects/jaguar/compiler/jaguarParser.jg",
 		"/home/orczykm/projects/jaguar/compiler/lambdaLifter.jg",
 		"/home/orczykm/projects/jaguar/compiler/importNormalizer.jg",
-		"/home/orczykm/projects/jaguar/compiler/BUILD",
-		"/home/orczykm/projects/jaguar/compiler/js/jaguarToJs.jg",
 		"/home/orczykm/projects/jaguar/compiler/declasser.jg",
 		"/home/orczykm/projects/jaguar/compiler/typer.jg",
 		"/home/orczykm/projects/jaguar/compiler/e2e/basic_module_test.jg",
@@ -510,9 +530,7 @@
 		"/home/orczykm/projects/jaguar/compiler/js/ast.jg",
 		"/home/orczykm/projects/jaguar/compiler/js/printer.jg",
 		"/home/orczykm/projects/jaguar/compiler/solver.jg",
-		"/home/orczykm/projects/jaguar/compiler/typeutil_test.jg",
 		"/home/orczykm/projects/jaguar/compiler/jaguarLexer.jg",
-		"/home/orczykm/projects/jaguar/compiler/ctx.jg",
 		"/home/orczykm/projects/jaguar/compiler/test/test.jg",
 		"/home/orczykm/projects/jaguar/compiler/result.jg",
 		"/home/orczykm/projects/jaguar/compiler/builtins.js",
@@ -537,6 +555,36 @@
 		"case_sensitive": false,
 		"find_history":
 		[
+			"loop",
+			"zipWithIndex2_2354",
+			"head_520",
+			"equivType",
+			"Inst ",
+			"bound",
+			"assertTFail",
+			"assertFail",
+			"assertTOk",
+			"bound",
+			"instantiateB",
+			"TForall",
+			"bound",
+			"TCB",
+			"resolveBound",
+			"inst ",
+			"Inst ",
+			"Inst",
+			"bound",
+			"finalizeTypeB",
+			"bound",
+			"inst",
+			"bound",
+			"printTypeBound",
+			"fromJust",
+			"bound",
+			"forceType",
+			"timed",
+			"main",
+			"Pair_3",
 			"inline_8584",
 			"inline_4900",
 			"freeVars ",
@@ -634,31 +682,7 @@
 			"resolveName",
 			"instantiate",
 			"us ",
-			"Us ",
-			"Us",
-			"replaceSk",
-			"checkDataRef",
-			"checkCanInstantiate",
-			"asks",
-			"env",
-			"asks",
-			"env",
-			"scope",
-			"env",
-			"checkCanInstantiate",
-			"generalize",
-			"New",
-			"unifyTYpe",
-			"bst",
-			"freeVars",
-			"bindingctx",
-			" \n",
-			"sets",
-			"gets",
-			"unifyM",
-			"getVars",
-			"a",
-			"zip"
+			"Us "
 		],
 		"highlight": true,
 		"in_selection": false,
@@ -666,6 +690,8 @@
 		"regex": false,
 		"replace_history":
 		[
+			"assertErr",
+			"assertOk",
 			"ctx = emptyCtx"
 		],
 		"reverse": false,
@@ -677,7 +703,7 @@
 	"groups":
 	[
 		{
-			"selected": 4,
+			"selected": 10,
 			"sheets":
 			[
 				{
@@ -686,15 +712,15 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 9038,
+						"buffer_size": 9784,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								9038,
-								9038
+								4349,
+								4349
 							]
 						],
 						"settings":
@@ -704,10 +730,10 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 749.0,
+						"translation.y": 3309.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 10,
+					"stack_index": 2,
 					"type": "text"
 				},
 				{
@@ -716,15 +742,15 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 21302,
+						"buffer_size": 20207,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								9389,
-								9389
+								2938,
+								2938
 							]
 						],
 						"settings":
@@ -734,40 +760,40 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 3311.0,
+						"translation.y": 640.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 4,
+					"stack_index": 7,
 					"type": "text"
 				},
 				{
 					"buffer": 2,
-					"file": "compiler/BUILD",
+					"file": "compiler/declasser.jg",
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 1693,
+						"buffer_size": 10785,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								783,
-								783
+								8487,
+								8487
 							]
 						],
 						"settings":
 						{
-							"syntax": "Packages/C#/Build.sublime-syntax",
+							"syntax": "Packages/User/jaguar.sublime-syntax",
 							"tab_size": 2,
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 227.0,
+						"translation.y": 2635.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 3,
+					"stack_index": 9,
 					"type": "text"
 				},
 				{
@@ -795,41 +821,11 @@
 						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 2,
+					"stack_index": 5,
 					"type": "text"
 				},
 				{
 					"buffer": 4,
-					"file": "compiler/bin/c0.39.jg.js",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 390907,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								19173,
-								19173
-							]
-						],
-						"settings":
-						{
-							"syntax": "Packages/JavaScript/JavaScript.sublime-syntax",
-							"tab_size": 2,
-							"translate_tabs_to_spaces": true
-						},
-						"translation.x": 0.0,
-						"translation.y": 9853.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 0,
-					"type": "text"
-				},
-				{
-					"buffer": 5,
 					"file": "compiler/compiler.jg",
 					"semi_transient": false,
 					"settings":
@@ -841,8 +837,8 @@
 						"selection":
 						[
 							[
-								1001,
-								1001
+								1710,
+								1710
 							]
 						],
 						"settings":
@@ -852,27 +848,27 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 1068.0,
+						"translation.y": 135.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 8,
+					"stack_index": 10,
 					"type": "text"
 				},
 				{
-					"buffer": 6,
+					"buffer": 5,
 					"file": "compiler/ast.jg",
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 8754,
+						"buffer_size": 8263,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								6789,
-								6789
+								2896,
+								2896
 							]
 						],
 						"settings":
@@ -882,10 +878,40 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 3397.0,
+						"translation.y": 321.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 7,
+					"stack_index": 3,
+					"type": "text"
+				},
+				{
+					"buffer": 6,
+					"file": "compiler/printer.jg",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 2996,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								1152,
+								1152
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/User/jaguar.sublime-syntax",
+							"tab_size": 2,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 3.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 8,
 					"type": "text"
 				},
 				{
@@ -894,15 +920,15 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 6801,
+						"buffer_size": 6785,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								1750,
-								1750
+								679,
+								679
 							]
 						],
 						"settings":
@@ -912,10 +938,10 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 0.0,
+						"translation.y": 17.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 1,
+					"stack_index": 6,
 					"type": "text"
 				},
 				{
@@ -924,15 +950,15 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 10911,
+						"buffer_size": 10738,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								3576,
-								3576
+								2455,
+								2455
 							]
 						],
 						"settings":
@@ -942,57 +968,57 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 2358.0,
+						"translation.y": 5446.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 5,
+					"stack_index": 4,
 					"type": "text"
 				},
 				{
 					"buffer": 9,
-					"file": "compiler/js/jaguarToJs.jg",
+					"file": "compiler/roadmap.md",
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 10063,
+						"buffer_size": 2813,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								6274,
-								6274
+								2813,
+								2813
 							]
 						],
 						"settings":
 						{
-							"syntax": "Packages/User/jaguar.sublime-syntax",
+							"syntax": "Packages/Markdown/Markdown.sublime-syntax",
 							"tab_size": 2,
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 1645.0,
+						"translation.y": 713.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 6,
+					"stack_index": 1,
 					"type": "text"
 				},
 				{
 					"buffer": 10,
-					"file": "compiler/ctx.jg",
-					"semi_transient": false,
+					"file": "compiler/jaguarParser.jg",
+					"semi_transient": true,
 					"settings":
 					{
-						"buffer_size": 1042,
+						"buffer_size": 10729,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								1003,
-								1003
+								4419,
+								4422
 							]
 						],
 						"settings":
@@ -1001,39 +1027,11 @@
 							"tab_size": 2,
 							"translate_tabs_to_spaces": true
 						},
-						"translation.x": 0.0,
-						"translation.y": 0.0,
+						"translation.x": 78.0,
+						"translation.y": 1625.0,
 						"zoom_level": 1.0
 					},
-					"stack_index": 9,
-					"type": "text"
-				},
-				{
-					"buffer": 11,
-					"file": "compiler/TODO.md",
-					"semi_transient": false,
-					"settings":
-					{
-						"buffer_size": 557,
-						"regions":
-						{
-						},
-						"selection":
-						[
-							[
-								557,
-								557
-							]
-						],
-						"settings":
-						{
-							"syntax": "Packages/Markdown/Markdown.sublime-syntax"
-						},
-						"translation.x": 0.0,
-						"translation.y": 0.0,
-						"zoom_level": 1.0
-					},
-					"stack_index": 11,
+					"stack_index": 0,
 					"type": "text"
 				}
 			]

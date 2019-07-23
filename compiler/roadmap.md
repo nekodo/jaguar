@@ -66,4 +66,39 @@ size f
 f[name = 'Kuro', size = 7]
 FooB[name = 'Kuro', size = 7]
 
+## Separate lower level core language
 
+Currently we have things that either get desugared very early (when parsing) or we have things in the
+internal representation which should never appear after a certain point in the compilation.
+
+Additionally, the jump from Jaguar to the output (JS) is quite big, which will make multiple
+backends harder.
+
+We could define a simpler core language (Fang? Panther?) so that we could do:
+string -> [parse] -> jaguar -> [type] -> [rectify] -> fang -> [optimize] -> [backend] -> output
+
+Fang:
+  - motivated by efficient opt and translation to output
+  - everything is a value, no declarations (is that possible?)
+  - explicitly typed? or untyped?
+  - no type classes
+  - explicit tagged unions support, but as values
+
+Expr =
+  Const
+  Var
+  App
+  Let
+  New
+  Case
+  Lam
+  Field {of :: Expr, name :: String}
+
+
+
+Maybe a = Just a | Nothing
+
+Just = 
+
+case x of
+  Just z -> z

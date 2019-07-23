@@ -133,17 +133,6 @@ not b = case b of
   True -> False
   False -> True
 
-// (a -> Either a b) -> a -> b
-loop f start = let
-  shouldStop x = case x of
-    Pair _ (Nothing) -> False
-    _ -> True
-  next (x, _) = case (f x) of
-    Left x -> (x, Nothing)
-    Right r -> (x, Just r)
-  result = iterate (start, Nothing) shouldStop next
-  in case result of (_, Just r) -> r
-
 contains x xs = let
   f i = case (i < length xs) of
     False -> False
@@ -181,15 +170,18 @@ repeat s n = case (n < 1) of
   True -> ''
   False -> s ++ repeat s (n - 1) 
 
-zipWithIndex2 = \n xs -> case (length xs) of
-  0 -> []
-  x -> enqueue (Pair n (head xs)) (zipWithIndex2 (n + 1) (tail xs))
+zipWithIndex xs = let
+  f rs i = case (i < length xs) of
+    False -> rs
+    True -> f (push (i, getIx i xs) rs) (i + 1)
+  in f [] 0
 
-zipWithIndex = zipWithIndex2 0
-
-zip xs ys = case ((length xs == 0) || (length ys == 0)) of
-  True -> []
-  False -> enqueue (Pair (head xs) (head ys)) (zip (tail xs) (tail ys))
+zip xs ys = let
+  f rs i =
+    case ((i < length xs) && (i < length ys)) of
+      True -> f (push (getIx i xs, getIx i ys) rs) (i + 1)
+      False -> rs
+  in f [] 0
 
 concatMap f a = mconcat (map f a)
 
@@ -234,10 +226,10 @@ dedup xs = let //:: (Eq a) => Array a -> Array a = let
 toRecord = foldl (\r (k, v) -> set k v r) empty
 
 strToArray s = let
-  f (i, r) = case (i < length s) of
-    False -> Right r
-    True -> Left (i + 1, push (getChar i s) r)
-  in loop f (0, [])
+  f rs i = case (i < length s) of
+    False -> rs
+    True -> f (push (getChar i s) rs) (i + 1)
+  in f [] 0
 
 foldM f r xs = foldl (\r x -> r >>= \r -> f r x) (ret r) xs
 
@@ -269,6 +261,7 @@ evalState s m = snd (runState s m)
 class Hashable a where
   hashCode :: a -> Number
 
+// TODO(kuro): This is a pretty bad hash impl for a number xD
 instance Hashable Number where
   hashCode n = n
 
@@ -453,3 +446,10 @@ assert s b = case b of
 
 //instance Monoid (Map k v) where
 //  mzero = Empty
+
+split p xs = let
+  f (ts, fs) x =
+    case (p x) of
+      True -> (push x ts, fs)
+      False -> (ts, push x fs)
+  in foldl f ([], []) xs

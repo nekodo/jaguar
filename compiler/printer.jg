@@ -32,8 +32,8 @@ printType t =
         _ -> ' with ' ++ intercalate ', ' (map printType bs)
       in 'forall ' ++ intercalate ', ' vs ++ bounds ++ '. ' ++ printType a
     TRow _ kvs (Nothing) -> let
-      f (k, v) = printType k ++ ' : ' ++ printType v
-      pkvs = map f kvs
+      f (k, v) = k ++ ' :: ' ++ printType v
+      pkvs = map f (trieEntries kvs)
       in '{' ++ intercalate ', ' pkvs ++ '}'
     _ -> error ('cannot print ' ++ jsonStringify t)
 

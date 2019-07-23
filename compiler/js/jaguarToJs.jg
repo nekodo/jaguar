@@ -2,6 +2,9 @@ import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
 import * from '//compiler/js/ast.jg'
 import {printType} from '//compiler/printer.jg'
+import {Ok, Err} from '//compiler/result.jg'
+import {freeVarsStrict, computeSCC} from '//compiler/newtyper.jg'
+import {sccSorted} from '//compiler/graph.jg'
 
 binOp2 op a b = rewriteExpr a >>= \a -> rewriteExpr b >>= \b -> ret (JSBinOp op a b)
 
@@ -68,7 +71,7 @@ rewriteExpr e = case e of
           foldM (assemblePatternMatch2 phiIn phiOut) [JSExpr (JSCall (JSRef 'error') [JSString matchFailMsg, phiIn])] (reverse ps) >>=
             mapM addStmt >> ret (JSRef phiOut)
   Let _ ds e->
-    mapM (\d -> case d of Pair n e -> rewriteExpr e >>= addConst n) ds >> rewriteExpr e
+    mapM (\d -> case d of Pair n e -> rewriteExpr e >>= addConst n) (orderBindings ds) >> rewriteExpr e
   New _ '@closure' xs -> case (length xs) of
     2 -> case (getIx 0 xs) of
       Const _ (CNum n) -> mkClosure n (getIx 1 xs)
@@ -179,7 +182,7 @@ moduleToJs m = case m of
       in filter f vs
     bindingToStmts (n, e) = rewriteExprToStmts (JSConst (opName n)) e //>>= \stmts ->
       //ret $ push (JSComment (n ++ ' :: ' ++ printType (getType e))) stmts
-    defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM bindingToStmts vs2)
+    defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM bindingToStmts $ orderBindings vs2)
     exportDef = JSConst 'exports' (exportObject vs2)
     in optStmts (push exportDef (concat imports defs))
 
@@ -266,3 +269,36 @@ directReturn v s = case s of
     True -> [JSReturn e]
   JSIf p xs ys -> [JSIf p (concatMap (directReturn v) xs) (concatMap (directReturn v) ys)]
   _ -> [s]
+
+orderSCC bs = let
+  bsm = //debug2 ('** bindings = ' ++ jsonStringify (map fst bs)) $
+    insertAll bs Empty
+  g = foldl (\g (n, e) -> insert n (filter (\v -> (isJust $ lookup v bsm) && (v /= n)) (setToArray $ freeVarsStrict Empty e)) g) Empty bs
+  ccs = sccSorted g
+
+  f vs = case (length vs) of
+    1 -> let v = getIx 0 vs in Ok (v, fromJust $ lookup v bsm)
+    _ -> Err ('loop in strict bindings: ' ++ jsonStringify vs)
+
+  isLam e = case e of
+    Lam _ _ _ -> True
+    _ -> False
+  in case (mapM f ccs) of
+    Ok r -> let
+      (fs, vs) = split (\(_, e) -> isLam e) r
+      in Ok $ concat fs vs
+    Err e -> Err e
+
+
+// Order things so that strict JS execution handles them correctly.
+// This means computing the call graph, then within each recursive group
+// computing the graph of strict deps (which should not have recursive
+// components), then finally ordering thing so that lambdas come before
+// other values in a CC.
+orderBindings bs = let
+  ccs = computeSCC bs
+  forceErr r = case r of
+    Ok x -> x
+    Err e -> error e
+  f rs bs = concat rs (forceErr $ orderSCC bs)
+  in foldl f [] ccs

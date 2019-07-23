@@ -92,7 +92,7 @@ data Type =
   | TVar (Map String Ann) String
   | TSkolem (Map String Ann) String
   | TApp (Map String Ann) Type Type
-  | TRow (Map String Ann) (Array (Pair Type Type)) (Maybe Type)
+  | TRow (Map String Ann) (Map String Type) (Maybe Type)
   | TBot
   | TForall (Map String Ann) (Array String) (Array Type) Type
   | TUnknown

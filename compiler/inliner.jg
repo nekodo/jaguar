@@ -18,7 +18,7 @@ optBindings env bs = let
     optB (bs, env) (n, e) = let
       e2 = optExpr env e
       in case e2 of
-        Var _ _ -> //debugIf (dbgMatch n) ('** dropping ' ++ n) $
+        Var _ _ -> //debug2 ('** dropping ' ++ n) $
           (bs, insert n e2 env)
         Const _ _ -> //debug2 ('** dropping ' ++ n) $
           (bs, insert n e2 env)
@@ -175,6 +175,6 @@ dropDeadBindings useCount bs = let
       in case keep of
         True -> Just (Pair n e)
         False -> let ann = annOf e in case (getAnn 'data' ann) of
-          Nothing -> debug2 ('** dropping ' ++ n) Nothing
+          Nothing -> Nothing//debug2 ('** dropping ' ++ n) Nothing
           Just _ -> Just (Pair n (withAnn (setAnn 'dead' AnnTag ann) e))
   in mapJust f bs

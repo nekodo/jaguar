@@ -33,7 +33,7 @@ jaguar_js_bundle(
     main = "//compiler/compiler.jg",
     srcs = SRCS,
     compiler = ":opt",
-    #compiler_args = ["--opt"],
+    compiler_args = ["--opt"],
 )
 
 exports_files(
