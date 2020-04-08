@@ -13,30 +13,31 @@ data RewriteState = RewriteState
   (Map String JSExpr) // Values to inline (used in case compilation)
   (Array JSStmt)      // Preceding statements for this scope
   Number              // Unique ids
+  (Map String String) // ID scope, used to ensure correct id replacement.
 
 addStmt stmt = gets >>= \s -> case s of
-  RewriteState cons rep stmts i -> sets (RewriteState cons rep (push stmt stmts) i)
+  RewriteState cons rep stmts i ids -> sets (RewriteState cons rep (push stmt stmts) i ids)
 
 addConst n e = addStmt (JSConst (opName n) e)
 
 newPhi = gets >>= \s -> case s of
-  RewriteState cons rep stmts i -> sets (RewriteState cons rep stmts (i + 1)) >> ret ('$phi$' ++ intToString i)
+  RewriteState cons rep stmts i ids -> sets (RewriteState cons rep stmts (i + 1) ids) >> ret ('$phi$' ++ intToString i)
 
 rewriteExprToStmts w e = gets >>= \s -> case s of
-  RewriteState cons rep stmts i -> sets (RewriteState cons rep [] i) >>
+  RewriteState cons rep stmts i ids -> sets (RewriteState cons rep [] i ids) >>
     rewriteExpr e >>= \e -> gets >>= \s -> case s of
-      RewriteState cons rep2 stmts2 i2 -> sets (RewriteState cons rep2 stmts i2) >> ret (push (w e) stmts2)
+      RewriteState cons rep2 stmts2 i2 ids2 -> sets (RewriteState cons rep2 stmts i2 ids2) >> ret (push (w e) stmts2)
 
 withRep rep m = gets >>= \s -> case s of
-  RewriteState cons oldRep stmts i -> sets (RewriteState cons (mergeTrie oldRep rep) stmts i) >>
+  RewriteState cons oldRep stmts i ids -> sets (RewriteState cons (mergeTrie oldRep rep) stmts i ids) >>
     m >>= \r -> gets >>= \s -> case s of
-      RewriteState cons _ stmts2 i2 -> sets (RewriteState cons oldRep stmts2 i2) >> ret r
+      RewriteState cons _ stmts2 i2 ids2 -> sets (RewriteState cons oldRep stmts2 i2 ids2) >> ret r
 
 getRep n = gets >>= \s -> case s of
-  RewriteState _ rep _ _ -> ret (lookup n rep)
+  RewriteState _ rep _ _ _ -> ret (lookup n rep)
 
 getCons = gets >>= \s -> case s of
-  RewriteState cons _ _ _ -> ret cons
+  RewriteState cons _ _ _ _ -> ret cons
 
 rewriteExpr e = case e of
   Var _ 'True' -> ret (JSBool True)
@@ -158,6 +159,8 @@ buildImports = \f ns ->
 importToJs i = case i of
   ImportOpen _ f ns -> buildImports f ns
 
+importAliases (ImportOpen _ _ ns) = map snd ns
+
 dataConFieldIds = \ts ->
   map (\p -> '$' ++ intToString (fst p)) (zipWithIndex ts)
 
@@ -171,19 +174,21 @@ exportObject bs = let
 moduleToJs m = case m of
   Module _ _ is _ _ _ vs -> let
     imports = concatMap importToJs is
+    aliases = concatMap importAliases is
     gatherCons m d = case d of
       Pair n e -> case (getAnn 'data' (annOf e)) of
         Nothing -> m
         Just (AnnData tag) -> insert n tag m
-    cons = foldl gatherCons Empty vs
-    vs2 = let
+    vs2 = fixIds aliases vs
+    cons = foldl gatherCons Empty vs2
+    vs3 = let
       f p = case p of
         Pair n e -> not (isJust (getAnn 'dead' (annOf e)))
-      in filter f vs
+      in filter f vs2
     bindingToStmts (n, e) = rewriteExprToStmts (JSConst (opName n)) e //>>= \stmts ->
       //ret $ push (JSComment (n ++ ' :: ' ++ printType (getType e))) stmts
-    defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0) (mapM bindingToStmts $ orderBindings vs2)
-    exportDef = JSConst 'exports' (exportObject vs2)
+    defs = foldl1 concat $ evalState (RewriteState cons Empty [] 0 Empty) (mapM bindingToStmts $ orderBindings vs3)
+    exportDef = JSConst 'exports' (exportObject vs3)
     in optStmts (push exportDef (concat imports defs))
 
 opName = \op -> case op of
@@ -302,3 +307,52 @@ orderBindings bs = let
     Err e -> error e
   f rs bs = concat rs (forceErr $ orderSCC bs)
   in foldl f [] ccs
+
+
+newId n = gets >>= \ids -> case (lookup n ids) of
+  Nothing -> sets (insert n 0 ids) >> ret n
+  Just uid -> sets (insert n (uid + 1) ids) >> ret (n ++ '$' ++ intToString (uid + 1))
+
+getId n = gets >>= \ids -> case (lookup n ids) of
+  Nothing -> ret n
+  Just 0 -> ret n
+  Just uid -> ret (n ++ '$' ++ intToString uid)
+
+withIds n m = gets >>= \ids -> sets (insert n 0 Empty) >>= \_ -> m >>= \r -> sets ids >> ret r
+
+fixIds aliases bs = evalState (foldl (\ids a -> insert a 0 ids) Empty aliases) (fixIdsInBindings bs) 
+
+fixIdsInBindings bs =
+  mapM (\(n, e) -> newId n >>= \n2 -> ret (n2, e)) bs >>= \bs2 ->
+    mapM (\(n, e) -> fixIdsInExpr e >>= \e2 -> ret (n, e2)) bs2
+
+fixIdsInExpr e =
+  case e of
+    Var ann n -> getId n >>= \n2 -> ret $ Var ann n2
+    Const _ _ -> ret e
+    App ann f x -> fixIdsInExpr f >>= \f2 ->
+      fixIdsInExpr x >>= \x2 ->
+        ret $ App ann f2 x2
+    Lam ann p e ->
+      withIds p (fixIdsInExpr e) >>= \e2 ->
+        ret $ Lam ann p e2
+    Let ann bs e ->
+      fixIdsInBindings bs >>= \bs2 ->
+        fixIdsInExpr e >>= \e2 ->
+          ret $ Let ann bs2 e2
+    New ann c es ->
+      mapM fixIdsInExpr es >>= \es2 ->
+        ret $ New ann c es2
+    Case ann e ps ->
+      fixIdsInExpr e >>= \e2 ->
+        mapM (\(p, e) -> fixIdsInPat p >>= \p2 -> fixIdsInExpr e >>= \e2 -> ret (p2, e2)) ps >>= \ps2 ->
+          ret $ Case ann e2 ps2
+
+fixIdsInPat p =
+  case p of
+    PConst _ _ -> ret p
+    PVar ann n -> newId n >>= \n2 ->
+      ret $ PVar ann n2
+    PData ann c ps ->
+      mapM fixIdsInPat ps >>= \ps2 ->
+        ret $ PData ann c ps2

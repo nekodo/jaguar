@@ -26,6 +26,7 @@ def jaguar_js_bundle(name, main, srcs,
 
 def jaguar_binary(name, main, srcs,
                   compiler = None, builtins = None, compiler_args = None,
+                  node_args = None,
                   args = None, visibility = None):
     args = args or []
 
@@ -41,8 +42,9 @@ def jaguar_binary(name, main, srcs,
     node_binary(
         name = name,
         main = ":" + name + "_js",
+        node_args = node_args,
         args = args,
-	      visibility = visibility,
+	    visibility = visibility,
     )
 
 def jaguar_test(name, main, srcs,

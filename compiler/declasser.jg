@@ -9,9 +9,8 @@ import {emptyCtx} from '//compiler/ctx.jg'
 declassModule ms m = case m of
   Module ann fn imps dt cs ins ds -> let
     // Materialize instances from import modules as reified instance object imports.
-    _isi = foldl (rewriteImportedInstances ms) (Pair [] []) imps
-    impsWithImportedInstances = fst _isi
-    importedInstances = snd _isi
+    (impsWithImportedInstances, importedInstances) =
+      evalState 0 $ foldM (rewriteImportedInstances ms) ([], []) imps
 
     // Translate class declarations
     classFuns = concat
@@ -60,22 +59,25 @@ declassModule ms m = case m of
 
 // Adds explicit imports for instances and classes provided by the imported module.
 // Also gathers the imported instances as (local name, type bound).
-rewriteImportedInstances ms _isi imp = case _isi of
-  Pair outImps outIns -> case imp of
+rewriteImportedInstances ms (outImps, outIns) imp = let
+  mkName (n, instanceBound) = gets >>= \cnt -> sets (cnt + 1) >> ret (n, 'imported$instance' ++ intToString cnt, instanceBound)
+  in case imp of
     ImportOpen ann f ns -> case (get f ms) of
       ModuleInterface _ cls ins -> let
         importedClassNames = map
-          (\n -> Pair n n)
+          (\n -> (n, n))
           (concatMap
-            (\c -> case c of Class _ n _ bs -> enqueue (className n) (map fst bs))
+            (\(Class _ n _ bs) -> enqueue (className n) (map fst bs))
             cls)
         importedBounds = trieEntries ins
-        importedInsNames = map (\ni -> (fst ni, fst ni)) importedBounds
-        in Pair
-          (push
-            (ImportOpen ann f (concat ns (concat importedInsNames importedClassNames)))
-            outImps)
-          (concat outIns importedBounds)
+        in mapM mkName importedBounds >>= \importedBoundsWithLocalNames -> let
+          instanceImports = map (\(external, local, _) -> (external, local)) importedBoundsWithLocalNames
+          instancesWithLocalNames = map (\(_, local, bound) -> (local, bound)) importedBoundsWithLocalNames
+          in ret $ Pair
+            (push
+              (ImportOpen ann f (concat ns (concat instanceImports importedClassNames)))
+              outImps)
+            (concat outIns instancesWithLocalNames)
 
 // Translates the class declaration into a data type constructor function.
 // Will be used to create the class dictionaries.
@@ -126,7 +128,7 @@ setEnv env s = case s of
 // 1. if type has a bound then wrap it in lambdas to pass the correct instances
 // 2. a reference to a var with a bound is replaced by a App of the instance
 //    dict to the var
-rewriteExpr is env e = let
+rewriteExpr is env e :: (Array (Pair String Type)) -> Map String Type -> Expr -> Expr = let
   // On the descent when we find a forall with bounds then replace the bounds
   // with explicit lambdas and add the new locally available instances to the state.
   boundsToLam a e = let

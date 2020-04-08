@@ -1,6 +1,5 @@
 Things tha need to be done (usually bugs or known issues):
 
-
 -   Compiler errors should not default to throwing
     exceptions.
 

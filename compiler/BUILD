@@ -16,6 +16,7 @@ jaguar_binary(
     main = "//compiler/compiler.jg",
     srcs = SRCS,
     compiler = ":stage1",
+    node_args = ["--prof", "--no-logfile-per-isolate", "--logfile=prof.log"],
     visibility = ["//visibility:public"],
 )
 

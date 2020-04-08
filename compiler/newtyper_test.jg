@@ -413,8 +413,10 @@ tests = [
       '
 
       bs = mustParseBindings '
-        foo x :: String -> String = x
-        bar x :: (Read a) => a -> a = x
+        foo x :: String -> String =
+          x
+        bar x :: (Read a) => a -> a =
+          x
       '
       got = inferTopBindings ctx scope ins bs
       in [

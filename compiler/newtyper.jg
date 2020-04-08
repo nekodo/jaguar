@@ -1,6 +1,6 @@
 import * from '//compiler/prelude.jg'
 import * from '//compiler/ast.jg'
-import {printType, reallyPrintExpr, printDef} from '//compiler/printer.jg'
+import {printType, reallyPrintExpr, printDef, printModuleInterface} from '//compiler/printer.jg'
 import {sccSorted} from '//compiler/graph.jg'
 import {replaceSkolems, normalizeForall, instanceMatches, wrapForall} from '//compiler/typeutil.jg'
 import * from '//compiler/ctx.jg'
@@ -533,7 +533,9 @@ inferModule ms (Module ann fileName imports adts localClasses instanceDefs bindi
       ret $ Module ann fileName imports adts localClasses typedInstanceDefs typedBindings
 
   in case result of
-    Ok m -> (m, moduleExports m)
+    Ok m -> let
+      exs = moduleExports m
+      in (m, debug2 (printModuleInterface fileName exs) exs)
     Err _ -> error (printErr result)
 
 moduleExports (Module _ _ _ _ cs ins ds) = let

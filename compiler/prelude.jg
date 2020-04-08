@@ -120,9 +120,10 @@ instance Functor (Either a) where
     Left l -> Left l
     Right r -> Right (f r)
 
-either = \f g e -> case e of
-  Left a -> f a
-  Right b -> g b
+either f g e :: (a -> c) -> (b -> c) -> Either a b -> c =
+  case e of
+    Left a -> f a
+    Right b -> g b
 
 // Array (Either a b) -> Pair (Array a) (Array b)
 splitEither = \a -> Pair
@@ -170,11 +171,13 @@ repeat s n = case (n < 1) of
   True -> ''
   False -> s ++ repeat s (n - 1) 
 
-zipWithIndex xs = let
+mapWithIndex g xs = let
   f rs i = case (i < length xs) of
     False -> rs
-    True -> f (push (i, getIx i xs) rs) (i + 1)
+    True -> f (push (g i (getIx i xs)) rs) (i + 1)
   in f [] 0
+
+zipWithIndex = mapWithIndex (\i x -> (i, x))
 
 zip xs ys = let
   f rs i =

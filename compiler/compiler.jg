@@ -88,11 +88,11 @@ main argv = let
              // Normalization passes.
              timed 'translate-adts' (liftPass translateAdts) >=>
                timed 'normalize-imports' normalizeImportsPass >=>
-               timed 'uniquify' uniquify >=>
                // timed 'split-lets' splitLetsPass >=>
                // Typing and type clas handling.
                timed 'typer' typerPass >=>
-               timed 'declasser' declasserPass) >=>
+               timed 'declasser' declasserPass >=>
+               timed 'uniquify' uniquify) >=>
                //timed 'lambda-lifter' liftModule) >=>
            // Optimization passes.
            timed 'merge-modules' (liftPass mergeModules) >=>

@@ -299,7 +299,7 @@ moduleP = let
     Nothing -> case (getAnnCodeLoc loc) of Just (AnnCodeLoc f _ _) -> f
     Just n -> n
   f loc h is es = case (splitFourWay es) of
-    Pair (Pair dts dfs) (Pair cs ins) -> Module loc (name h loc) is dts cs (map (Pair '') ins) (foldl concat [] dfs)
+    Pair (Pair dts dfs) (Pair cs ins) -> Module loc (name h loc) is dts cs (mapWithIndex (\ix i -> ('$instance_' ++ intToString ix, i)) ins) (foldl concat [] dfs)
   in pure f <*> locP <*> opt headerP <*> many importP <*> some topLevelP
 
 parseModule = runParser moduleP

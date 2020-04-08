@@ -93,3 +93,11 @@ printDef typed d = case d of
 indent = map (\l -> '  ' ++ l)
 
 reallyPrintExpr typed e = join (printExprTyped typed e) '\n'
+
+printModuleInterface n (ModuleInterface bs _ is) = let
+  printBindings t = foldTrie (\a n t -> push (n ++ ' :: ' ++ printType t) a) [] t
+  section n ls = enqueue n (indent ls)
+  bindings = section 'bindings:' (printBindings bs)
+  instances = section 'instances:' (printBindings is)
+  all = section ('module ' ++ n ++ ':') (concat bindings instances)
+  in join all '\n'
