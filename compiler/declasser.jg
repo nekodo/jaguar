@@ -7,7 +7,7 @@ import {instFromDef, processClass} from '//compiler/newtyper.jg'
 import {emptyCtx} from '//compiler/ctx.jg'
 
 declassModule ms m = case m of
-  Module ann fn imps dt cs ins ds -> let
+  Module ann fn imps _ cs ins ds -> let
     // Materialize instances from import modules as reified instance object imports.
     (impsWithImportedInstances, importedInstances) =
       evalState 0 $ foldM (rewriteImportedInstances ms) ([], []) imps
@@ -55,7 +55,7 @@ declassModule ms m = case m of
 
     // Put it all together in some reasonable order and return.
     finalDs = concat adtDs (concat classFuns (concat instancesAsDicts declassedDs))
-    in Module ann fn impsWithImportedInstances dt [] [] finalDs
+    in Module ann fn impsWithImportedInstances [] [] [] finalDs
 
 // Adds explicit imports for instances and classes provided by the imported module.
 // Also gathers the imported instances as (local name, type bound).
@@ -97,8 +97,8 @@ mkClassDictConstructor c = case c of
 // take the class dict as the first arg, unpack the class member and return it.
 // Marks the accessors as exported as classes are implicitly.
 mkClassDictAccessors c = case c of
-  Class _ _ _ bs -> let
-    name = className2 c
+  Class _ n _ bs -> let
+    name = className n
     bsForPat = let
       f b = PVar emptyAnn (fst b ++ '_')
       in map f (sort bs)
@@ -261,9 +261,6 @@ importsToTypeEnv ms is = let
   in foldl addImports Empty (enqueue (ImportAll emptyAnn './builtins.js') is)
 
 className n = '$class$' ++ n
-
-className2 c = case c of
-  Class _ n _ _ -> className n
 
 instanceNameFromBound ix b = case b of
   TApp _ (TConst _ n) _ -> 'local$instance$' ++ n ++ '$' ++ intToString ix

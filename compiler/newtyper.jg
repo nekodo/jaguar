@@ -516,7 +516,7 @@ inferInstances ctx scope ins cs defs = let
 
 printErr (Err (ctx, m)) = join (push m (concatMap printCtx (resolveCtx ctx))) '\n'
 
-inferModule ms (Module ann fileName imports adts localClasses instanceDefs bindings) = let
+inferModule ms (Module ann fileName imports _ localClasses instanceDefs bindings) = let
   ctx = \_ -> [ModuleCtx fileName]
   (importedScope, importedInstances, importedClasses) = processImports ms imports
 
@@ -530,7 +530,7 @@ inferModule ms (Module ann fileName imports adts localClasses instanceDefs bindi
 
   result = inferTopBindings ctx scope instances bindings >>= \typedBindings ->
     inferInstances ctx (bindingsToScope scope typedBindings) instances classes instanceDefs >>= \typedInstanceDefs ->
-      ret $ Module ann fileName imports adts localClasses typedInstanceDefs typedBindings
+      ret $ Module ann fileName imports [] localClasses typedInstanceDefs typedBindings
 
   in case result of
     Ok m -> let

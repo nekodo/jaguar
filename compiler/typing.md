@@ -89,8 +89,31 @@ TLabel String
 r :: Record {foo :: Number | a}
 
 get :: k -> Rec { k :: v | r } -> v
-set :: k -> v -> Rec r -> Rec { k :: v | r }
+add :: k -> v -> Rec r -> Rec { k :: v | r }
+set :: k -> v -> Rec { k :: w | r} -> Rec { k :: v | r }
 del :: k -> Rec { k :: v | r } -> Rec r
+
+or
+
+get :: k -> Rec { k :: v | r } -> v
+add :: k -> v -> Rec { k :: _ | r } -> Rec { k :: v | r }
+set :: k -> v -> Rec { k :: w | r } -> Rec { k :: v | r }
+del :: k -> Rec { k :: v | r } -> Rec { k :: _ | r }
+
+unification rules:
+  - {a :: b} = {c :: d} => error a/=c
+  - {a :: b} = {a :: c} => b = c
+  - {a :: b | r} = {a :: c} => b = c, r = {}
+  - {a :: b | r} = {c :: d} => r = {c :: d}, error a absent
+  - {a :: b | r} = {c :: d | r2} => r = {c :: d | r3}, r2 = {a :: b | r3}
+  - split keys into shared, onlyA, onlyB
+  - for shared keys unify the types
+  - allocate var for restU
+  - restA = onlyB | restU
+  - restB = onlyA | restU
+  - unified = {shared + onlyA + onlyB | restU}
+
+get 
 
 {a: b} = {c: d} => a = c, b = d
 {a: b | r} = {c: d} => a = c, b = d

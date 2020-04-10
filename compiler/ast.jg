@@ -67,6 +67,12 @@ data Module = Module
   (Array (Pair String Instance))           // type class instances
   (Array (Pair String Expr)) // value definitions
 
+data ExternalName = ExternalName String String // module + name
+data FangModule = FangModule
+  String                     // path
+  (Map String ExternalName)  // imports as local name -> external name
+  (Array (Pair String Expr)) // definitions
+
 data ModuleInterface = ModuleInterface
   (Map String Type)      // exported bindings, includes ADT constructors
   (Array Class)      // exported classes

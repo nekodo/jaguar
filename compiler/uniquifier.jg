@@ -28,11 +28,6 @@ rewriteExpr env e = let
     _ -> ret (Left e)
   in breakableDownM f e
 
-rewriteInstance env i = case i of
-  (_, Instance ann n t bs) ->
-    mapM (\d -> case d of Pair n e -> rewriteExpr env e >>= \e -> ret (Pair n e)) bs >>= \bs -> newIdent '$instance' >>= \insName ->
-      ret (insName, Instance ann n t bs)
-
 rewriteBindings env bs = let
   ns = map fst bs
   ns2 = mapM newIdent ns
@@ -52,12 +47,10 @@ renameImport er i = case er of
         Pair env ns -> ret (Pair env (push (ImportOpen ann f ns) r))
 
 rewriteModule ms m = case m of
-  Module ann fn is ds cs ins bs ->
-    foldM renameImport (Pair Empty []) is >>= \eis -> case eis of
-      Pair env is ->
-        rewriteBindings env bs >>= \ebs -> case ebs of
-          Pair env bs -> mapM (rewriteInstance env) ins >>= \ins ->
-            ret (Module ann fn is ds cs ins bs)
+  Module ann fn is _ _ _ bs ->
+    foldM renameImport (Pair Empty []) is >>= \(env, is) ->
+      rewriteBindings env bs >>= \(_, bs) ->
+        ret (Module ann fn is [] [] [] bs)
 
 uniquify m = getUid >>= \uid -> getExports >>= \ex -> let
   r = runState uid (rewriteModule ex m)

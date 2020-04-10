@@ -66,6 +66,8 @@ size f
 f[name = 'Kuro', size = 7]
 FooB[name = 'Kuro', size = 7]
 
+
+
 ## Separate lower level core language
 
 Currently we have things that either get desugared very early (when parsing) or we have things in the
@@ -79,26 +81,20 @@ string -> [parse] -> jaguar -> [type] -> [rectify] -> fang -> [optimize] -> [bac
 
 Fang:
   - motivated by efficient opt and translation to output
-  - everything is a value, no declarations (is that possible?)
   - explicitly typed? or untyped?
   - no type classes
-  - explicit tagged unions support, but as values
-
-Expr =
-  Const
-  Var
-  App
-  Let
-  New
-  Case
-  Lam
-  Field {of :: Expr, name :: String}
-
-
-
-Maybe a = Just a | Nothing
-
-Just = 
+  - explicit tagged unions support
 
 case x of
-  Just z -> z
+  Foo q -> q
+
+case x of
+  Foo.{query = 7} -> x
+
+a.{foo = 7}
+Foo.{query = a}
+
+Foo.new :: a -> Foo a
+Foo.query :: Foo a -> a
+
+x.boo // if we do not require unique labels this might not be typeable without making x :: {boo :: a | r}
